@@ -23,6 +23,7 @@ export interface ContractMethodBase {
 export interface ContractMethod extends ContractMethodBase {
   ret: ContractParamsSchema;
   readonly: boolean;
+  payable?: boolean;
 }
 
 export type ContractSchema = {
