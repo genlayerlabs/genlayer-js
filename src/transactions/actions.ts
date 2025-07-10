@@ -188,23 +188,25 @@ const _decodeLocalnetTransaction = (tx: GenLayerTransaction): GenLayerTransactio
   try {
     const leaderReceipt = tx.consensus_data?.leader_receipt;
     if (leaderReceipt) {
-      if (leaderReceipt.result && typeof leaderReceipt.result === "string") {
-        leaderReceipt.result = resultToUserFriendlyJson(leaderReceipt.result);
-      }
-      if (leaderReceipt.calldata && typeof leaderReceipt.calldata === "string") {
-        leaderReceipt.calldata = {
-          base64: leaderReceipt.calldata as string,
-          ...calldataToUserFriendlyJson(b64ToArray(leaderReceipt.calldata as string)),
-        };
-      }
-      if (leaderReceipt.eq_outputs) {
-        leaderReceipt.eq_outputs = Object.fromEntries(
-          Object.entries(leaderReceipt.eq_outputs).map(([key, value]) => {
-            const decodedValue = new TextDecoder().decode(b64ToArray(String(value)));
-            return [key, resultToUserFriendlyJson(decodedValue)];
-          }),
-        );
-      }
+      const receipts = Array.isArray(leaderReceipt) ? leaderReceipt : [leaderReceipt];
+      receipts.forEach((receipt) => {
+        if (receipt.result && typeof receipt.result === "string") {
+          receipt.result = resultToUserFriendlyJson(receipt.result);
+        }
+        if (receipt.calldata && typeof receipt.calldata === "string") {
+          receipt.calldata = {
+            base64: receipt.calldata as string,
+            ...calldataToUserFriendlyJson(b64ToArray(receipt.calldata as string)),
+          };
+        }
+        if (receipt.eq_outputs) {
+          receipt.eq_outputs = Object.fromEntries(
+            Object.entries(receipt.eq_outputs).map(([key, value]) => {
+              return [key, resultToUserFriendlyJson(String(value))];
+            }),
+          );
+        }
+      });
     }
     if (tx.data?.calldata && typeof tx.data.calldata === "string") {
       tx.data.calldata = {
