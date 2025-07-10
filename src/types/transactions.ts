@@ -241,7 +241,7 @@ export type GenLayerTransaction = {
       pending_transactions: unknown[];
       vote: string;
       result: string;
-    };
+    }[];
     validators?: Record<string, unknown>[];
     votes?: Record<string, string>;
   };
