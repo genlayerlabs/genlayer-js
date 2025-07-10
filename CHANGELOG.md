@@ -1,5 +1,12 @@
 
 
+## 0.11.2 (2025-07-10)
+
+
+### Bug Fixes
+
+* handle new leader receipt and decode eq outputs ([#98](https://github.com/genlayerlabs/genlayer-js/issues/98)) ([fadb53d](https://github.com/genlayerlabs/genlayer-js/commit/fadb53d5f8946074a80047003323a0bd3d4f8108))
+
 ## 0.11.1 (2025-07-09)
 
 ## 0.11.0 (2025-05-28)

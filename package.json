@@ -1,7 +1,7 @@
 {
   "name": "genlayer-js",
   "type": "module",
-  "version": "0.11.1",
+  "version": "0.11.2",
   "description": "GenLayer JavaScript SDK",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
