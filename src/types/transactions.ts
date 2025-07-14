@@ -30,8 +30,6 @@ export enum TransactionResult {
   NO_MAJORITY = "NO_MAJORITY",
   MAJORITY_AGREE = "MAJORITY_AGREE",
   MAJORITY_DISAGREE = "MAJORITY_DISAGREE",
-  SUCCESS = "SUCCESS",
-  FAILURE = "FAILURE",
 }
 
 export const transactionsStatusNumberToName = {
