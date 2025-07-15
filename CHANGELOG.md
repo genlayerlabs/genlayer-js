@@ -1,5 +1,12 @@
 
 
+## 0.12.0 (2025-07-15)
+
+
+### Features
+
+* add payable to ContractMethod ([#96](https://github.com/genlayerlabs/genlayer-js/issues/96)) ([011a749](https://github.com/genlayerlabs/genlayer-js/commit/011a7498ffce22a34d20d9fb88a72e7c56badaf9))
+
 ## 0.11.2 (2025-07-10)
 
 
