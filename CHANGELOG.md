@@ -1,5 +1,12 @@
 
 
+## 0.12.1 (2025-07-21)
+
+
+### Bug Fixes
+
+* default transaction hash variant ([#100](https://github.com/genlayerlabs/genlayer-js/issues/100)) ([d8926b1](https://github.com/genlayerlabs/genlayer-js/commit/d8926b16f8983df805da713091297a5d353e9332))
+
 ## 0.12.0 (2025-07-15)
 
 
