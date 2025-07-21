@@ -88,7 +88,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         args: callArgs,
         kwargs,
         leaderOnly = false,
-        transactionHashVariant = TransactionHashVariant.LATEST_FINAL,
+        transactionHashVariant = TransactionHashVariant.LATEST_NONFINAL,
       } = args;
 
       const encodedData = [calldata.encode(makeCalldataObject(functionName, callArgs, kwargs)), leaderOnly];
