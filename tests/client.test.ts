@@ -164,7 +164,7 @@ describe("Client Overrides", () => {
         to: contractAddress,
         from: accountAddressString, // Expecting the address string directly
         data: expect.any(String),
-        transaction_hash_variant: TransactionHashVariant.LATEST_FINAL,
+        transaction_hash_variant: TransactionHashVariant.LATEST_NONFINAL,
       },
     ]);
   });
