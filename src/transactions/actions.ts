@@ -20,6 +20,27 @@ import {Abi, PublicClient, fromRlp, fromHex, Hex, Address} from "viem";
 import * as calldataAbi from "@/abi/calldata";
 import {localnet} from "@/chains/localnet";
 
+// Fields to remove from simplified transaction receipts
+const FIELDS_TO_REMOVE = [
+  "raw", "contract_state", "base64", "consensus_history", "tx_data",
+  "eq_blocks_outputs", "r", "s", "v", "created_timestamp",
+  "current_timestamp", "tx_execution_hash", "random_seed", "states",
+  "contract_code", "appeal_failed", "appeal_leader_timeout",
+  "appeal_processing_time", "appeal_undetermined", "appealed",
+  "timestamp_appeal", "config_rotation_rounds", "rotation_count",
+  "queue_position", "queue_type", "leader_timeout_validators",
+  "triggered_by", "num_of_initial_validators",
+  "timestamp_awaiting_finalization", "last_vote_timestamp",
+  "read_state_block_range", "tx_slot", "blockHash", "blockNumber",
+  "to", "transactionIndex"
+];
+
+// Field name mappings for cross-language compatibility with genlayer-py
+const FIELD_NAME_MAPPINGS: Record<string, string> = {
+  statusName: "status_name",
+  typeHex: "type"
+};
+
 export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => ({
   waitForTransactionReceipt: async ({
     hash,
@@ -211,45 +232,7 @@ const _simplifyTransactionReceipt = (tx: GenLayerTransaction): GenLayerTransacti
         const currentPath = path ? `${path}.${key}` : key;
         
         // Always remove these fields
-        if ([
-          "raw",
-          "contract_state", 
-          "base64",
-          "consensus_history",
-          "tx_data",
-          "eq_blocks_outputs",
-          "r", "s", "v",
-          "created_timestamp",
-          "current_timestamp", 
-          "tx_execution_hash",
-          "random_seed",
-          "states",
-          "contract_code",
-          // Remove appeal fields that are usually defaults
-          "appeal_failed",
-          "appeal_leader_timeout", 
-          "appeal_processing_time",
-          "appeal_undetermined",
-          "appealed",
-          "timestamp_appeal",
-          // Remove internal processing fields
-          "config_rotation_rounds",
-          "rotation_count",
-          "queue_position",
-          "queue_type", 
-          "leader_timeout_validators",
-          "triggered_by",
-          "num_of_initial_validators",
-          "timestamp_awaiting_finalization",
-          "last_vote_timestamp",
-          "read_state_block_range",
-          "tx_slot",
-          // Remove Viem-specific fields that aren't in genlayer-py
-          "blockHash",
-          "blockNumber", 
-          "to",
-          "transactionIndex",
-        ].includes(key)) {
+        if (FIELDS_TO_REMOVE.includes(key)) {
           continue;
         }
         
@@ -324,10 +307,8 @@ const _simplifyTransactionReceipt = (tx: GenLayerTransaction): GenLayerTransacti
           !(typeof simplifiedValue === "object" && simplifiedValue !== null && Object.keys(simplifiedValue).length === 0);
         
         if (shouldInclude || simplifiedValue === 0) {
-          // Map field names for consistency with genlayer-py
-          let mappedKey = key;
-          if (key === "statusName") mappedKey = "status_name";
-          if (key === "typeHex") mappedKey = "type";
+          // Map field names for cross-language compatibility
+          const mappedKey = FIELD_NAME_MAPPINGS[key] || key;
           result[mappedKey] = simplifiedValue;
         }
       }
