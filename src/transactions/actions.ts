@@ -358,11 +358,20 @@ const _decodeLocalnetTransaction = (tx: GenLayerTransaction): GenLayerTransactio
           };
         }
         if (receipt.eq_outputs) {
-          receipt.eq_outputs = Object.fromEntries(
-            Object.entries(receipt.eq_outputs).map(([key, value]) => {
-              return [key, resultToUserFriendlyJson(String(value))];
-            }),
-          );
+          const decodedOutputs: any = {};
+          for (const [key, value] of Object.entries(receipt.eq_outputs)) {
+            if (typeof value === "object" && value !== null) {
+              decodedOutputs[key] = value;
+            } else {
+              try {
+                decodedOutputs[key] = resultToUserFriendlyJson(value as string);
+              } catch (e) {
+                console.warn(`Error decoding eq_output ${key}: ${e}`);
+                decodedOutputs[key] = value;
+              }
+            }
+          }
+          receipt.eq_outputs = decodedOutputs;
         }
       });
     }
