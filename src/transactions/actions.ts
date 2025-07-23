@@ -20,17 +20,40 @@ import {Abi, PublicClient, fromRlp, fromHex, Hex, Address} from "viem";
 import * as calldataAbi from "@/abi/calldata";
 import {localnet} from "@/chains/localnet";
 
+// Fields to remove from simplified transaction receipts
+const FIELDS_TO_REMOVE = [
+  "raw", "contract_state", "base64", "consensus_history", "tx_data",
+  "eq_blocks_outputs", "r", "s", "v", "created_timestamp",
+  "current_timestamp", "tx_execution_hash", "random_seed", "states",
+  "contract_code", "appeal_failed", "appeal_leader_timeout",
+  "appeal_processing_time", "appeal_undetermined", "appealed",
+  "timestamp_appeal", "config_rotation_rounds", "rotation_count",
+  "queue_position", "queue_type", "leader_timeout_validators",
+  "triggered_by", "num_of_initial_validators",
+  "timestamp_awaiting_finalization", "last_vote_timestamp",
+  "read_state_block_range", "tx_slot", "blockHash", "blockNumber",
+  "to", "transactionIndex"
+];
+
+// Field name mappings for cross-language compatibility with genlayer-py
+const FIELD_NAME_MAPPINGS: Record<string, string> = {
+  statusName: "status_name",
+  typeHex: "type"
+};
+
 export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => ({
   waitForTransactionReceipt: async ({
     hash,
     status = TransactionStatus.ACCEPTED,
     interval = transactionsConfig.waitInterval,
     retries = transactionsConfig.retries,
+    fullTransaction = false,
   }: {
     hash: TransactionHash;
     status: TransactionStatus;
     interval?: number;
     retries?: number;
+    fullTransaction?: boolean;
   }): Promise<GenLayerTransaction> => {
     const transaction = await client.getTransaction({
       hash,
@@ -46,10 +69,14 @@ export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClie
       transactionStatusString === requestedStatus ||
       (status === TransactionStatus.ACCEPTED && transactionStatusString === transactionStatusFinalized)
     ) {
+      let finalTransaction = transaction;
       if (client.chain.id === localnet.id) {
-        return _decodeLocalnetTransaction(transaction as unknown as GenLayerTransaction);
+        finalTransaction = _decodeLocalnetTransaction(transaction as unknown as GenLayerTransaction);
       }
-      return transaction;
+      if (!fullTransaction) {
+        return _simplifyTransactionReceipt(finalTransaction as GenLayerTransaction);
+      }
+      return finalTransaction;
     }
 
     if (retries === 0) {
@@ -62,6 +89,7 @@ export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClie
       status,
       interval,
       retries: retries - 1,
+      fullTransaction,
     });
   },
 });
@@ -183,6 +211,117 @@ const _decodeTransaction = (tx: GenLayerRawTransaction): GenLayerTransaction => 
   return decodedTx as GenLayerTransaction;
 };
 
+const _simplifyTransactionReceipt = (tx: GenLayerTransaction): GenLayerTransaction => {
+  /**
+   * Simplify transaction receipt by removing non-essential fields while preserving functionality.
+   *
+   * Removes: Binary data, internal timestamps, appeal fields, processing details, historical data
+   * Preserves: Transaction IDs, status, execution results, node configs, readable data
+   */
+  const simplifyObject = (obj: any, path = ""): any => {
+    if (obj === null || obj === undefined) return obj;
+    
+    if (Array.isArray(obj)) {
+      return obj.map(item => simplifyObject(item, path)).filter(item => item !== undefined);
+    }
+    
+    if (typeof obj === "object") {
+      const result: any = {};
+      
+      for (const [key, value] of Object.entries(obj)) {
+        const currentPath = path ? `${path}.${key}` : key;
+        
+        // Always remove these fields
+        if (FIELDS_TO_REMOVE.includes(key)) {
+          continue;
+        }
+        
+        // Remove node_config only from top level (keep it in consensus_data)
+        if (key === "node_config" && !path.includes("consensus_data")) {
+          continue;
+        }
+        
+        // Special handling for consensus_data - keep execution results and votes
+        if (key === "consensus_data" && typeof value === "object" && value !== null) {
+          const simplifiedConsensus: any = {};
+          
+          // Keep votes
+          if ("votes" in value) {
+            simplifiedConsensus.votes = value.votes;
+          }
+          
+          // Process leader_receipt to keep only essential fields
+          if ("leader_receipt" in value && Array.isArray(value.leader_receipt)) {
+            simplifiedConsensus.leader_receipt = value.leader_receipt.map((receipt: any) => {
+              const simplifiedReceipt: any = {};
+              
+              // Keep essential execution info
+              ["execution_result", "genvm_result", "mode", "vote", "node_config"].forEach(field => {
+                if (field in receipt) {
+                  simplifiedReceipt[field] = receipt[field];
+                }
+              });
+              
+              // Keep readable calldata
+              if (receipt.calldata && typeof receipt.calldata === "object" && "readable" in receipt.calldata) {
+                simplifiedReceipt.calldata = { readable: receipt.calldata.readable };
+              }
+              
+              // Keep readable outputs
+              if (receipt.eq_outputs) {
+                simplifiedReceipt.eq_outputs = simplifyObject(receipt.eq_outputs, currentPath);
+              }
+              if (receipt.result) {
+                simplifiedReceipt.result = simplifyObject(receipt.result, currentPath);
+              }
+              
+              return simplifiedReceipt;
+            });
+          }
+          
+          // Process validators to keep execution results
+          if ("validators" in value && Array.isArray(value.validators)) {
+            const simplifiedValidators = value.validators.map((validator: any) => {
+              const simplifiedValidator: any = {};
+              ["execution_result", "genvm_result", "mode", "vote", "node_config"].forEach(field => {
+                if (field in validator) {
+                  simplifiedValidator[field] = validator[field];
+                }
+              });
+              return simplifiedValidator;
+            }).filter((validator: any) => Object.keys(validator).length > 0);
+            
+            if (simplifiedValidators.length > 0) {
+              simplifiedConsensus.validators = simplifiedValidators;
+            }
+          }
+          
+          result[key] = simplifiedConsensus;
+          continue;
+        }
+        
+        const simplifiedValue = simplifyObject(value, currentPath);
+        // Include the value if it's not undefined and not an empty object
+        // Special case: include numeric 0 values (like value: 0)
+        const shouldInclude = simplifiedValue !== undefined && 
+          !(typeof simplifiedValue === "object" && simplifiedValue !== null && Object.keys(simplifiedValue).length === 0);
+        
+        if (shouldInclude || simplifiedValue === 0) {
+          // Map field names for cross-language compatibility
+          const mappedKey = FIELD_NAME_MAPPINGS[key] || key;
+          result[mappedKey] = simplifiedValue;
+        }
+      }
+      
+      return result;
+    }
+    
+    return obj;
+  };
+  
+  return simplifyObject({...tx});
+};
+
 const _decodeLocalnetTransaction = (tx: GenLayerTransaction): GenLayerTransaction => {
   if (!tx.data) return tx;
   try {
@@ -200,11 +339,20 @@ const _decodeLocalnetTransaction = (tx: GenLayerTransaction): GenLayerTransactio
           };
         }
         if (receipt.eq_outputs) {
-          receipt.eq_outputs = Object.fromEntries(
-            Object.entries(receipt.eq_outputs).map(([key, value]) => {
-              return [key, resultToUserFriendlyJson(String(value))];
-            }),
-          );
+          const decodedOutputs: any = {};
+          for (const [key, value] of Object.entries(receipt.eq_outputs)) {
+            if (typeof value === "object" && value !== null) {
+              decodedOutputs[key] = value;
+            } else {
+              try {
+                decodedOutputs[key] = resultToUserFriendlyJson(value as string);
+              } catch (e) {
+                console.warn(`Error decoding eq_output ${key}: ${e}`);
+                decodedOutputs[key] = value;
+              }
+            }
+          }
+          receipt.eq_outputs = decodedOutputs;
         }
       });
     }
