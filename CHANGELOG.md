@@ -1,5 +1,12 @@
 
 
+## 0.13.0 (2025-07-23)
+
+
+### Features
+
+* simplify transaction receipt ([#101](https://github.com/genlayerlabs/genlayer-js/issues/101)) ([be78ac6](https://github.com/genlayerlabs/genlayer-js/commit/be78ac6b5871a4d61349bacf87b5fb0da61b1a90))
+
 ## 0.12.1 (2025-07-21)
 
 
