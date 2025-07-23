@@ -38,6 +38,31 @@ const transactionHash = "0x...";
 const transaction = await client.getTransaction({ hash: transactionHash })
 ```
 
+### Waiting for Transaction Receipt
+```typescript
+import { localnet } from 'genlayer-js/chains';
+import { createClient } from "genlayer-js";
+import { TransactionStatus } from "genlayer-js/types";
+
+const client = createClient({
+  chain: localnet,
+});
+
+// Get simplified receipt (default - removes binary data, keeps execution results)
+const receipt = await client.waitForTransactionReceipt({
+  hash: "0x...",
+  status: TransactionStatus.FINALIZED,
+  fullTransaction: false // Default - simplified for readability
+});
+
+// Get complete receipt with all fields
+const fullReceipt = await client.waitForTransactionReceipt({
+  hash: "0x...",
+  status: TransactionStatus.FINALIZED,
+  fullTransaction: true // Complete receipt with all internal data
+});
+```
+
 ### Reading a contract
 ```typescript
 import { localnet } from 'genlayer-js/chains';
@@ -74,7 +99,11 @@ const transactionHash = await client.writeContract({
   value: 0, // value is optional, if you want to send some native token to the contract
 });
 
-const receipt = await client.waitForTransactionReceipt({ hash: txHash, status: TransactionStatus.FINALIZED}) //or ACCEPTED
+const receipt = await client.waitForTransactionReceipt({ 
+  hash: txHash, 
+  status: TransactionStatus.FINALIZED, // or ACCEPTED
+  fullTransaction: false // False by default - returns simplified receipt for better readability
+})
 
 ```
 ## 🚀 Key Features
