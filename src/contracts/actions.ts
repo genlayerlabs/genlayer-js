@@ -12,43 +12,6 @@ import {
 } from "@/types";
 import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs} from "viem";
 
-function makeCalldataObject(
-  method: string | undefined,
-  args: CalldataEncodable[] | undefined,
-  kwargs: {[key: string]: CalldataEncodable} | Map<string, CalldataEncodable> | undefined,
-): CalldataEncodable {
-  // this method omits args or kwargs if they are empty
-  // it reduces transaction size
-  let ret: {[key: string]: CalldataEncodable} = {};
-
-  if (method) {
-    ret["method"] = method;
-  }
-
-  if (args && args.length > 0) {
-    ret["args"] = args;
-  }
-
-  if (kwargs) {
-    if (kwargs instanceof Map) {
-      if (kwargs.size > 0) {
-        ret["kwargs"] = kwargs;
-      }
-    } else {
-      let hasVal = false;
-      for (const _k in kwargs) {
-        hasVal = true;
-        break;
-      }
-      if (hasVal) {
-        ret["kwargs"] = kwargs;
-      }
-    }
-  }
-
-  return ret;
-}
-
 export const contractActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => {
   return {
     getContractSchema: async (address: Address): Promise<ContractSchema> => {
@@ -91,7 +54,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         transactionHashVariant = TransactionHashVariant.LATEST_NONFINAL,
       } = args;
 
-      const encodedData = [calldata.encode(makeCalldataObject(functionName, callArgs, kwargs)), leaderOnly];
+      const encodedData = [calldata.encode(calldata.makeCalldataObject(functionName, callArgs, kwargs)), leaderOnly];
       const serializedData = serialize(encodedData);
 
       const senderAddress = account?.address ?? client.account?.address;
@@ -135,7 +98,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         leaderOnly = false,
         consensusMaxRotations = client.chain.defaultConsensusMaxRotations,
       } = args;
-      const data = [calldata.encode(makeCalldataObject(functionName, callArgs, kwargs)), leaderOnly];
+      const data = [calldata.encode(calldata.makeCalldataObject(functionName, callArgs, kwargs)), leaderOnly];
       const serializedData = serialize(data);
       const senderAccount = account || client.account;
       const encodedData = _encodeAddTransactionData({
@@ -171,7 +134,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       } = args;
       const data = [
         code,
-        calldata.encode(makeCalldataObject(undefined, constructorArgs, kwargs)),
+        calldata.encode(calldata.makeCalldataObject(undefined, constructorArgs, kwargs)),
         leaderOnly,
       ];
       const serializedData = serialize(data);

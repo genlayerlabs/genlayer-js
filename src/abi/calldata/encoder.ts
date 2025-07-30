@@ -140,3 +140,39 @@ export function encode(data: CalldataEncodable): Uint8Array {
   encodeImpl(arr, data);
   return new Uint8Array(arr);
 }
+
+// Constructs a calldata object for contract calls, omitting empty args/kwargs for compactness.
+export function makeCalldataObject(
+  method: string | undefined,
+  args: CalldataEncodable[] | undefined,
+  kwargs: {[key: string]: CalldataEncodable} | Map<string, CalldataEncodable> | undefined,
+): CalldataEncodable {
+  let ret: {[key: string]: CalldataEncodable} = {};
+
+  if (method) {
+    ret["method"] = method;
+  }
+
+  if (args && args.length > 0) {
+    ret["args"] = args;
+  }
+
+  if (kwargs) {
+    if (kwargs instanceof Map) {
+      if (kwargs.size > 0) {
+        ret["kwargs"] = kwargs;
+      }
+    } else {
+      let hasVal = false;
+      for (const _k in kwargs) {
+        hasVal = true;
+        break;
+      }
+      if (hasVal) {
+        ret["kwargs"] = kwargs;
+      }
+    }
+  }
+
+  return ret;
+}
