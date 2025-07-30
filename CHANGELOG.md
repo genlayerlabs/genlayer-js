@@ -1,5 +1,12 @@
 
 
+## 0.14.0 (2025-07-30)
+
+
+### Features
+
+* expose encode and decode methods ([#102](https://github.com/genlayerlabs/genlayer-js/issues/102)) ([c9e0719](https://github.com/genlayerlabs/genlayer-js/commit/c9e07191c52cd4fecc9295172a7087ade896ccd7))
+
 ## 0.13.0 (2025-07-23)
 
 
