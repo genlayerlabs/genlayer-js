@@ -15,7 +15,7 @@ import {decodeLocalnetTransaction, decodeTransaction, simplifyTransactionReceipt
 
 
 
-export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => ({
+export const receiptActions = <TChain extends GenLayerChain>(client: GenLayerClient<TChain>, publicClient: PublicClient) => ({
   waitForTransactionReceipt: async ({
     hash,
     status = TransactionStatus.ACCEPTED,
@@ -68,7 +68,7 @@ export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClie
   },
 });
 
-export const transactionActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => ({
+export const transactionActions = <TChain extends GenLayerChain>(client: any, publicClient: PublicClient) => ({
   getTransaction: async ({hash}: {hash: TransactionHash}): Promise<GenLayerTransaction> => {
     if (client.chain.id === localnet.id) {
       const transaction = await client.getTransaction({hash});
