@@ -78,6 +78,22 @@ const getCustomTransportConfig = (config: ClientConfig) => {
   };
 };
 
+// Helper function to create a properly typed GenLayer client
+function createGenLayerClient<TChain extends GenLayerChain>(
+  baseClient: ReturnType<typeof createViemClient>,
+  publicClient: PublicClient,
+): GenLayerClient<TChain> {
+  return baseClient
+    .extend(publicActions)
+    .extend(walletActions)
+    .extend(client => accountActions(client))
+    .extend(client => contractActions(client, publicClient))
+    .extend(client => chainActions(client))
+    .extend(client => genlayerWalletActions(client))
+    .extend(client => transactionActions(client, publicClient))
+    .extend(client => receiptActions(client, publicClient)) as GenLayerClient<TChain>;
+}
+
 export const createClient = (config: ClientConfig = {chain: localnet}): GenLayerClient<GenLayerChain> => {
   const chainConfig = config.chain || localnet;
   if (config.endpoint) {
@@ -95,32 +111,15 @@ export const createClient = (config: ClientConfig = {chain: localnet}): GenLayer
     ...(config.account ? {account: config.account} : {}),
   });
 
-  // First extend with basic actions
-  const clientWithBasicActions = baseClient
-    .extend(publicActions)
-    .extend(walletActions)
-    .extend(client => accountActions(client as unknown as GenLayerClient<GenLayerChain>));
-
-  // Create a client with all actions except transaction actions
-  const clientWithAllActions = {
-    ...clientWithBasicActions,
-    ...contractActions(clientWithBasicActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
-    ...chainActions(clientWithBasicActions as unknown as GenLayerClient<GenLayerChain>),
-    ...genlayerWalletActions(clientWithBasicActions as unknown as GenLayerClient<GenLayerChain>),
-    ...transactionActions(clientWithBasicActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
-  } as unknown as GenLayerClient<GenLayerChain>;
-
-  // Add transaction actions last, after all other actions are in place
-  const finalClient = {
-    ...clientWithAllActions,
-    ...receiptActions(clientWithAllActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
-  } as unknown as GenLayerClient<GenLayerChain>;
+  // Create the client using our helper function
+  const client = createGenLayerClient<GenLayerChain>(baseClient, publicClient);
 
   // Initialize in the background
-  finalClient.initializeConsensusSmartContract().catch(error => {
+  client.initializeConsensusSmartContract().catch(error => {
     console.error("Failed to initialize consensus smart contract:", error);
   });
-  return finalClient;
+  
+  return client;
 };
 
 export const createPublicClient = (
