@@ -12,7 +12,7 @@ import {
 } from "@/types";
 import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs} from "viem";
 
-export const contractActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => {
+export const contractActions = <TChain extends GenLayerChain>(client: any, publicClient: PublicClient) => {
   return {
     getContractSchema: async (address: Address): Promise<ContractSchema> => {
       if (client.chain.id !== localnet.id) {
@@ -179,14 +179,14 @@ const validateAccount = (Account?: Account): Account => {
   return Account;
 };
 
-const _encodeAddTransactionData = ({
+const _encodeAddTransactionData = <TChain extends GenLayerChain>({
   client,
   senderAccount,
   recipient,
   data,
   consensusMaxRotations = client.chain.defaultConsensusMaxRotations,
 }: {
-  client: GenLayerClient<GenLayerChain>;
+  client: any;
   senderAccount?: Account;
   recipient?: `0x${string}`;
   data?: `0x${string}`;
@@ -206,11 +206,11 @@ const _encodeAddTransactionData = ({
   });
 };
 
-const _encodeSubmitAppealData = ({
+const _encodeSubmitAppealData = <TChain extends GenLayerChain>({
   client,
   txId,
 }: {
-  client: GenLayerClient<GenLayerChain>;
+  client: any;
   txId: `0x${string}`;
 }): `0x${string}` => {
   return encodeFunctionData({
@@ -220,14 +220,14 @@ const _encodeSubmitAppealData = ({
   });
 };
 
-const _sendTransaction = async ({
+const _sendTransaction = async <TChain extends GenLayerChain>({
   client,
   publicClient,
   encodedData,
   senderAccount,
   value = 0n,
 }: {
-  client: GenLayerClient<GenLayerChain>;
+  client: any;
   publicClient: PublicClient;
   encodedData: `0x${string}`;
   senderAccount?: Account;
