@@ -247,6 +247,7 @@ const _sendTransaction = async ({
     type: "legacy",
     nonce: Number(nonce),
     value: value,
+    gas: 21000n,
   });
 
   if (validatedSenderAccount?.type !== "local") {
