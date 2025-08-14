@@ -256,6 +256,7 @@ const _sendTransaction = async ({
       to: transactionRequest.to,
       data: encodedData,
       value: transactionRequest.value ? `0x${transactionRequest.value.toString(16)}` : "0x0",
+      gas: transactionRequest.gas ? `0x${transactionRequest.gas.toString(16)}` : "0x5208",
     };
 
     return await client.request({
