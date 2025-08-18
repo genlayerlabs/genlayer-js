@@ -1,5 +1,12 @@
 
 
+## 0.15.0 (2025-08-18)
+
+
+### Features
+
+* add custom provider support for wallet framework integration ([#105](https://github.com/genlayerlabs/genlayer-js/issues/105)) ([9fdaf6f](https://github.com/genlayerlabs/genlayer-js/commit/9fdaf6f7b52c58cabe8aee48e31317757be7637b))
+
 ## 0.14.2 (2025-08-14)
 
 ## 0.14.1 (2025-08-13)
