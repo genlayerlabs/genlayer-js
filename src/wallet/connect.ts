@@ -13,7 +13,7 @@ const networks = {
 };
 
 export const connect = async (
-  client: { chain: GenLayerChain },
+  client: { chain?: GenLayerChain },
   network: Network = "studionet",
   snapSource: SnapSource = "npm",
 ): Promise<void> => {
