@@ -247,6 +247,7 @@ const _sendTransaction = async <TChain extends GenLayerChain>({
     type: "legacy",
     nonce: Number(nonce),
     value: value,
+    gas: 21000n,
   });
 
   if (validatedSenderAccount?.type !== "local") {
@@ -255,6 +256,7 @@ const _sendTransaction = async <TChain extends GenLayerChain>({
       to: transactionRequest.to,
       data: encodedData,
       value: transactionRequest.value ? `0x${transactionRequest.value.toString(16)}` : "0x0",
+      gas: transactionRequest.gas ? `0x${transactionRequest.gas.toString(16)}` : "0x5208",
     };
 
     return await client.request({
