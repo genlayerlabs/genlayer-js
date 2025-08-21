@@ -1,4 +1,4 @@
-import {GenLayerClient, BaseActionsClient} from "../types/clients";
+import {BaseActionsClient} from "../types/clients";
 import {TransactionHash, TransactionStatus, GenLayerTransaction, GenLayerRawTransaction, transactionsStatusNameToNumber} from "@/types";
 import {transactionsConfig} from "../config/transactions";
 import {sleep} from "../utils/async";

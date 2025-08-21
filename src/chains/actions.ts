@@ -1,4 +1,4 @@
-import {GenLayerClient, GenLayerChain, BaseActionsClient} from "@/types";
+import {GenLayerChain, BaseActionsClient} from "@/types";
 import {testnetAsimov} from "./testnetAsimov";
 
 export function chainActions<TChain extends GenLayerChain>(client: BaseActionsClient<TChain>) {
