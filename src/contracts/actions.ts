@@ -12,7 +12,19 @@ import {
 } from "@/types";
 import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs} from "viem";
 
-export const contractActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => {
+type ContractCapabilities = {
+  chain: GenLayerChain;
+  account?: Account;
+  request: GenLayerClient<GenLayerChain>["request"];
+  prepareTransactionRequest: GenLayerClient<GenLayerChain>["prepareTransactionRequest"];
+  sendRawTransaction: GenLayerClient<GenLayerChain>["sendRawTransaction"];
+  getCurrentNonce: GenLayerClient<GenLayerChain>["getCurrentNonce"];
+};
+
+export const contractActions = (
+  client: ContractCapabilities,
+  publicClient: PublicClient,
+) => {
   return {
     getContractSchema: async (address: Address): Promise<ContractSchema> => {
       if (client.chain.id !== localnet.id) {
@@ -186,7 +198,7 @@ const _encodeAddTransactionData = ({
   data,
   consensusMaxRotations = client.chain.defaultConsensusMaxRotations,
 }: {
-  client: GenLayerClient<GenLayerChain>;
+  client: ContractCapabilities;
   senderAccount?: Account;
   recipient?: `0x${string}`;
   data?: `0x${string}`;
@@ -210,7 +222,7 @@ const _encodeSubmitAppealData = ({
   client,
   txId,
 }: {
-  client: GenLayerClient<GenLayerChain>;
+  client: ContractCapabilities;
   txId: `0x${string}`;
 }): `0x${string}` => {
   return encodeFunctionData({
@@ -227,7 +239,7 @@ const _sendTransaction = async ({
   senderAccount,
   value = 0n,
 }: {
-  client: GenLayerClient<GenLayerChain>;
+  client: ContractCapabilities;
   publicClient: PublicClient;
   encodedData: `0x${string}`;
   senderAccount?: Account;

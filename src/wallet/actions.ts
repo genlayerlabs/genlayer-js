@@ -1,8 +1,8 @@
 import {connect} from "./connect";
-import {GenLayerClient, GenLayerChain, Network, SnapSource} from "@/types";
+import {GenLayerChain, Network, SnapSource, BaseActionsClient} from "@/types";
 import {metamaskClient} from "@/wallet/metamaskClient";
 
-export function walletActions(client: GenLayerClient<GenLayerChain>) {
+export function walletActions<TChain extends GenLayerChain>(client: BaseActionsClient<TChain>) {
   return {
     connect: (network: Network, snapSource: SnapSource) => connect(client, network, snapSource),
     metamaskClient: (snapSource: SnapSource = "npm") => metamaskClient(snapSource),

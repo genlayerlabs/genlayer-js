@@ -1,11 +1,5 @@
-import {GenLayerClient} from "../types/clients";
-import {
-  TransactionHash,
-  TransactionStatus,
-  GenLayerTransaction,
-  GenLayerRawTransaction,
-  transactionsStatusNameToNumber,
-} from "../types/transactions";
+import {BaseActionsClient} from "../types/clients";
+import {TransactionHash, TransactionStatus, GenLayerTransaction, GenLayerRawTransaction, transactionsStatusNameToNumber} from "@/types";
 import {transactionsConfig} from "../config/transactions";
 import {sleep} from "../utils/async";
 import {GenLayerChain} from "@/types";
@@ -15,7 +9,14 @@ import {decodeLocalnetTransaction, decodeTransaction, simplifyTransactionReceipt
 
 
 
-export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => ({
+type ClientWithGetTransaction<TChain extends GenLayerChain> = BaseActionsClient<TChain> & {
+  getTransaction: (args: {hash: TransactionHash}) => Promise<GenLayerTransaction>;
+};
+
+export const receiptActions = <TChain extends GenLayerChain>(
+  client: ClientWithGetTransaction<TChain>,
+  publicClient: PublicClient,
+) => ({
   waitForTransactionReceipt: async ({
     hash,
     status = TransactionStatus.ACCEPTED,
@@ -68,16 +69,29 @@ export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClie
   },
 });
 
-export const transactionActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => ({
+type TransactionCapabilities<TChain extends GenLayerChain> = BaseActionsClient<TChain> & {
+  // using viem public client for remote branch
+};
+
+export const transactionActions = <TChain extends GenLayerChain>(
+  client: TransactionCapabilities<TChain>,
+  publicClient: PublicClient,
+) => ({
   getTransaction: async ({hash}: {hash: TransactionHash}): Promise<GenLayerTransaction> => {
     if (client.chain.id === localnet.id) {
-      const transaction = await client.getTransaction({hash});
+      // Not using viem's getTransaction here: its protected action signature and return type
+      // differ from our GenLayerTransaction (localnet adds consensus fields). Direct RPC avoids
+      // signature conflicts and preserves our expected types.
+      const transaction = (await client.request({
+        method: "eth_getTransactionByHash",
+        params: [hash],
+      })) as GenLayerTransaction;
       const localnetStatus =
         (transaction.status as string) === "ACTIVATED" ? TransactionStatus.PENDING : transaction.status;
 
       transaction.status = Number(transactionsStatusNameToNumber[localnetStatus as TransactionStatus]);
       transaction.statusName = localnetStatus as TransactionStatus;
-      return decodeLocalnetTransaction(transaction as unknown as GenLayerTransaction);
+      return decodeLocalnetTransaction(transaction);
     }
     const transaction = (await publicClient.readContract({
       address: client.chain.consensusDataContract?.address as Address,

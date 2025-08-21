@@ -14,9 +14,13 @@ import {accountActions} from "../accounts/actions";
 import {contractActions} from "../contracts/actions";
 import {receiptActions, transactionActions} from "../transactions/actions";
 import {walletActions as genlayerWalletActions} from "../wallet/actions";
-import {GenLayerClient, GenLayerChain} from "@/types";
+import {BaseActionsClient, GenLayerClient, GenLayerChain} from "@/types";
 import {chainActions} from "@/chains/actions";
 import {localnet} from "@/chains";
+
+function mergeActions<TBase extends object, TExt extends object>(base: TBase, ext: TExt): TBase & TExt {
+  return Object.assign({}, base, ext) as TBase & TExt;
+}
 
 // Define the configuration interface for the client
 interface ClientConfig {
@@ -84,7 +88,7 @@ const getCustomTransportConfig = (config: ClientConfig) => {
 };
 
 export const createClient = (config: ClientConfig = {chain: localnet}): GenLayerClient<GenLayerChain> => {
-  const chainConfig = config.chain || localnet;
+  const chainConfig = (config.chain || localnet) as GenLayerChain;
   if (config.endpoint) {
     chainConfig.rpcUrls.default.http = [config.endpoint];
   }
@@ -100,32 +104,21 @@ export const createClient = (config: ClientConfig = {chain: localnet}): GenLayer
     ...(config.account ? {account: config.account} : {}),
   });
 
-  // First extend with basic actions
-  const clientWithBasicActions = baseClient
-    .extend(publicActions)
-    .extend(walletActions)
-    .extend(client => accountActions(client as unknown as GenLayerClient<GenLayerChain>));
-
-  // Create a client with all actions except transaction actions
-  const clientWithAllActions = {
-    ...clientWithBasicActions,
-    ...contractActions(clientWithBasicActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
-    ...chainActions(clientWithBasicActions as unknown as GenLayerClient<GenLayerChain>),
-    ...genlayerWalletActions(clientWithBasicActions as unknown as GenLayerClient<GenLayerChain>),
-    ...transactionActions(clientWithBasicActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
-  } as unknown as GenLayerClient<GenLayerChain>;
-
-  // Add transaction actions last, after all other actions are in place
-  const finalClient = {
-    ...clientWithAllActions,
-    ...receiptActions(clientWithAllActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
-  } as unknown as GenLayerClient<GenLayerChain>;
+  // Extend only with viem actions, then merge custom actions to avoid protected name conflicts
+  const baseWithViem = baseClient.extend(publicActions).extend(walletActions) as BaseActionsClient<GenLayerChain>;
+  const withAccounts = mergeActions(baseWithViem, accountActions(baseWithViem));
+  const withWallet = mergeActions(withAccounts, genlayerWalletActions(withAccounts));
+  const withChain = mergeActions(withWallet, chainActions(withWallet));
+  const withContracts = mergeActions(withChain, contractActions(withChain, publicClient));
+  const withTx = mergeActions(withContracts, transactionActions(withContracts, publicClient));
+  const finalClient = mergeActions(withTx, receiptActions(withTx, publicClient));
+  const finalClientTyped: GenLayerClient<GenLayerChain> = finalClient as GenLayerClient<GenLayerChain>;
 
   // Initialize in the background
-  finalClient.initializeConsensusSmartContract().catch(error => {
+  finalClientTyped.initializeConsensusSmartContract().catch(error => {
     console.error("Failed to initialize consensus smart contract:", error);
   });
-  return finalClient;
+  return finalClientTyped;
 };
 
 export const createPublicClient = (
