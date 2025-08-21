@@ -84,3 +84,17 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       txId: `0x${string}`;
     }) => Promise<any>;
   };
+
+// Base client shape after applying viem public and wallet actions, used by action factories
+export type BaseActionsClient<TGenLayerChain extends GenLayerChain> = Client<
+  Transport,
+  TGenLayerChain
+> &
+  Omit<PublicActions<Transport, TGenLayerChain>, "getTransaction" | "readContract" | "waitForTransactionReceipt"> &
+  WalletActions<TGenLayerChain> & {
+    request: Client<Transport, TGenLayerChain>["request"] & {
+      <TMethod extends GenLayerMethod>(
+        args: Extract<GenLayerMethod, {method: TMethod["method"]}>,
+      ): Promise<unknown>;
+    };
+  };
