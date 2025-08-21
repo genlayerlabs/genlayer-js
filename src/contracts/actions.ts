@@ -11,6 +11,7 @@ import {
   TransactionHashVariant,
 } from "@/types";
 import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs} from "viem";
+import {toJsonSafeDeep} from "@/utils/jsonifier";
 
 export const contractActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => {
   return {
@@ -41,6 +42,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       args?: CalldataEncodable[];
       kwargs?: Map<string, CalldataEncodable> | {[key: string]: CalldataEncodable};
       rawReturn?: RawReturn;
+      jsonSafeReturn?: boolean;
       leaderOnly?: boolean;
       transactionHashVariant?: TransactionHashVariant;
     }): Promise<RawReturn extends true ? `0x${string}` : CalldataEncodable> => {
@@ -50,6 +52,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         functionName,
         args: callArgs,
         kwargs,
+        jsonSafeReturn = false,
         leaderOnly = false,
         transactionHashVariant = TransactionHashVariant.LATEST_NONFINAL,
       } = args;
@@ -76,7 +79,12 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         return prefixedResult;
       }
       const resultBinary = fromHex(prefixedResult, "bytes");
-      return calldata.decode(resultBinary) as any;
+      const decoded = calldata.decode(resultBinary) as any;
+      if (!jsonSafeReturn) {
+        return decoded;
+      }
+      // If jsonSafeReturn is requested, convert to JSON-safe recursively
+      return toJsonSafeDeep(decoded) as any;
     },
     writeContract: async (args: {
       account?: Account;
