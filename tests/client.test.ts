@@ -175,7 +175,7 @@ describe("Client Overrides", () => {
   });
 });
 
-describe("getContractPendingQueue", () => {
+describe("getContractPendingTransactionsCount", () => {
   beforeEach(() => {
     mockFetch.mockReset();
     lastGenCallParams = null;
@@ -231,7 +231,7 @@ describe("getContractPendingQueue", () => {
     });
     const contractAddress = "0x1234567890123456789012345678901234567890";
 
-    const result = await client.getContractPendingQueue({
+    const result = await client.getContractPendingTransactionsCount({
       address: contractAddress as Address,
     });
 
@@ -247,7 +247,7 @@ describe("getContractPendingQueue", () => {
     });
     const contractAddress = "0x1234567890123456789012345678901234567890";
 
-    await client.getContractPendingQueue({
+    await client.getContractPendingTransactionsCount({
       address: contractAddress as Address,
     });
 
@@ -275,9 +275,9 @@ describe("getContractPendingQueue", () => {
     const contractAddress = "0x1234567890123456789012345678901234567890";
 
     await expect(
-      client.getContractPendingQueue({
+      client.getContractPendingTransactionsCount({
         address: contractAddress as Address,
       })
-    ).rejects.toThrow("Failed to get pending queue for contract");
+    ).rejects.toThrow("Failed to get pending transactions count for contract");
   });
 });

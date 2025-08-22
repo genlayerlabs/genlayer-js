@@ -167,7 +167,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         senderAccount,
       });
     },
-    getContractPendingQueue: async (args: {
+    getContractPendingTransactionsCount: async (args: {
       address: Address;
     }): Promise<number> => {
       try {
@@ -179,7 +179,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         });
         return Number(result);
       } catch (error) {
-        throw new Error(`Failed to get pending queue for contract ${args.address}: ${(error as Error).message}`);
+        throw new Error(`Failed to get pending transactions count for contract ${args.address}: ${(error as Error).message}`);
       }
     },
   };
