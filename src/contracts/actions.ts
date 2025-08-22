@@ -10,7 +10,7 @@ import {
   Address,
   TransactionHashVariant,
 } from "@/types";
-import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs} from "viem";
+import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs, Abi} from "viem";
 
 export const contractActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => {
   return {
@@ -166,6 +166,21 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         encodedData,
         senderAccount,
       });
+    },
+    getContractPendingQueue: async (args: {
+      address: Address;
+    }): Promise<number> => {
+      try {
+        const result = await publicClient.readContract({
+          address: client.chain.consensusDataContract?.address as Address,
+          abi: client.chain.consensusDataContract?.abi as any,
+          functionName: "getLatestPendingTxCount",
+          args: [args.address],
+        });
+        return Number(result);
+      } catch (error) {
+        throw new Error(`Failed to get pending queue for contract ${args.address}: ${(error as Error).message}`);
+      }
     },
   };
 };

@@ -83,4 +83,7 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       account?: Account;
       txId: `0x${string}`;
     }) => Promise<any>;
+    getContractPendingQueue: (args: {
+      address: Address;
+    }) => Promise<number>;
   };

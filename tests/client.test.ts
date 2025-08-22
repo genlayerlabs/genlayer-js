@@ -65,6 +65,11 @@ describe("Client Overrides", () => {
           ok: true,
           json: async () => ({result: "0"}),
         };
+      } else if (method === "eth_call") {
+        return {
+          ok: true,
+          json: async () => ({result: "0x0000000000000000000000000000000000000000000000000000000000000005"}), // BigInt 5 as hex
+        };
       }
 
       console.warn(`[TESTS] mockFetch: Unhandled method - URL=${url}, Method=${method}, Body=`, body);
@@ -167,5 +172,112 @@ describe("Client Overrides", () => {
         transaction_hash_variant: TransactionHashVariant.LATEST_NONFINAL,
       },
     ]);
+  });
+});
+
+describe("getContractPendingQueue", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+    lastGenCallParams = null;
+
+    mockFetch.mockImplementation(async (url, options) => {
+      let body = {};
+      const bodyString = typeof options?.body === "string" ? options.body : null;
+
+      if (bodyString) {
+        try {
+          body = JSON.parse(bodyString);
+        } catch (e) {
+          return {
+            ok: false,
+            status: 500,
+            json: async () => ({error: {message: "mockFetch body parse error"}}),
+          };
+        }
+      }
+
+      const method = (body as any).method;
+
+      if (method === "sim_getConsensusContract") {
+        return {
+          ok: true,
+          json: async () => ({
+            result: {
+              address: "0x0000000000000000000000000000000000000001",
+              abi: [],
+            },
+          }),
+        };
+      } else if (method === "eth_call") {
+        return {
+          ok: true,
+          json: async () => ({result: "0x0000000000000000000000000000000000000000000000000000000000000005"}), // BigInt 5 as hex
+        };
+      }
+
+      return {
+        ok: false,
+        status: 404,
+        json: async () => ({error: {message: `Unexpected fetch mock call to method: ${method}`}}),
+      };
+    });
+  });
+
+  it("should return pending queue count as a number", async () => {
+    const account = createAccount(generatePrivateKey());
+    const client = createClient({
+      chain: localnet,
+      account: account,
+    });
+    const contractAddress = "0x1234567890123456789012345678901234567890";
+
+    const result = await client.getContractPendingQueue({
+      address: contractAddress as Address,
+    });
+
+    expect(result).toBe(5);
+    expect(typeof result).toBe("number");
+  });
+
+  it("should call consensus data contract with correct parameters", async () => {
+    const account = createAccount(generatePrivateKey());
+    const client = createClient({
+      chain: localnet,
+      account: account,
+    });
+    const contractAddress = "0x1234567890123456789012345678901234567890";
+
+    await client.getContractPendingQueue({
+      address: contractAddress as Address,
+    });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"method":"eth_call"'),
+      })
+    );
+  });
+
+  it("should throw error for failed contract call", async () => {
+    mockFetch.mockImplementation(async () => ({
+      ok: false,
+      status: 500,
+      json: async () => ({error: {message: "Contract call failed"}}),
+    }));
+
+    const account = createAccount(generatePrivateKey());
+    const client = createClient({
+      chain: localnet,
+      account: account,
+    });
+    const contractAddress = "0x1234567890123456789012345678901234567890";
+
+    await expect(
+      client.getContractPendingQueue({
+        address: contractAddress as Address,
+      })
+    ).rejects.toThrow("Failed to get pending queue for contract");
   });
 });
