@@ -167,6 +167,21 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         senderAccount,
       });
     },
+    getContractPendingTransactionsCount: async (args: {
+      address: Address;
+    }): Promise<number> => {
+      try {
+        const result = await publicClient.readContract({
+          address: client.chain.consensusDataContract?.address as Address,
+          abi: client.chain.consensusDataContract?.abi as any,
+          functionName: "getLatestPendingTxCount",
+          args: [args.address],
+        });
+        return Number(result);
+      } catch (error) {
+        throw new Error(`Failed to get pending transactions count for contract ${args.address}: ${(error as Error).message}`);
+      }
+    },
   };
 };
 
