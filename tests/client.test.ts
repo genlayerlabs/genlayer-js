@@ -187,7 +187,7 @@ describe("getContractPendingQueue", () => {
       if (bodyString) {
         try {
           body = JSON.parse(bodyString);
-        } catch (e) {
+        } catch {
           return {
             ok: false,
             status: 500,
