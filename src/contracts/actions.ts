@@ -10,7 +10,7 @@ import {
   Address,
   TransactionHashVariant,
 } from "@/types";
-import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs, Abi} from "viem";
+import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs} from "viem";
 
 export const contractActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => {
   return {
