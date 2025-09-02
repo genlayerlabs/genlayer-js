@@ -89,7 +89,7 @@ export const createClient = (config: ClientConfig = {chain: localnet}): GenLayer
     chainConfig.rpcUrls.default.http = [config.endpoint];
   }
 
-  const customTransport = custom(getCustomTransportConfig(config));
+  const customTransport = custom(getCustomTransportConfig(config), {retryCount: 0, retryDelay: 0});
   const publicClient = createPublicClient(chainConfig as GenLayerChain, customTransport).extend(
     publicActions,
   );
