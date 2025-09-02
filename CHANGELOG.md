@@ -1,5 +1,12 @@
 
 
+## 0.15.1 (2025-09-02)
+
+
+### Bug Fixes
+
+* **client:** disable viem transport retries (retryCount=0) to avoid duplicate requests ([#110](https://github.com/genlayerlabs/genlayer-js/issues/110)) ([dc2d623](https://github.com/genlayerlabs/genlayer-js/commit/dc2d623bb0a2bf96416e1590ddbcbf78adf9f9a7))
+
 ## 0.15.0 (2025-08-18)
 
 
