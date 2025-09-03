@@ -1,5 +1,12 @@
 
 
+## 0.17.1 (2025-09-03)
+
+
+### Bug Fixes
+
+* returning the whole data when an error occurs ([#111](https://github.com/genlayerlabs/genlayer-js/issues/111)) ([bebb025](https://github.com/genlayerlabs/genlayer-js/commit/bebb025a0f07d4ed05783e1a77abe76979fc4ac0))
+
 ## 0.17.0 (2025-09-03)
 
 
