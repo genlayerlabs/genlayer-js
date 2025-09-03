@@ -1,7 +1,7 @@
-import {GenLayerClient, GenLayerChain} from "@/types";
+import {GenLayerChain, BaseActionsClient} from "@/types";
 import {testnetAsimov} from "./testnetAsimov";
 
-export function chainActions(client: GenLayerClient<GenLayerChain>) {
+export function chainActions<TChain extends GenLayerChain>(client: BaseActionsClient<TChain>) {
   return {
     initializeConsensusSmartContract: async (forceReset: boolean = false): Promise<void> => {
       if (client.chain?.id === testnetAsimov.id) {
