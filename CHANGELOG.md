@@ -1,5 +1,12 @@
 
 
+## 0.16.0 (2025-09-03)
+
+
+### Features
+
+* **contracts,types:** add getContractCode via gen_getContractCode RPC ([#109](https://github.com/genlayerlabs/genlayer-js/issues/109)) ([3fcc934](https://github.com/genlayerlabs/genlayer-js/commit/3fcc934a73b312747d53831f63d8c2e903534b3f))
+
 ## 0.15.1 (2025-09-02)
 
 
