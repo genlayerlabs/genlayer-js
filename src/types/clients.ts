@@ -15,6 +15,7 @@ export type GenLayerMethod =
   | {method: "eth_sendRawTransaction"; params: [signedTransaction: string]}
   | {method: "gen_getContractSchema"; params: [address: Address]}
   | {method: "gen_getContractSchemaForCode"; params: [contractCode: string]}
+  | {method: "gen_getContractCode"; params: [address: Address]}
   | {method: "sim_getTransactionsForAddress"; params: [address: Address, filter?: "all" | "from" | "to"]}
   | {method: "eth_getTransactionCount"; params: [address: Address, block: string]}
   | {method: "gen_call"; params: [requestParams: any]};
@@ -76,6 +77,7 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     }) => Promise<GenLayerTransaction>;
     getContractSchema: (address: Address) => Promise<ContractSchema>;
     getContractSchemaForCode: (contractCode: string | Uint8Array) => Promise<ContractSchema>;
+    getContractCode: (address: Address) => Promise<string>;
     initializeConsensusSmartContract: (forceReset?: boolean) => Promise<void>;
     connect: (network?: Network, snapSource?: SnapSource) => Promise<void>;
     metamaskClient: (snapSource?: SnapSource) => Promise<MetaMaskClientResult>;

@@ -11,9 +11,21 @@ import {
   TransactionHashVariant,
 } from "@/types";
 import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs} from "viem";
+import {b64ToArray} from "@/utils/jsonifier";
 
 export const contractActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => {
   return {
+    getContractCode: async (address: Address): Promise<string> => {
+      if (client.chain.id !== localnet.id) {
+        throw new Error("Getting contract code is not supported on this network");
+      }
+      const result = (await client.request({
+        method: "gen_getContractCode",
+        params: [address],
+      })) as string;
+      const codeBytes = b64ToArray(result);
+      return new TextDecoder().decode(codeBytes);
+    },
     getContractSchema: async (address: Address): Promise<ContractSchema> => {
       if (client.chain.id !== localnet.id) {
         throw new Error("Contract schema is not supported on this network");
