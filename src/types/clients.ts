@@ -59,6 +59,16 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       leaderOnly?: boolean;
       consensusMaxRotations?: number;
     }) => Promise<any>;
+    simulateWriteContract: <RawReturn extends boolean | undefined>(args: {
+      account?: Account;
+      address: Address;
+      functionName: string;
+      args?: CalldataEncodable[];
+      kwargs?: Map<string, CalldataEncodable> | { [key: string]: CalldataEncodable };
+      rawReturn?: RawReturn;
+      leaderOnly?: boolean;
+      transactionHashVariant?: TransactionHashVariant;
+    }) => Promise<RawReturn extends true ? `0x${string}` : CalldataEncodable>;
     deployContract: (args: {
       account?: Account;
       code: string | Uint8Array;
