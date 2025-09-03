@@ -70,12 +70,12 @@ const getCustomTransportConfig = (config: ClientConfig) => {
           const data = await response.json();
 
           if (data.error) {
-            throw new Error(data.error.message);
+            throw data.error
           }
 
           return data.result;
         } catch (err) {
-          console.error(`Error fetching ${method} from GenLayer RPC:`, err);
+          console.error(`Error fetching ${method} from GenLayer RPC`);
           throw err;
         }
       }
