@@ -1,5 +1,12 @@
 
 
+## 0.17.0 (2025-09-03)
+
+
+### Features
+
+* allow gen_call write through `simulateWriteContract` ([#112](https://github.com/genlayerlabs/genlayer-js/issues/112)) ([734c0e6](https://github.com/genlayerlabs/genlayer-js/commit/734c0e61d9ddd13678f424ca6bd754ad1f4df3bb))
+
 ## 0.16.0 (2025-09-03)
 
 
