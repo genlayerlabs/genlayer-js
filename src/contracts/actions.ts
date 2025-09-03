@@ -11,10 +11,21 @@ import {
   TransactionHashVariant,
 } from "@/types";
 import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs} from "viem";
-import {toJsonSafeDeep} from "@/utils/jsonifier";
+import {toJsonSafeDeep, b64ToArray} from "@/utils/jsonifier";
 
 export const contractActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => {
   return {
+    getContractCode: async (address: Address): Promise<string> => {
+      if (client.chain.id !== localnet.id) {
+        throw new Error("Getting contract code is not supported on this network");
+      }
+      const result = (await client.request({
+        method: "gen_getContractCode",
+        params: [address],
+      })) as string;
+      const codeBytes = b64ToArray(result);
+      return new TextDecoder().decode(codeBytes);
+    },
     getContractSchema: async (address: Address): Promise<ContractSchema> => {
       if (client.chain.id !== localnet.id) {
         throw new Error("Contract schema is not supported on this network");
@@ -85,6 +96,50 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       }
       // If jsonSafeReturn is requested, convert to JSON-safe recursively
       return toJsonSafeDeep(decoded) as any;
+    },
+    simulateWriteContract: async <RawReturn extends boolean | undefined>(args: {
+      account?: Account;
+      address: Address;
+      functionName: string;
+      args?: CalldataEncodable[];
+      kwargs?: Map<string, CalldataEncodable> | {[key: string]: CalldataEncodable};
+      rawReturn?: RawReturn;
+      leaderOnly?: boolean;
+      transactionHashVariant?: TransactionHashVariant;
+    }): Promise<RawReturn extends true ? `0x${string}` : CalldataEncodable> => {
+      const {
+        account,
+        address,
+        functionName,
+        args: callArgs,
+        kwargs,
+        leaderOnly = false,
+        transactionHashVariant = TransactionHashVariant.LATEST_NONFINAL,
+      } = args;
+
+      const encodedData = [calldata.encode(calldata.makeCalldataObject(functionName, callArgs, kwargs)), leaderOnly];
+      const serializedData = serialize(encodedData);
+
+      const senderAddress = account?.address ?? client.account?.address;
+
+      const requestParams = {
+        type: "write",
+        to: address,
+        from: senderAddress,
+        data: serializedData,
+        transaction_hash_variant: transactionHashVariant,
+      };
+      const result = await client.request({
+        method: "gen_call",
+        params: [requestParams],
+      });
+      const prefixedResult = `0x${result}` as `0x${string}`;
+
+      if (args.rawReturn) {
+        return prefixedResult;
+      }
+      const resultBinary = fromHex(prefixedResult, "bytes");
+      return calldata.decode(resultBinary) as any;
     },
     writeContract: async (args: {
       account?: Account;

@@ -1,5 +1,26 @@
 
 
+## 0.17.0 (2025-09-03)
+
+
+### Features
+
+* allow gen_call write through `simulateWriteContract` ([#112](https://github.com/genlayerlabs/genlayer-js/issues/112)) ([734c0e6](https://github.com/genlayerlabs/genlayer-js/commit/734c0e61d9ddd13678f424ca6bd754ad1f4df3bb))
+
+## 0.16.0 (2025-09-03)
+
+
+### Features
+
+* **contracts,types:** add getContractCode via gen_getContractCode RPC ([#109](https://github.com/genlayerlabs/genlayer-js/issues/109)) ([3fcc934](https://github.com/genlayerlabs/genlayer-js/commit/3fcc934a73b312747d53831f63d8c2e903534b3f))
+
+## 0.15.1 (2025-09-02)
+
+
+### Bug Fixes
+
+* **client:** disable viem transport retries (retryCount=0) to avoid duplicate requests ([#110](https://github.com/genlayerlabs/genlayer-js/issues/110)) ([dc2d623](https://github.com/genlayerlabs/genlayer-js/commit/dc2d623bb0a2bf96416e1590ddbcbf78adf9f9a7))
+
 ## 0.15.0 (2025-08-18)
 
 

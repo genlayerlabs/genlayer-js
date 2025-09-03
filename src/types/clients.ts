@@ -15,6 +15,7 @@ export type GenLayerMethod =
   | {method: "eth_sendRawTransaction"; params: [signedTransaction: string]}
   | {method: "gen_getContractSchema"; params: [address: Address]}
   | {method: "gen_getContractSchemaForCode"; params: [contractCode: string]}
+  | {method: "gen_getContractCode"; params: [address: Address]}
   | {method: "sim_getTransactionsForAddress"; params: [address: Address, filter?: "all" | "from" | "to"]}
   | {method: "eth_getTransactionCount"; params: [address: Address, block: string]}
   | {method: "gen_call"; params: [requestParams: any]};
@@ -59,6 +60,16 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       leaderOnly?: boolean;
       consensusMaxRotations?: number;
     }) => Promise<any>;
+    simulateWriteContract: <RawReturn extends boolean | undefined>(args: {
+      account?: Account;
+      address: Address;
+      functionName: string;
+      args?: CalldataEncodable[];
+      kwargs?: Map<string, CalldataEncodable> | { [key: string]: CalldataEncodable };
+      rawReturn?: RawReturn;
+      leaderOnly?: boolean;
+      transactionHashVariant?: TransactionHashVariant;
+    }) => Promise<RawReturn extends true ? `0x${string}` : CalldataEncodable>;
     deployContract: (args: {
       account?: Account;
       code: string | Uint8Array;
@@ -77,6 +88,7 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     }) => Promise<GenLayerTransaction>;
     getContractSchema: (address: Address) => Promise<ContractSchema>;
     getContractSchemaForCode: (contractCode: string | Uint8Array) => Promise<ContractSchema>;
+    getContractCode: (address: Address) => Promise<string>;
     initializeConsensusSmartContract: (forceReset?: boolean) => Promise<void>;
     connect: (network?: Network, snapSource?: SnapSource) => Promise<void>;
     metamaskClient: (snapSource?: SnapSource) => Promise<MetaMaskClientResult>;
