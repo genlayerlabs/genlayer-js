@@ -59,6 +59,16 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       leaderOnly?: boolean;
       consensusMaxRotations?: number;
     }) => Promise<any>;
+    simulateWriteContract: (args: {
+      account?: Account;
+      address: Address;
+      functionName: string;
+      args?: CalldataEncodable[];
+      kwargs?: Map<string, CalldataEncodable> | {[key: string]: CalldataEncodable};
+      value: bigint;
+      leaderOnly?: boolean;
+      consensusMaxRotations?: number;
+    }) => Promise<any>;
     deployContract: (args: {
       account?: Account;
       code: string | Uint8Array;

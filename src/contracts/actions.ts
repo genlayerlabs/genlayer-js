@@ -90,6 +90,50 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       const resultBinary = fromHex(prefixedResult, "bytes");
       return calldata.decode(resultBinary) as any;
     },
+    simulateWriteContract: async <RawReturn extends boolean | undefined>(args: {
+      account?: Account;
+      address: Address;
+      functionName: string;
+      args?: CalldataEncodable[];
+      kwargs?: Map<string, CalldataEncodable> | {[key: string]: CalldataEncodable};
+      rawReturn?: RawReturn;
+      leaderOnly?: boolean;
+      transactionHashVariant?: TransactionHashVariant;
+    }): Promise<RawReturn extends true ? `0x${string}` : CalldataEncodable> => {
+      const {
+        account,
+        address,
+        functionName,
+        args: callArgs,
+        kwargs,
+        leaderOnly = false,
+        transactionHashVariant = TransactionHashVariant.LATEST_NONFINAL,
+      } = args;
+
+      const encodedData = [calldata.encode(calldata.makeCalldataObject(functionName, callArgs, kwargs)), leaderOnly];
+      const serializedData = serialize(encodedData);
+
+      const senderAddress = account?.address ?? client.account?.address;
+
+      const requestParams = {
+        type: "write",
+        to: address,
+        from: senderAddress,
+        data: serializedData,
+        transaction_hash_variant: transactionHashVariant,
+      };
+      const result = await client.request({
+        method: "gen_call",
+        params: [requestParams],
+      });
+      const prefixedResult = `0x${result}` as `0x${string}`;
+
+      if (args.rawReturn) {
+        return prefixedResult;
+      }
+      const resultBinary = fromHex(prefixedResult, "bytes");
+      return calldata.decode(resultBinary) as any;
+    },
     writeContract: async (args: {
       account?: Account;
       address: Address;
