@@ -1,5 +1,12 @@
 
 
+## 0.18.0 (2025-09-04)
+
+
+### Features
+
+* format in genlayer js to convert to an object ([#107](https://github.com/genlayerlabs/genlayer-js/issues/107)) ([3ca4076](https://github.com/genlayerlabs/genlayer-js/commit/3ca40765bc03e8d7174c8e337e6104ccea455e5a))
+
 ## 0.17.1 (2025-09-03)
 
 
