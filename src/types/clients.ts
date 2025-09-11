@@ -18,6 +18,7 @@ export type GenLayerMethod =
   | {method: "gen_getContractCode"; params: [address: Address]}
   | {method: "sim_getTransactionsForAddress"; params: [address: Address, filter?: "all" | "from" | "to"]}
   | {method: "eth_getTransactionCount"; params: [address: Address, block: string]}
+  | {method: "eth_estimateGas"; params: [transactionParams: any]}
   | {method: "gen_call"; params: [requestParams: any]};
 
 /*
@@ -80,6 +81,12 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     }) => Promise<`0x${string}`>;
     getTransaction: (args: {hash: TransactionHash}) => Promise<GenLayerTransaction>;
     getCurrentNonce: (args: {address: Address}) => Promise<number>;
+    estimateTransactionGas: (transactionParams: {
+      from?: Address;
+      to: Address;
+      data?: `0x${string}`;
+      value?: bigint;
+    }) => Promise<bigint>;
     waitForTransactionReceipt: (args: {
       hash: TransactionHash;
       status?: TransactionStatus;

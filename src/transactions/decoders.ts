@@ -1,5 +1,4 @@
-import {GenLayerTransaction, GenLayerRawTransaction, DecodedCallData, DecodedDeployData} from "../types/transactions";
-import {transactionsStatusNumberToName, transactionResultNumberToName, voteTypeNumberToName, VoteType} from "../types/transactions";
+import {GenLayerTransaction, GenLayerRawTransaction, DecodedCallData, DecodedDeployData,transactionsStatusNumberToName, transactionResultNumberToName, voteTypeNumberToName, VoteType} from "../types/transactions";
 import {b64ToArray, calldataToUserFriendlyJson, resultToUserFriendlyJson} from "../utils/jsonifier";
 import {fromRlp, fromHex, Hex, Address} from "viem";
 import * as calldataAbi from "../abi/calldata";

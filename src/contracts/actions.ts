@@ -303,6 +303,18 @@ const _sendTransaction = async ({
   const validatedSenderAccount = validateAccount(senderAccount);
 
   const nonce = await client.getCurrentNonce({address: validatedSenderAccount.address});
+  let estimatedGas: bigint;
+  try {
+    estimatedGas = await client.estimateTransactionGas({
+      from: validatedSenderAccount.address,
+      to: client.chain.consensusMainContract?.address as Address,
+      data: encodedData,
+      value: value,
+    });
+  } catch (error) {
+    console.warn("Gas estimation failed, using fallback value:", error);
+    estimatedGas = 200_000n;
+  }
   const transactionRequest = await client.prepareTransactionRequest({
     account: validatedSenderAccount,
     to: client.chain.consensusMainContract?.address as Address,
@@ -310,7 +322,7 @@ const _sendTransaction = async ({
     type: "legacy",
     nonce: Number(nonce),
     value: value,
-    gas: 21000n,
+    gas: estimatedGas,
   });
 
   if (validatedSenderAccount?.type !== "local") {

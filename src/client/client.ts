@@ -106,13 +106,18 @@ export const createClient = (config: ClientConfig = {chain: localnet}): GenLayer
     .extend(walletActions)
     .extend(client => accountActions(client as unknown as GenLayerClient<GenLayerChain>));
 
-  // Create a client with all actions except transaction actions
-  const clientWithAllActions = {
+  // First add transaction actions, then contract actions that depend on them
+  const clientWithTransactionActions = {
     ...clientWithBasicActions,
-    ...contractActions(clientWithBasicActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
+    ...transactionActions(clientWithBasicActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
     ...chainActions(clientWithBasicActions as unknown as GenLayerClient<GenLayerChain>),
     ...genlayerWalletActions(clientWithBasicActions as unknown as GenLayerClient<GenLayerChain>),
-    ...transactionActions(clientWithBasicActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
+  } as unknown as GenLayerClient<GenLayerChain>;
+
+  // Then add contract actions that can now access transaction actions
+  const clientWithAllActions = {
+    ...clientWithTransactionActions,
+    ...contractActions(clientWithTransactionActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
   } as unknown as GenLayerClient<GenLayerChain>;
 
   // Add transaction actions last, after all other actions are in place
