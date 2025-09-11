@@ -1,5 +1,12 @@
 
 
+## 0.18.1 (2025-09-11)
+
+
+### Bug Fixes
+
+* replace hardcoded gas 21000 ([#115](https://github.com/genlayerlabs/genlayer-js/issues/115)) ([8eacd5d](https://github.com/genlayerlabs/genlayer-js/commit/8eacd5dbba9ae85f0232ec525076582ea8b6b045))
+
 ## 0.18.0 (2025-09-04)
 
 
