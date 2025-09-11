@@ -90,6 +90,26 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
     })) as unknown as GenLayerRawTransaction;
     return decodeTransaction(transaction);
   },
+  estimateTransactionGas: async (transactionParams: {
+    from?: Address;
+    to: Address;
+    data?: `0x${string}`;
+    value?: bigint;
+  }): Promise<bigint> => {
+    const formattedParams = {
+      from: transactionParams.from || client.account?.address,
+      to: transactionParams.to,
+      data: transactionParams.data || "0x",
+      value: transactionParams.value ? `0x${transactionParams.value.toString(16)}` as `0x${string}` : "0x0" as `0x${string}`,
+    };
+
+    const gasHex = await client.request({
+      method: "eth_estimateGas",
+      params: [formattedParams],
+    }) as string;
+
+    return BigInt(gasHex);
+  },
 });
 
 
