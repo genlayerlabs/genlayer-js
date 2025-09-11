@@ -304,7 +304,6 @@ const _sendTransaction = async ({
 
   const nonce = await client.getCurrentNonce({address: validatedSenderAccount.address});
   let estimatedGas: bigint;
-  console.log("Estimating gas...");
   try {
     estimatedGas = await client.estimateTransactionGas({
       from: validatedSenderAccount.address,
@@ -312,7 +311,6 @@ const _sendTransaction = async ({
       data: encodedData,
       value: value,
     });
-    console.log("Estimated gas:", estimatedGas);
   } catch (error) {
     console.warn("Gas estimation failed, using fallback value:", error);
     estimatedGas = 21000n;
