@@ -313,7 +313,7 @@ const _sendTransaction = async ({
     });
   } catch (error) {
     console.warn("Gas estimation failed, using fallback value:", error);
-    estimatedGas = 21000n;
+    estimatedGas = 200_000n;
   }
   const transactionRequest = await client.prepareTransactionRequest({
     account: validatedSenderAccount,
