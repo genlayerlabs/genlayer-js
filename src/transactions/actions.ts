@@ -38,7 +38,6 @@ export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClie
       throw new Error("Transaction not found");
     }
     const transactionStatusString = String(transaction.status);
-    const transactionStatusFinalized = transactionsStatusNameToNumber[TransactionStatus.FINALIZED];
     const requestedStatus = transactionsStatusNameToNumber[status];
     if (
       transactionStatusString === requestedStatus ||
