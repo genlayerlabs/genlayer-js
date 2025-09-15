@@ -71,6 +71,21 @@ export const transactionsStatusNameToNumber = {
   [TransactionStatus.LEADER_TIMEOUT]: "13",
 };
 
+export const DECIDED_STATES = [
+  TransactionStatus.ACCEPTED,
+  TransactionStatus.UNDETERMINED,
+  TransactionStatus.LEADER_TIMEOUT,
+  TransactionStatus.VALIDATORS_TIMEOUT,
+  TransactionStatus.CANCELED,
+  TransactionStatus.FINALIZED
+];
+
+export function isDecidedState(status: string): boolean {
+  return DECIDED_STATES.some(state => 
+    transactionsStatusNameToNumber[state] === status
+  );
+}
+
 export const transactionResultNumberToName = {
   "0": TransactionResult.IDLE,
   "1": TransactionResult.AGREE,
