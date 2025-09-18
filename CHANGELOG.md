@@ -1,5 +1,12 @@
 
 
+## 0.18.2 (2025-09-18)
+
+
+### Bug Fixes
+
+* **transactions:** handle all DECIDED states in waitForTransactionReceipt ([#116](https://github.com/genlayerlabs/genlayer-js/issues/116)) ([78433d7](https://github.com/genlayerlabs/genlayer-js/commit/78433d7224298ab418ca16a87de497149b66b5f7))
+
 ## 0.18.1 (2025-09-11)
 
 
