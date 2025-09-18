@@ -5,6 +5,7 @@ import {
   GenLayerTransaction,
   GenLayerRawTransaction,
   transactionsStatusNameToNumber,
+  isDecidedState,
 } from "../types/transactions";
 import {transactionsConfig} from "../config/transactions";
 import {sleep} from "../utils/async";
@@ -37,11 +38,10 @@ export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClie
       throw new Error("Transaction not found");
     }
     const transactionStatusString = String(transaction.status);
-    const transactionStatusFinalized = transactionsStatusNameToNumber[TransactionStatus.FINALIZED];
     const requestedStatus = transactionsStatusNameToNumber[status];
     if (
       transactionStatusString === requestedStatus ||
-      (status === TransactionStatus.ACCEPTED && transactionStatusString === transactionStatusFinalized)
+      (status === TransactionStatus.ACCEPTED && isDecidedState(transactionStatusString))
     ) {
       let finalTransaction = transaction;
       if (client.chain.id === localnet.id) {
