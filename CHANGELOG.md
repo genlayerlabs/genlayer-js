@@ -1,5 +1,12 @@
 
 
+## 0.18.3 (2025-11-03)
+
+
+### Bug Fixes
+
+* default to zero address for read operations when account not provided ([#121](https://github.com/genlayerlabs/genlayer-js/issues/121)) ([6a1b47a](https://github.com/genlayerlabs/genlayer-js/commit/6a1b47aeafaeb807d5219abbb88e10041c03030e))
+
 ## 0.18.2 (2025-09-18)
 
 
