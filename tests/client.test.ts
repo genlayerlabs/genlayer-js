@@ -5,6 +5,7 @@ import {Address} from "../src/types/accounts";
 import {createAccount, generatePrivateKey} from "../src/accounts/account";
 import {vi} from "vitest";
 import {TransactionHashVariant} from "../src/types/transactions";
+import {zeroAddress} from "viem";
 
 // Setup fetch mock
 const mockFetch = vi.fn();
@@ -163,6 +164,31 @@ describe("Client Overrides", () => {
         type: "read",
         to: contractAddress,
         from: accountAddressString, // Expecting the address string directly
+        data: expect.any(String),
+        transaction_hash_variant: TransactionHashVariant.LATEST_NONFINAL,
+      },
+    ]);
+  });
+
+  it("should use zero address when no account is provided anywhere", async () => {
+    const client = createClient({
+      chain: localnet,
+      // No account provided on client
+    });
+
+    const contractAddress = "0x1234567890123456789012345678901234567890";
+    await client.readContract({
+      // No account override either
+      address: contractAddress as Address,
+      functionName: "testFunction",
+      args: ["arg1", "arg2"],
+    });
+
+    expect(lastGenCallParams).toEqual([
+      {
+        type: "read",
+        to: contractAddress,
+        from: zeroAddress, // Should default to zero address
         data: expect.any(String),
         transaction_hash_variant: TransactionHashVariant.LATEST_NONFINAL,
       },
