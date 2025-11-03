@@ -71,7 +71,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       const encodedData = [calldata.encode(calldata.makeCalldataObject(functionName, callArgs, kwargs)), leaderOnly];
       const serializedData = serialize(encodedData);
 
-      const senderAddress = account?.address ?? client.account?.address;
+      const senderAddress = account?.address ?? client.account?.address ?? zeroAddress;
 
       const requestParams = {
         type: "read",
@@ -120,7 +120,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       const encodedData = [calldata.encode(calldata.makeCalldataObject(functionName, callArgs, kwargs)), leaderOnly];
       const serializedData = serialize(encodedData);
 
-      const senderAddress = account?.address ?? client.account?.address;
+      const senderAddress = account?.address ?? client.account?.address ?? zeroAddress;
 
       const requestParams = {
         type: "write",
