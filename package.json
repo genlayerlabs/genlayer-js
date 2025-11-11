@@ -31,7 +31,7 @@
   "author": "GenLayer",
   "license": "MIT",
   "devDependencies": {
-    "@release-it/conventional-changelog": "^8.0.2",
+    "@release-it/conventional-changelog": "^10.0.0",
     "@types/jest": "^29.5.13",
     "@types/node": "^22.5.5",
     "@typescript-eslint/eslint-plugin": "^8.5.0",
