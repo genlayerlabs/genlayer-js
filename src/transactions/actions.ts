@@ -14,8 +14,6 @@ import {Abi, PublicClient, Address} from "viem";
 import {localnet} from "@/chains/localnet";
 import {decodeLocalnetTransaction, decodeTransaction, simplifyTransactionReceipt} from "./decoders";
 
-
-
 export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => ({
   waitForTransactionReceipt: async ({
     hash,
@@ -70,7 +68,7 @@ export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClie
 
 export const transactionActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => ({
   getTransaction: async ({hash}: {hash: TransactionHash}): Promise<GenLayerTransaction> => {
-    if (client.chain.id === localnet.id) {
+    if (client.chain.isStudio) {
       const transaction = await client.getTransaction({hash});
       const localnetStatus =
         (transaction.status as string) === "ACTIVATED" ? TransactionStatus.PENDING : transaction.status;
@@ -100,16 +98,16 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
       from: transactionParams.from || client.account?.address,
       to: transactionParams.to,
       data: transactionParams.data || "0x",
-      value: transactionParams.value ? `0x${transactionParams.value.toString(16)}` as `0x${string}` : "0x0" as `0x${string}`,
+      value: transactionParams.value
+        ? (`0x${transactionParams.value.toString(16)}` as `0x${string}`)
+        : ("0x0" as `0x${string}`),
     };
 
-    const gasHex = await client.request({
+    const gasHex = (await client.request({
       method: "eth_estimateGas",
       params: [formattedParams],
-    }) as string;
+    })) as string;
 
     return BigInt(gasHex);
   },
 });
-
-

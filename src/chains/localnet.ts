@@ -3989,6 +3989,7 @@ const CONSENSUS_DATA_CONTRACT = {
 
 export const localnet: GenLayerChain = defineChain({
   id: 61_999,
+  isStudio: true,
   name: "Genlayer Localnet",
   rpcUrls: {
     default: {

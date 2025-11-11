@@ -3990,6 +3990,7 @@ const CONSENSUS_DATA_CONTRACT = {
 
 export const studionet: GenLayerChain = defineChain({
   id: 61_999,
+  isStudio: true,
   name: "Genlayer Studio Network",
   rpcUrls: {
     default: {
