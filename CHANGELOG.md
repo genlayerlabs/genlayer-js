@@ -1,5 +1,12 @@
 
 
+## 0.18.4 (2025-11-11)
+
+
+### Bug Fixes
+
+* differentiate chains using the studio from testnet ([#122](https://github.com/genlayerlabs/genlayer-js/issues/122)) ([1fa8d4c](https://github.com/genlayerlabs/genlayer-js/commit/1fa8d4cd0856d9eb437902f330feb1de4782d112))
+
 ## 0.18.3 (2025-11-03)
 
 
