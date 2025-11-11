@@ -18,7 +18,7 @@ jobs:
           private_key: ${{ secrets.CI_BOT_SECRET }}
 
       - name: Checkout source code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           token: ${{ steps.ci_bot_token.outputs.token }}
       - name: Setup Node.js
