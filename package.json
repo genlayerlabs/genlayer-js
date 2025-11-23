@@ -45,7 +45,7 @@
     "ts-node": "^10.9.2",
     "tsup": "^8.2.4",
     "typescript": "^5.6.2",
-    "vitest": "^2.1.1"
+    "vitest": "^4.0.0"
   },
   "dependencies": {
     "eslint-plugin-import": "^2.30.0",
