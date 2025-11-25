@@ -22,11 +22,6 @@ export enum TransactionStatus {
 }
 
 export enum TransactionResult {
-  SUCCESS = "SUCCESS",
-  FAILURE = "FAILURE",
-}
-
-export enum TransactionResult {
   IDLE = "IDLE",
   AGREE = "AGREE",
   DISAGREE = "DISAGREE",
