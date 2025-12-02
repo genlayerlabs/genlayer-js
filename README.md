@@ -106,10 +106,61 @@ const receipt = await client.waitForTransactionReceipt({
 })
 
 ```
+### Staking Operations
+
+The SDK provides staking functionality for validators and delegators on testnet-asimov.
+
+```typescript
+import { testnetAsimov } from 'genlayer-js/chains';
+import { createClient, createAccount } from "genlayer-js";
+
+const account = createAccount();
+const client = createClient({
+  chain: testnetAsimov,
+  account,
+});
+
+// Get epoch info (includes timing estimates and inflation data)
+const epochInfo = await client.getEpochInfo();
+// {
+//   currentEpoch: 2n,
+//   epochMinDuration: 86400n,        // 1 day in seconds
+//   currentEpochStart: Date,
+//   currentEpochEnd: Date | null,
+//   nextEpochEstimate: Date | null,
+//   validatorMinStake: "0.01 GEN",
+//   delegatorMinStake: "42 GEN",
+//   activeValidatorsCount: 6n,
+//   inflation: "1000 GEN",           // Total inflation for current epoch
+//   inflationRaw: 1000000000000000000000n,
+//   totalWeight: 500000000000000000000000n,  // Total stake weight
+//   totalClaimed: "500 GEN",         // Total claimed rewards
+// }
+
+// Get active validators
+const validators = await client.getActiveValidators();
+
+// Check if address is a validator
+const isValidator = await client.isValidator("0x...");
+
+// Get validator info
+const validatorInfo = await client.getValidatorInfo("0x...");
+
+// Join as validator (requires account with funds)
+const result = await client.validatorJoin({ amount: "42000gen" });
+
+// Join as delegator
+const delegateResult = await client.delegatorJoin({
+  validator: "0x...",
+  amount: "42gen",
+});
+```
+
 ## 🚀 Key Features
 
-* **Client Creation**: Easily create and configure a client to connect to GenLayer’s network.
+* **Client Creation**: Easily create and configure a client to connect to GenLayer's network.
 * **Transaction Handling**: Send and manage transactions on the GenLayer network.
+* **Staking**: Full staking support for validators and delegators on testnet-asimov.
 * **Wallet Integration***: Seamless integration with MetaMask for managing user accounts.
 * **Gas Estimation***: Estimate gas fees for executing transactions on GenLayer.
 

@@ -3988,7 +3988,7 @@ const CONSENSUS_DATA_CONTRACT = {
 };
 
 export const localnet: GenLayerChain = defineChain({
-  id: 61_999,
+  id: 61_127,
   isStudio: true,
   name: "Genlayer Localnet",
   rpcUrls: {
@@ -4010,6 +4010,7 @@ export const localnet: GenLayerChain = defineChain({
   testnet: true,
   consensusMainContract: CONSENSUS_MAIN_CONTRACT,
   consensusDataContract: CONSENSUS_DATA_CONTRACT,
+  stakingContract: null,
   defaultNumberOfInitialValidators: 5,
   defaultConsensusMaxRotations: 3,
 });

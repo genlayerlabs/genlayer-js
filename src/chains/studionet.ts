@@ -4011,6 +4011,7 @@ export const studionet: GenLayerChain = defineChain({
   testnet: true,
   consensusMainContract: CONSENSUS_MAIN_CONTRACT,
   consensusDataContract: CONSENSUS_DATA_CONTRACT,
+  stakingContract: null,
   defaultNumberOfInitialValidators: 5,
   defaultConsensusMaxRotations: 3,
 });

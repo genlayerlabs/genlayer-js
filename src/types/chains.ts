@@ -13,6 +13,10 @@ export type GenLayerChain = Chain & {
     abi: any[];
     bytecode: string;
   } | null;
+  stakingContract: {
+    address: Address;
+    abi: readonly unknown[];
+  } | null;
   defaultNumberOfInitialValidators: number;
   defaultConsensusMaxRotations: number;
 };

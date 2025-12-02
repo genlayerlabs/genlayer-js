@@ -14,6 +14,7 @@ import {accountActions} from "../accounts/actions";
 import {contractActions} from "../contracts/actions";
 import {receiptActions, transactionActions} from "../transactions/actions";
 import {walletActions as genlayerWalletActions} from "../wallet/actions";
+import {stakingActions} from "../staking/actions";
 import {GenLayerClient, GenLayerChain} from "@/types";
 import {chainActions} from "@/chains/actions";
 import {localnet} from "@/chains";
@@ -37,18 +38,22 @@ const getCustomTransportConfig = (config: ClientConfig) => {
 
   return {
     async request({method, params = []}: {method: string; params: any[]}) {
+      // Try wallet provider for eth_ methods when account is an address (not Account object)
       if (method.startsWith("eth_") && isAddress) {
-        try {
-          const provider = config.provider || window.ethereum;
-          if (!provider) {
-            throw new Error('No wallet provider available');
+        const provider = config.provider || (typeof window !== "undefined" ? window.ethereum : undefined);
+        if (provider) {
+          try {
+            return await provider.request({method, params});
+          } catch (err) {
+            console.warn(`Error using provider for method ${method}:`, err);
+            throw err;
           }
-          return await provider.request({method, params});
-        } catch (err) {
-          console.warn(`Error using provider for method ${method}:`, err);
-          throw err;
         }
-      } else {
+        // Fall through to RPC fetch if no provider available (Node.js environment)
+      }
+
+      // Use direct RPC fetch
+      {
         if (!config.chain) {
           throw new Error("Chain is not set");
         }
@@ -120,10 +125,16 @@ export const createClient = (config: ClientConfig = {chain: localnet}): GenLayer
     ...contractActions(clientWithTransactionActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
   } as unknown as GenLayerClient<GenLayerChain>;
 
-  // Add transaction actions last, after all other actions are in place
-  const finalClient = {
+  // Add receipt actions
+  const clientWithReceiptActions = {
     ...clientWithAllActions,
     ...receiptActions(clientWithAllActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
+  } as unknown as GenLayerClient<GenLayerChain>;
+
+  // Add staking actions last
+  const finalClient = {
+    ...clientWithReceiptActions,
+    ...stakingActions(clientWithReceiptActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
   } as unknown as GenLayerClient<GenLayerChain>;
 
   // Initialize in the background

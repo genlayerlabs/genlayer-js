@@ -9,3 +9,4 @@ export {
 } from "./transactions/decoders";
 export * as chains from "./chains";
 export * as abi from "./abi";
+export {parseStakingAmount, formatStakingAmount} from "./staking";
