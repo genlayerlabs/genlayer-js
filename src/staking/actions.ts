@@ -1,4 +1,4 @@
-import {getContract, decodeEventLog, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress, GetContractReturnType, toHex, encodeFunctionData} from "viem";
+import {getContract, decodeEventLog, decodeErrorResult, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress, GetContractReturnType, toHex, encodeFunctionData, BaseError, ContractFunctionRevertedError} from "viem";
 import {GenLayerClient, GenLayerChain, Address} from "@/types";
 import {STAKING_ABI, VALIDATOR_WALLET_ABI} from "@/abi/staking";
 import {parseStakingAmount, formatStakingAmount} from "./utils";
@@ -32,8 +32,10 @@ type ReadOnlyStakingContract = GetContractReturnType<typeof STAKING_ABI, PublicC
 // Wallet client with account and chain defined (matches type in staking.ts)
 type WalletClientWithAccount = Client<Transport, Chain, Account>;
 
-// Default gas for zkSync-based networks (they underestimate gas)
-const ZKSYNC_DEFAULT_GAS = 500000n;
+// Fallback gas if estimation fails (zkSync networks can have estimation issues)
+const FALLBACK_GAS = 1000000n;
+// Gas buffer multiplier (2x) to account for zkSync underestimation
+const GAS_BUFFER_MULTIPLIER = 2n;
 
 export const stakingActions = (
   client: GenLayerClient<GenLayerChain>,
@@ -57,6 +59,54 @@ export const stakingActions = (
       throw new Error("Account is required for write operations. Initialize client with a wallet account.");
     }
     const account = client.account;
+
+    // Build debug info for error messages
+    const rpcUrl = client.chain.rpcUrls?.default?.http?.[0] || "unknown";
+    const valueHex = options.value ? `0x${options.value.toString(16)}` : "0x0";
+    const debugCurl = `curl -s -X POST ${rpcUrl} -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_call","params":[{"from":"${account.address}","to":"${options.to}","data":"${options.data}","value":"${valueHex}"},"latest"],"id":1}'`;
+
+    // Simulate first to catch errors before sending
+    try {
+      await publicClient.call({
+        account,
+        to: options.to,
+        data: options.data,
+        value: options.value,
+      });
+    } catch (err: unknown) {
+      // Decode the revert reason
+      let revertReason = "Unknown reason";
+      if (err instanceof BaseError) {
+        const revertError = err.walk((e) => e instanceof ContractFunctionRevertedError);
+        if (revertError instanceof ContractFunctionRevertedError) {
+          revertReason = revertError.data?.errorName || revertError.reason || revertReason;
+        } else if (err.shortMessage) {
+          revertReason = err.shortMessage;
+        }
+      } else if (err instanceof Error) {
+        revertReason = err.message;
+      }
+      throw new Error(`Transaction would revert: ${revertReason}\n\nDebug curl:\n${debugCurl}`);
+    }
+
+    // Estimate gas with buffer, fall back to default if estimation fails
+    let gasLimit = options.gas;
+    if (!gasLimit) {
+      try {
+        const estimated = await publicClient.estimateGas({
+          account,
+          to: options.to,
+          data: options.data,
+          value: options.value,
+        });
+        // Apply buffer for zkSync underestimation
+        gasLimit = estimated * GAS_BUFFER_MULTIPLIER;
+      } catch {
+        // Estimation failed, use fallback
+        gasLimit = FALLBACK_GAS;
+      }
+    }
+
     const nonce = await publicClient.getTransactionCount({address: account.address as ViemAddress});
 
     const txRequest = await publicClient.prepareTransactionRequest({
@@ -66,7 +116,7 @@ export const stakingActions = (
       value: options.value,
       type: "legacy",
       nonce,
-      gas: options.gas ?? ZKSYNC_DEFAULT_GAS,
+      gas: gasLimit,
       chain: client.chain,
     });
 
@@ -79,7 +129,43 @@ export const stakingActions = (
     const receipt = await publicClient.waitForTransactionReceipt({hash});
 
     if (receipt.status === "reverted") {
-      throw new Error(`Transaction reverted: ${hash}`);
+      // Try to get revert reason by simulating at the failed block
+      let revertReason = "Unknown reason";
+      try {
+        await publicClient.call({
+          account,
+          to: options.to,
+          data: options.data,
+          value: options.value,
+          blockNumber: receipt.blockNumber,
+        });
+        // Simulation passed but tx failed - likely gas or zkSync-specific issue
+        const gasUsed = receipt.gasUsed;
+        if (gasUsed >= gasLimit - 1000n) {
+          revertReason = `Out of gas (used ${gasUsed}, limit ${gasLimit})`;
+        } else {
+          revertReason = `Unknown (simulation passes but tx reverts). Gas: ${gasUsed}/${gasLimit}`;
+        }
+      } catch (err: unknown) {
+        // Try to decode custom error from viem's error structure
+        if (err instanceof BaseError) {
+          const revertError = err.walk((e) => e instanceof ContractFunctionRevertedError);
+          if (revertError instanceof ContractFunctionRevertedError) {
+            revertReason = revertError.data?.errorName || revertError.reason || revertReason;
+          } else {
+            // Fallback: try to extract from message
+            const match = err.message.match(/reverted with.*?["']([^"']+)["']/i);
+            if (match) {
+              revertReason = match[1];
+            } else if (err.shortMessage) {
+              revertReason = err.shortMessage;
+            }
+          }
+        } else if (err instanceof Error) {
+          revertReason = err.message;
+        }
+      }
+      throw new Error(`Transaction reverted: ${revertReason} (tx: ${hash})`);
     }
 
     return {
@@ -222,7 +308,16 @@ export const stakingActions = (
     },
 
     setIdentity: async (options: SetIdentityOptions): Promise<StakingTransactionResult> => {
-      const extraCidBytes = options.extraCid ? (options.extraCid as `0x${string}`) : "0x";
+      // Convert extraCid to bytes - if it's already hex use as-is, otherwise encode string to hex
+      let extraCidBytes: `0x${string}` = "0x";
+      if (options.extraCid) {
+        if (options.extraCid.startsWith("0x")) {
+          extraCidBytes = options.extraCid as `0x${string}`;
+        } else {
+          // Convert string to hex bytes
+          extraCidBytes = toHex(new TextEncoder().encode(options.extraCid));
+        }
+      }
       const data = encodeFunctionData({
         abi: VALIDATOR_WALLET_ABI,
         functionName: "setIdentity",

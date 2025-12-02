@@ -64,6 +64,20 @@ export const VALIDATOR_WALLET_ABI = [
 ] as const;
 
 export const STAKING_ABI = [
+  // Custom errors
+  {name: "BelowMinStake", type: "error", inputs: []},
+  {name: "AlreadyValidator", type: "error", inputs: []},
+  {name: "NotValidator", type: "error", inputs: []},
+  {name: "NotOwner", type: "error", inputs: []},
+  {name: "NotOperator", type: "error", inputs: []},
+  {name: "ValidatorBanned", type: "error", inputs: []},
+  {name: "ValidatorQuarantined", type: "error", inputs: []},
+  {name: "InsufficientShares", type: "error", inputs: []},
+  {name: "NothingToClaim", type: "error", inputs: []},
+  {name: "NotYetClaimable", type: "error", inputs: []},
+  {name: "ZeroAmount", type: "error", inputs: []},
+  {name: "InvalidOperator", type: "error", inputs: []},
+
   // Validator functions
   {
     name: "validatorJoin",
