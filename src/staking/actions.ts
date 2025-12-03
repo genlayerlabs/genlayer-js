@@ -1,4 +1,4 @@
-import {getContract, decodeEventLog, decodeErrorResult, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress, GetContractReturnType, toHex, encodeFunctionData, BaseError, ContractFunctionRevertedError} from "viem";
+import {getContract, decodeEventLog, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress, GetContractReturnType, toHex, encodeFunctionData, BaseError, ContractFunctionRevertedError} from "viem";
 import {GenLayerClient, GenLayerChain, Address} from "@/types";
 import {STAKING_ABI, VALIDATOR_WALLET_ABI} from "@/abi/staking";
 import {parseStakingAmount, formatStakingAmount} from "./utils";
@@ -26,29 +26,28 @@ import {
   PendingWithdrawal,
 } from "@/types/staking";
 
-// Read-only contract type (only has .read methods)
 type ReadOnlyStakingContract = GetContractReturnType<typeof STAKING_ABI, PublicClient, ViemAddress>;
-
-// Wallet client with account and chain defined (matches type in staking.ts)
 type WalletClientWithAccount = Client<Transport, Chain, Account>;
 
-// Fallback gas if estimation fails (zkSync networks can have estimation issues)
 const FALLBACK_GAS = 1000000n;
-// Gas buffer multiplier (2x) to account for zkSync underestimation
 const GAS_BUFFER_MULTIPLIER = 2n;
+
+function extractRevertReason(err: unknown): string {
+  if (err instanceof BaseError) {
+    const revertError = err.walk((e) => e instanceof ContractFunctionRevertedError);
+    if (revertError instanceof ContractFunctionRevertedError) {
+      return revertError.data?.errorName || revertError.reason || "Unknown reason";
+    }
+    if (err.shortMessage) return err.shortMessage;
+  }
+  if (err instanceof Error) return err.message;
+  return "Unknown reason";
+}
 
 export const stakingActions = (
   client: GenLayerClient<GenLayerChain>,
   publicClient: PublicClient,
 ) => {
-  /**
-   * Execute a write transaction manually to work around zkSync gas estimation issues.
-   * zkSync-based networks (like Caldera) have gas estimation quirks that cause
-   * viem's contract.write to fail. This helper bypasses that by manually constructing,
-   * signing, and sending the transaction.
-   *
-   * Callers should use encodeFunctionData() to encode their call data with proper types.
-   */
   const executeWrite = async (options: {
     to: ViemAddress;
     data: `0x${string}`;
@@ -60,12 +59,6 @@ export const stakingActions = (
     }
     const account = client.account;
 
-    // Build debug info for error messages
-    const rpcUrl = client.chain.rpcUrls?.default?.http?.[0] || "unknown";
-    const valueHex = options.value ? `0x${options.value.toString(16)}` : "0x0";
-    const debugCurl = `curl -s -X POST ${rpcUrl} -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"eth_call","params":[{"from":"${account.address}","to":"${options.to}","data":"${options.data}","value":"${valueHex}"},"latest"],"id":1}'`;
-
-    // Simulate first to catch errors before sending
     try {
       await publicClient.call({
         account,
@@ -74,22 +67,10 @@ export const stakingActions = (
         value: options.value,
       });
     } catch (err: unknown) {
-      // Decode the revert reason
-      let revertReason = "Unknown reason";
-      if (err instanceof BaseError) {
-        const revertError = err.walk((e) => e instanceof ContractFunctionRevertedError);
-        if (revertError instanceof ContractFunctionRevertedError) {
-          revertReason = revertError.data?.errorName || revertError.reason || revertReason;
-        } else if (err.shortMessage) {
-          revertReason = err.shortMessage;
-        }
-      } else if (err instanceof Error) {
-        revertReason = err.message;
-      }
-      throw new Error(`Transaction would revert: ${revertReason}\n\nDebug curl:\n${debugCurl}`);
+      const revertReason = extractRevertReason(err);
+      throw new Error(`Transaction would revert: ${revertReason}`);
     }
 
-    // Estimate gas with buffer, fall back to default if estimation fails
     let gasLimit = options.gas;
     if (!gasLimit) {
       try {
@@ -99,10 +80,8 @@ export const stakingActions = (
           data: options.data,
           value: options.value,
         });
-        // Apply buffer for zkSync underestimation
         gasLimit = estimated * GAS_BUFFER_MULTIPLIER;
       } catch {
-        // Estimation failed, use fallback
         gasLimit = FALLBACK_GAS;
       }
     }
@@ -129,7 +108,6 @@ export const stakingActions = (
     const receipt = await publicClient.waitForTransactionReceipt({hash});
 
     if (receipt.status === "reverted") {
-      // Try to get revert reason by simulating at the failed block
       let revertReason = "Unknown reason";
       try {
         await publicClient.call({
@@ -139,7 +117,6 @@ export const stakingActions = (
           value: options.value,
           blockNumber: receipt.blockNumber,
         });
-        // Simulation passed but tx failed - likely gas or zkSync-specific issue
         const gasUsed = receipt.gasUsed;
         if (gasUsed >= gasLimit - 1000n) {
           revertReason = `Out of gas (used ${gasUsed}, limit ${gasLimit})`;
@@ -147,23 +124,7 @@ export const stakingActions = (
           revertReason = `Unknown (simulation passes but tx reverts). Gas: ${gasUsed}/${gasLimit}`;
         }
       } catch (err: unknown) {
-        // Try to decode custom error from viem's error structure
-        if (err instanceof BaseError) {
-          const revertError = err.walk((e) => e instanceof ContractFunctionRevertedError);
-          if (revertError instanceof ContractFunctionRevertedError) {
-            revertReason = revertError.data?.errorName || revertError.reason || revertReason;
-          } else {
-            // Fallback: try to extract from message
-            const match = err.message.match(/reverted with.*?["']([^"']+)["']/i);
-            if (match) {
-              revertReason = match[1];
-            } else if (err.shortMessage) {
-              revertReason = err.shortMessage;
-            }
-          }
-        } else if (err instanceof Error) {
-          revertReason = err.message;
-        }
+        revertReason = extractRevertReason(err);
       }
       throw new Error(`Transaction reverted: ${revertReason} (tx: ${hash})`);
     }
@@ -202,8 +163,6 @@ export const stakingActions = (
   };
 
   return {
-    // === VALIDATOR OPERATIONS ===
-
     validatorJoin: async (options: ValidatorJoinOptions): Promise<ValidatorJoinResult> => {
       const amount = parseStakingAmount(options.amount);
       const stakingAddress = getStakingAddress();
@@ -222,7 +181,6 @@ export const stakingActions = (
       const result = await executeWrite({to: stakingAddress, data, value: amount});
       const receipt = await publicClient.getTransactionReceipt({hash: result.transactionHash});
 
-      // Parse ValidatorJoin event to get the deployed validator wallet address
       let validatorWallet: Address | undefined;
       let eventFound = false;
       for (const log of receipt.logs) {
@@ -234,7 +192,6 @@ export const stakingActions = (
             break;
           }
         } catch {
-          // Log from different contract or event, continue searching
         }
       }
 
@@ -296,8 +253,6 @@ export const stakingActions = (
       return executeWrite({to: getStakingAddress(), data});
     },
 
-    // === VALIDATOR WALLET OPERATIONS ===
-
     setOperator: async (options: SetOperatorOptions): Promise<StakingTransactionResult> => {
       const data = encodeFunctionData({
         abi: VALIDATOR_WALLET_ABI,
@@ -308,13 +263,11 @@ export const stakingActions = (
     },
 
     setIdentity: async (options: SetIdentityOptions): Promise<StakingTransactionResult> => {
-      // Convert extraCid to bytes - if it's already hex use as-is, otherwise encode string to hex
       let extraCidBytes: `0x${string}` = "0x";
       if (options.extraCid) {
         if (options.extraCid.startsWith("0x")) {
           extraCidBytes = options.extraCid as `0x${string}`;
         } else {
-          // Convert string to hex bytes
           extraCidBytes = toHex(new TextEncoder().encode(options.extraCid));
         }
       }
@@ -335,8 +288,6 @@ export const stakingActions = (
       });
       return executeWrite({to: options.validator as ViemAddress, data});
     },
-
-    // === DELEGATOR OPERATIONS ===
 
     delegatorJoin: async (options: DelegatorJoinOptions): Promise<DelegatorJoinResult> => {
       const amount = parseStakingAmount(options.amount);
@@ -375,8 +326,6 @@ export const stakingActions = (
       });
       return executeWrite({to: getStakingAddress(), data});
     },
-
-    // === READ OPERATIONS ===
 
     isValidator: async (address: Address): Promise<boolean> => {
       const contract = getReadOnlyStakingContract();
@@ -591,7 +540,6 @@ export const stakingActions = (
         currentEpochStart,
         currentEpochEnd,
         nextEpochEstimate,
-        // Inflation/rewards data
         inflation: formatStakingAmount(currentEpochData.inflation),
         inflationRaw: currentEpochData.inflation,
         totalWeight: currentEpochData.weight,
@@ -603,7 +551,6 @@ export const stakingActions = (
     getActiveValidators: async (): Promise<Address[]> => {
       const contract = getReadOnlyStakingContract();
       const validators = (await contract.read.activeValidators()) as Address[];
-      // Filter out zero address (placeholder in contract array)
       return validators.filter(v => v !== "0x0000000000000000000000000000000000000000");
     },
 
@@ -637,10 +584,7 @@ export const stakingActions = (
       }));
     },
 
-    // === RAW CONTRACT ACCESS ===
     getStakingContract,
-
-    // === HELPERS ===
     parseStakingAmount,
     formatStakingAmount,
   };

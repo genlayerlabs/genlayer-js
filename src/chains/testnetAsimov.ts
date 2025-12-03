@@ -5,14 +5,13 @@ import {STAKING_ABI} from "@/abi/staking";
 // chains/localnet.ts
 const TESTNET_JSON_RPC_URL = "https://genlayer-testnet.rpc.caldera.xyz/http";
 
-// Staking contract (Phase 4 deployment v0.4:2d4e00e0)
 const STAKING_CONTRACT = {
-  address: "0xEcC3f4f79Ae7F44deF9A4936f87F2072bFe29985" as Address,
+  address: "0x03f410748EBdb4026a6b8299E9B6603A273709D1" as Address,
   abi: STAKING_ABI,
 };
 const EXPLORER_URL = "https://explorer-asimov.genlayer.com/";
 const CONSENSUS_MAIN_CONTRACT = {
-  address: "0x73f3073B2DA175Df4c34B5435860a05c284Ed9b2" as Address,
+  address: "0x67fd4aC71530FB220E0B7F90668BAF977B88fF07" as Address,
   abi: [
     {
       inputs: [],
@@ -1402,7 +1401,7 @@ const CONSENSUS_MAIN_CONTRACT = {
 };
 
 const CONSENSUS_DATA_CONTRACT = {
-  address: "0x341d5A6fcB079FEAe74307205cA38144Ffba1163" as Address,
+  address: "0xB6E1316E57d47d82FDcEa5002028a554754EF243" as Address,
   abi: [
     {
       inputs: [],

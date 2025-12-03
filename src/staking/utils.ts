@@ -10,7 +10,6 @@ export function parseStakingAmount(amount: string | bigint): bigint {
   if (lower.endsWith("gen")) {
     return parseEther(lower.slice(0, -3).trim());
   }
-  // Assume it's wei if no suffix
   return BigInt(amount);
 }
 
