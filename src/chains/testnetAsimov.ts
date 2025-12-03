@@ -1,11 +1,17 @@
 import {Address, defineChain} from "viem";
 import {GenLayerChain} from "@/types";
+import {STAKING_ABI} from "@/abi/staking";
 
 // chains/localnet.ts
-const TESTNET_JSON_RPC_URL = " http://34.32.169.58:9151";
+const TESTNET_JSON_RPC_URL = "https://genlayer-testnet.rpc.caldera.xyz/http";
+
+const STAKING_CONTRACT = {
+  address: "0x03f410748EBdb4026a6b8299E9B6603A273709D1" as Address,
+  abi: STAKING_ABI,
+};
 const EXPLORER_URL = "https://explorer-asimov.genlayer.com/";
 const CONSENSUS_MAIN_CONTRACT = {
-  address: "0xe30293d600fF9B2C865d91307826F28006A458f4" as Address,
+  address: "0x67fd4aC71530FB220E0B7F90668BAF977B88fF07" as Address,
   abi: [
     {
       inputs: [],
@@ -1395,7 +1401,7 @@ const CONSENSUS_MAIN_CONTRACT = {
 };
 
 const CONSENSUS_DATA_CONTRACT = {
-  address: "0x2a50afD9d3E0ACC824aC4850d7B4c5561aB5D27a" as Address,
+  address: "0xB6E1316E57d47d82FDcEa5002028a554754EF243" as Address,
   abi: [
     {
       inputs: [],
@@ -3999,6 +4005,7 @@ export const testnetAsimov: GenLayerChain = defineChain({
   testnet: true,
   consensusMainContract: CONSENSUS_MAIN_CONTRACT,
   consensusDataContract: CONSENSUS_DATA_CONTRACT,
+  stakingContract: STAKING_CONTRACT,
   defaultNumberOfInitialValidators: 5,
   defaultConsensusMaxRotations: 3,
 });

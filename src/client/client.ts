@@ -14,6 +14,7 @@ import {accountActions} from "../accounts/actions";
 import {contractActions} from "../contracts/actions";
 import {receiptActions, transactionActions} from "../transactions/actions";
 import {walletActions as genlayerWalletActions} from "../wallet/actions";
+import {stakingActions} from "../staking/actions";
 import {GenLayerClient, GenLayerChain} from "@/types";
 import {chainActions} from "@/chains/actions";
 import {localnet} from "@/chains";
@@ -38,17 +39,18 @@ const getCustomTransportConfig = (config: ClientConfig) => {
   return {
     async request({method, params = []}: {method: string; params: any[]}) {
       if (method.startsWith("eth_") && isAddress) {
-        try {
-          const provider = config.provider || window.ethereum;
-          if (!provider) {
-            throw new Error('No wallet provider available');
+        const provider = config.provider || (typeof window !== "undefined" ? window.ethereum : undefined);
+        if (provider) {
+          try {
+            return await provider.request({method, params});
+          } catch (err) {
+            console.warn(`Error using provider for method ${method}:`, err);
+            throw err;
           }
-          return await provider.request({method, params});
-        } catch (err) {
-          console.warn(`Error using provider for method ${method}:`, err);
-          throw err;
         }
-      } else {
+      }
+
+      {
         if (!config.chain) {
           throw new Error("Chain is not set");
         }
@@ -100,13 +102,11 @@ export const createClient = (config: ClientConfig = {chain: localnet}): GenLayer
     ...(config.account ? {account: config.account} : {}),
   });
 
-  // First extend with basic actions
   const clientWithBasicActions = baseClient
     .extend(publicActions)
     .extend(walletActions)
     .extend(client => accountActions(client as unknown as GenLayerClient<GenLayerChain>));
 
-  // First add transaction actions, then contract actions that depend on them
   const clientWithTransactionActions = {
     ...clientWithBasicActions,
     ...transactionActions(clientWithBasicActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
@@ -114,19 +114,21 @@ export const createClient = (config: ClientConfig = {chain: localnet}): GenLayer
     ...genlayerWalletActions(clientWithBasicActions as unknown as GenLayerClient<GenLayerChain>),
   } as unknown as GenLayerClient<GenLayerChain>;
 
-  // Then add contract actions that can now access transaction actions
   const clientWithAllActions = {
     ...clientWithTransactionActions,
     ...contractActions(clientWithTransactionActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
   } as unknown as GenLayerClient<GenLayerChain>;
 
-  // Add transaction actions last, after all other actions are in place
-  const finalClient = {
+  const clientWithReceiptActions = {
     ...clientWithAllActions,
     ...receiptActions(clientWithAllActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
   } as unknown as GenLayerClient<GenLayerChain>;
 
-  // Initialize in the background
+  const finalClient = {
+    ...clientWithReceiptActions,
+    ...stakingActions(clientWithReceiptActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
+  } as unknown as GenLayerClient<GenLayerChain>;
+
   finalClient.initializeConsensusSmartContract().catch(error => {
     console.error("Failed to initialize consensus smart contract:", error);
   });

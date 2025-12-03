@@ -5,13 +5,17 @@ export type GenLayerChain = Chain & {
   isStudio: boolean;
   consensusMainContract: {
     address: Address;
-    abi: any[];
+    abi: readonly unknown[];
     bytecode: string;
   } | null;
   consensusDataContract: {
     address: Address;
-    abi: any[];
+    abi: readonly unknown[];
     bytecode: string;
+  } | null;
+  stakingContract: {
+    address: Address;
+    abi: readonly unknown[];
   } | null;
   defaultNumberOfInitialValidators: number;
   defaultConsensusMaxRotations: number;

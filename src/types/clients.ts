@@ -7,6 +7,7 @@ import {ContractSchema} from "./contracts";
 import {Network} from "./network";
 import {SnapSource} from "@/types/snapSource";
 import {MetaMaskClientResult} from "@/types/metamaskClientResult";
+import {StakingActions} from "./staking";
 
 export type GenLayerMethod =
   | {method: "sim_fundAccount"; params: [address: Address, amount: number]}
@@ -22,14 +23,13 @@ export type GenLayerMethod =
   | {method: "gen_call"; params: [requestParams: any]};
 
 /*
-  Take all the properties from PublicActions<Transport, TGenLayerChain>
-  Remove the transport, readContract, and getTransaction properties
-  The resulting type will have everything from PublicActions EXCEPT those
-  two properties which are added later
+  Take all the properties from Client<Transport, TGenLayerChain>
+  Remove getTransaction and readContract because they are redefined with custom implementations.
+  Keep transport as it's needed for viem contract interactions (e.g., staking).
 */
 export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
   Client<Transport, TGenLayerChain>,
-  "transport" | "getTransaction" | "readContract"
+  "getTransaction" | "readContract"
 > &
   Omit<WalletActions<TGenLayerChain>, "deployContract" | "writeContract"> &
   Omit<
@@ -103,4 +103,4 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       account?: Account;
       txId: `0x${string}`;
     }) => Promise<any>;
-  };
+  } & StakingActions;
