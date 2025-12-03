@@ -28,7 +28,7 @@
     "skipLibCheck": true,
     "emitDeclarationOnly": false,
     "incremental": true,
-    "tsBuildInfoFile": "/Users/edgars/Dev/genlayer-js/node_modules/vitest/dist/chunks/tsconfig.tmp.tsbuildinfo"
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.vitest.tsbuildinfo"
   },
   "include": [
     "src/**/*",

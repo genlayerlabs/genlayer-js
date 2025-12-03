@@ -192,6 +192,7 @@ export const stakingActions = (
             break;
           }
         } catch {
+          // Not a ValidatorJoin event - continue searching
         }
       }
 
@@ -233,6 +234,9 @@ export const stakingActions = (
     },
 
     validatorClaim: async (options?: ValidatorClaimOptions): Promise<StakingTransactionResult & {claimedAmount: bigint}> => {
+      if (!options?.validator && !client.account) {
+        throw new Error("Either provide validator address or initialize client with an account");
+      }
       const validatorAddress = options?.validator || (client.account!.address as Address);
       const data = encodeFunctionData({
         abi: STAKING_ABI,
@@ -318,6 +322,9 @@ export const stakingActions = (
     },
 
     delegatorClaim: async (options: DelegatorClaimOptions): Promise<StakingTransactionResult> => {
+      if (!options.delegator && !client.account) {
+        throw new Error("Either provide delegator address or initialize client with an account");
+      }
       const delegatorAddress = options.delegator || (client.account!.address as Address);
       const data = encodeFunctionData({
         abi: STAKING_ABI,
