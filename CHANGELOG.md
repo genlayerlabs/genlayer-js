@@ -1,5 +1,12 @@
 
 
+## 0.18.7 (2025-12-04)
+
+
+### Bug Fixes
+
+* Decodes contract error messages ([#127](https://github.com/genlayerlabs/genlayer-js/issues/127)) ([0a82545](https://github.com/genlayerlabs/genlayer-js/commit/0a82545e994144229950ad2d156c20233102a8c4))
+
 ## 0.18.6 (2025-12-04)
 
 
