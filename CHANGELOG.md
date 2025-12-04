@@ -1,5 +1,12 @@
 
 
+## 0.18.6 (2025-12-04)
+
+
+### Features
+
+* Fetch epoch zero minimum duration ([#126](https://github.com/genlayerlabs/genlayer-js/issues/126)) ([89c2261](https://github.com/genlayerlabs/genlayer-js/commit/89c22611d6bf70e83d02f5922ba3e18d912abb2d))
+
 ## 0.18.5 (2025-12-03)
 
 ## 0.18.4 (2025-11-11)
