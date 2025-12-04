@@ -1,4 +1,4 @@
-import {getContract, decodeEventLog, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress, GetContractReturnType, toHex, encodeFunctionData, BaseError, ContractFunctionRevertedError} from "viem";
+import {getContract, decodeEventLog, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress, GetContractReturnType, toHex, encodeFunctionData, BaseError, ContractFunctionRevertedError, decodeErrorResult, RawContractError} from "viem";
 import {GenLayerClient, GenLayerChain, Address} from "@/types";
 import {STAKING_ABI, VALIDATOR_WALLET_ABI} from "@/abi/staking";
 import {parseStakingAmount, formatStakingAmount} from "./utils";
@@ -32,11 +32,55 @@ type WalletClientWithAccount = Client<Transport, Chain, Account>;
 const FALLBACK_GAS = 1000000n;
 const GAS_BUFFER_MULTIPLIER = 2n;
 
+// Combined ABI for error decoding (both staking and validator wallet errors)
+const COMBINED_ERROR_ABI = [...STAKING_ABI, ...VALIDATOR_WALLET_ABI];
+
 function extractRevertReason(err: unknown): string {
   if (err instanceof BaseError) {
+    // Try to find raw error data and decode it with our ABI
+    const rawError = err.walk((e) => e instanceof RawContractError);
+    if (rawError instanceof RawContractError && rawError.data && typeof rawError.data === "string") {
+      try {
+        const decoded = decodeErrorResult({
+          abi: COMBINED_ERROR_ABI,
+          data: rawError.data as `0x${string}`,
+        });
+        return decoded.errorName;
+      } catch {
+        // Fall through to other methods
+      }
+    }
+
+    // Try to extract error data from the cause chain
+    let current: unknown = err;
+    while (current) {
+      if (current && typeof current === "object") {
+        const obj = current as Record<string, unknown>;
+        // Check for data property that looks like hex error data
+        if (obj.data && typeof obj.data === "string" && obj.data.startsWith("0x")) {
+          try {
+            const decoded = decodeErrorResult({
+              abi: COMBINED_ERROR_ABI,
+              data: obj.data as `0x${string}`,
+            });
+            return decoded.errorName;
+          } catch {
+            // Continue searching
+          }
+        }
+        current = obj.cause;
+      } else {
+        break;
+      }
+    }
+
     const revertError = err.walk((e) => e instanceof ContractFunctionRevertedError);
     if (revertError instanceof ContractFunctionRevertedError) {
-      return revertError.data?.errorName || revertError.reason || "Unknown reason";
+      // If viem already decoded it, use that
+      if (revertError.data?.errorName) {
+        return revertError.data.errorName;
+      }
+      return revertError.reason || "Unknown reason";
     }
     if (err.shortMessage) return err.shortMessage;
   }

@@ -1,5 +1,13 @@
 // ValidatorWallet ABI for querying and managing validator wallet
 export const VALIDATOR_WALLET_ABI = [
+  // Custom errors
+  {name: "NotOperator", type: "error", inputs: []},
+  {name: "InvalidAddress", type: "error", inputs: []},
+  {name: "TransferFailed", type: "error", inputs: []},
+  {name: "OperatorTransferNotReady", type: "error", inputs: []},
+  {name: "NoPendingOperator", type: "error", inputs: []},
+
+  // Functions
   {
     name: "operator",
     type: "function",
@@ -64,19 +72,51 @@ export const VALIDATOR_WALLET_ABI = [
 ] as const;
 
 export const STAKING_ABI = [
-  // Custom errors
-  {name: "BelowMinStake", type: "error", inputs: []},
-  {name: "AlreadyValidator", type: "error", inputs: []},
-  {name: "NotValidator", type: "error", inputs: []},
-  {name: "NotOwner", type: "error", inputs: []},
-  {name: "NotOperator", type: "error", inputs: []},
-  {name: "ValidatorBanned", type: "error", inputs: []},
-  {name: "ValidatorQuarantined", type: "error", inputs: []},
-  {name: "InsufficientShares", type: "error", inputs: []},
-  {name: "NothingToClaim", type: "error", inputs: []},
-  {name: "NotYetClaimable", type: "error", inputs: []},
-  {name: "ZeroAmount", type: "error", inputs: []},
-  {name: "InvalidOperator", type: "error", inputs: []},
+  // Custom errors from IGenLayerStaking
+  {name: "OnlyGEN", type: "error", inputs: []},
+  {name: "OnlyTribunal", type: "error", inputs: []},
+  {name: "OnlyIdleness", type: "error", inputs: []},
+  {name: "OnlyTransactions", type: "error", inputs: []},
+  {name: "OnlyIdlenessOrTribunal", type: "error", inputs: []},
+  {name: "OnlyTransactionsOrTribunal", type: "error", inputs: []},
+  {name: "InvalidAtEpoch", type: "error", inputs: []},
+  {name: "MaxValidatorsCannotBeZero", type: "error", inputs: []},
+  {name: "ValidatorExitExceedsShares", type: "error", inputs: []},
+  {name: "DelegatorExitExceedsShares", type: "error", inputs: []},
+  {name: "DelegatorMayNotJoinWithZeroValue", type: "error", inputs: []},
+  {name: "DelegatorMayNotJoinTwoValidatorsSimultaneously", type: "error", inputs: []},
+  {name: "DelegatorBelowMinimumStake", type: "error", inputs: []},
+  {name: "DelegatorExitWouldBeBelowMinimum", type: "error", inputs: []},
+  {name: "ValidatorNotActive", type: "error", inputs: []},
+  {name: "ValidatorMayNotBeDelegator", type: "error", inputs: []},
+  {name: "ValidatorMustNotBeDelegator", type: "error", inputs: []},
+  {name: "ValidatorMayNotJoinWithZeroValue", type: "error", inputs: []},
+  {name: "ValidatorMayNotDepositZeroValue", type: "error", inputs: []},
+  {name: "ValidatorWithdrawalExceedsStake", type: "error", inputs: []},
+  {name: "ValidatorAlreadyJoined", type: "error", inputs: []},
+  {name: "ValidatorNotJoined", type: "error", inputs: []},
+  {name: "ValidatorBelowMinimumStake", type: "error", inputs: []},
+  {name: "OperatorAlreadyAssigned", type: "error", inputs: []},
+  {name: "InvalidOperatorAddress", type: "error", inputs: []},
+  {name: "MaxNumberOfValidatorsReached", type: "error", inputs: []},
+  {name: "ValidatorsConsumed", type: "error", inputs: []},
+  {name: "ValidatorsUnavailable", type: "error", inputs: []},
+  {name: "EpochNotFinished", type: "error", inputs: []},
+  {name: "EpochNotFinalized", type: "error", inputs: []},
+  {name: "InflationInvalidAmount", type: "error", inputs: []},
+  {name: "InflationAlreadyReceived", type: "error", inputs: []},
+  {name: "InflationAlreadyInitialized", type: "error", inputs: []},
+  {name: "EpochAlreadyFinalized", type: "error", inputs: []},
+  {name: "PendingTribunals", type: "error", inputs: [{name: "epoch", type: "uint256"}]},
+  {name: "FailedTransfer", type: "error", inputs: [{name: "validator", type: "address"}]},
+  {name: "NFTMinterCallFailed", type: "error", inputs: []},
+  {name: "DeepthoughtCallFailed", type: "error", inputs: []},
+  {name: "NFTMinterNotConfigured", type: "error", inputs: []},
+  {name: "NumberOfValidatorsExceedsAvailable", type: "error", inputs: []},
+  {name: "EpochAdvanceNotReady", type: "error", inputs: []},
+  {name: "PreviousEpochNotFinalizable", type: "error", inputs: []},
+  {name: "NoBurning", type: "error", inputs: []},
+  {name: "ReductionFactorCannotBeZero", type: "error", inputs: []},
 
   // Validator functions
   {
