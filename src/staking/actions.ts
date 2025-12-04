@@ -513,16 +513,25 @@ export const stakingActions = (
     getEpochInfo: async (): Promise<EpochInfo> => {
       const contract = getReadOnlyStakingContract();
 
-      const [epoch, validatorMinStake, delegatorMinStake, activeCount, epochMinDuration, epochOdd, epochEven] =
-        await Promise.all([
-          contract.read.epoch() as Promise<bigint>,
-          contract.read.validatorMinStake() as Promise<bigint>,
-          contract.read.delegatorMinStake() as Promise<bigint>,
-          contract.read.activeValidatorsCount() as Promise<bigint>,
-          contract.read.epochMinDuration() as Promise<bigint>,
-          contract.read.epochOdd() as Promise<any>,
-          contract.read.epochEven() as Promise<any>,
-        ]);
+      const [
+        epoch,
+        validatorMinStake,
+        delegatorMinStake,
+        activeCount,
+        epochMinDuration,
+        epochZeroMinDuration,
+        epochOdd,
+        epochEven,
+      ] = await Promise.all([
+        contract.read.epoch() as Promise<bigint>,
+        contract.read.validatorMinStake() as Promise<bigint>,
+        contract.read.delegatorMinStake() as Promise<bigint>,
+        contract.read.activeValidatorsCount() as Promise<bigint>,
+        contract.read.epochMinDuration() as Promise<bigint>,
+        contract.read.epochZeroMinDuration() as Promise<bigint>,
+        contract.read.epochOdd() as Promise<any>,
+        contract.read.epochEven() as Promise<any>,
+      ]);
 
       // Current epoch data (even epochs use epochEven, odd use epochOdd)
       const currentEpochData = epoch % 2n === 0n ? epochEven : epochOdd;
@@ -530,9 +539,11 @@ export const stakingActions = (
       const currentEpochEnd = currentEpochData.end > 0n ? new Date(Number(currentEpochData.end) * 1000) : null;
 
       // Estimate next epoch: current start + min duration (if epoch hasn't ended)
+      // Epoch 0 uses epochZeroMinDuration, all other epochs use epochMinDuration
       let nextEpochEstimate: Date | null = null;
       if (!currentEpochEnd) {
-        const estimatedEndMs = Number(currentEpochData.start + epochMinDuration) * 1000;
+        const duration = epoch === 0n ? epochZeroMinDuration : epochMinDuration;
+        const estimatedEndMs = Number(currentEpochData.start + duration) * 1000;
         nextEpochEstimate = new Date(estimatedEndMs);
       }
 

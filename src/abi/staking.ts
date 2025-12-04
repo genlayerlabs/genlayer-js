@@ -294,6 +294,13 @@ export const STAKING_ABI = [
     outputs: [{name: "", type: "uint256"}],
   },
   {
+    name: "epochZeroMinDuration",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{name: "", type: "uint256"}],
+  },
+  {
     name: "getQuarantinedValidators",
     type: "function",
     stateMutability: "view",
