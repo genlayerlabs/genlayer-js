@@ -69,6 +69,67 @@ export const VALIDATOR_WALLET_ABI = [
     ],
     outputs: [],
   },
+  // Staking functions (forwarded to staking contract)
+  {
+    name: "validatorDeposit",
+    type: "function",
+    stateMutability: "payable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    name: "validatorExit",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{name: "_shares", type: "uint256"}],
+    outputs: [],
+  },
+  {
+    name: "validatorClaim",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+  // Two-step operator transfer
+  {
+    name: "initiateOperatorTransfer",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{name: "_newOperator", type: "address"}],
+    outputs: [],
+  },
+  {
+    name: "completeOperatorTransfer",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    name: "cancelOperatorTransfer",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    name: "getPendingOperator",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      {name: "", type: "address"},
+      {name: "", type: "uint256"},
+    ],
+  },
+  {
+    name: "getOperator",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{name: "", type: "address"}],
+  },
 ] as const;
 
 export const STAKING_ABI = [
