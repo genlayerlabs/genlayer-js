@@ -132,6 +132,13 @@ export interface EpochInfo {
   totalWeight: bigint;
   totalClaimed: string;
   totalClaimedRaw: bigint;
+  // Previous epoch (epochs overlap - previous may still be finalizing)
+  previousEpoch: bigint | null;
+  previousEpochStart: Date | null;
+  previousEpochEnd: Date | null;
+  previousEpochFinishing: boolean;
+  // Finalization tracking
+  lastFinalizedEpoch: bigint;
 }
 
 export interface StakingTransactionResult {

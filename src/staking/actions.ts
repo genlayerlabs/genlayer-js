@@ -559,6 +559,7 @@ export const stakingActions = (
 
       const [
         epoch,
+        finalized,
         validatorMinStake,
         delegatorMinStake,
         activeCount,
@@ -568,6 +569,7 @@ export const stakingActions = (
         epochEven,
       ] = await Promise.all([
         contract.read.epoch() as Promise<bigint>,
+        contract.read.finalized() as Promise<bigint>,
         contract.read.validatorMinStake() as Promise<bigint>,
         contract.read.delegatorMinStake() as Promise<bigint>,
         contract.read.activeValidatorsCount() as Promise<bigint>,
@@ -581,6 +583,17 @@ export const stakingActions = (
       const currentEpochData = epoch % 2n === 0n ? epochEven : epochOdd;
       const currentEpochStart = new Date(Number(currentEpochData.start) * 1000);
       const currentEpochEnd = currentEpochData.end > 0n ? new Date(Number(currentEpochData.end) * 1000) : null;
+
+      // Previous epoch data (the "other" slot - epochs overlap, previous may still be finalizing)
+      const previousEpochData = epoch % 2n === 0n ? epochOdd : epochEven;
+      const hasPreviousEpochData = previousEpochData.start > 0n;
+      const previousEpochStart = hasPreviousEpochData
+        ? new Date(Number(previousEpochData.start) * 1000)
+        : null;
+      const previousEpochEnd = hasPreviousEpochData && previousEpochData.end > 0n
+        ? new Date(Number(previousEpochData.end) * 1000)
+        : null;
+      const previousEpochFinishing = hasPreviousEpochData && previousEpochData.end === 0n;
 
       // Estimate next epoch: current start + min duration (if epoch hasn't ended)
       // Epoch 0 uses epochZeroMinDuration, all other epochs use epochMinDuration
@@ -607,6 +620,11 @@ export const stakingActions = (
         totalWeight: currentEpochData.weight,
         totalClaimed: formatStakingAmount(currentEpochData.claimed),
         totalClaimedRaw: currentEpochData.claimed,
+        previousEpoch: epoch > 0n ? epoch - 1n : null,
+        previousEpochStart,
+        previousEpochEnd,
+        previousEpochFinishing,
+        lastFinalizedEpoch: finalized,
       };
     },
 
