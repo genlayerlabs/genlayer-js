@@ -114,31 +114,19 @@ export interface EpochData {
   claimed: bigint;
   stakeDeposit: bigint;
   stakeWithdrawal: bigint;
+  slashed: bigint;
 }
 
 export interface EpochInfo {
   currentEpoch: bigint;
+  lastFinalizedEpoch: bigint;
   validatorMinStake: string;
   validatorMinStakeRaw: bigint;
   delegatorMinStake: string;
   delegatorMinStakeRaw: bigint;
   activeValidatorsCount: bigint;
   epochMinDuration: bigint;
-  currentEpochStart: Date;
-  currentEpochEnd: Date | null;
   nextEpochEstimate: Date | null;
-  inflation: string;
-  inflationRaw: bigint;
-  totalWeight: bigint;
-  totalClaimed: string;
-  totalClaimedRaw: bigint;
-  // Previous epoch (epochs overlap - previous may still be finalizing)
-  previousEpoch: bigint | null;
-  previousEpochStart: Date | null;
-  previousEpochEnd: Date | null;
-  previousEpochFinishing: boolean;
-  // Finalization tracking
-  lastFinalizedEpoch: bigint;
 }
 
 export interface StakingTransactionResult {
@@ -227,8 +215,10 @@ export interface StakingActions {
   getValidatorInfo: (validator: Address) => Promise<ValidatorInfo>;
   getStakeInfo: (delegator: Address, validator: Address) => Promise<StakeInfo>;
   getEpochInfo: () => Promise<EpochInfo>;
+  getEpochData: (epochNumber: bigint) => Promise<EpochData>;
   getActiveValidators: () => Promise<Address[]>;
   getActiveValidatorsCount: () => Promise<bigint>;
+  getSlashingAddress: () => Promise<Address>;
   getStakingContract: () => StakingContract;
   parseStakingAmount: (amount: string | bigint) => bigint;
   formatStakingAmount: (amount: bigint) => string;
