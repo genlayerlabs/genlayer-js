@@ -311,7 +311,8 @@ const _sendTransaction = async ({
       data: encodedData,
       value: value,
     });
-  } catch {
+  } catch (err) {
+    console.error("Gas estimation failed, using default 200_000:", err);
     estimatedGas = 200_000n;
   }
 
