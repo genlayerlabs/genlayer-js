@@ -6,6 +6,9 @@ export const VALIDATOR_WALLET_ABI = [
   {name: "TransferFailed", type: "error", inputs: []},
   {name: "OperatorTransferNotReady", type: "error", inputs: []},
   {name: "NoPendingOperator", type: "error", inputs: []},
+  // OpenZeppelin Ownable errors
+  {name: "OwnableUnauthorizedAccount", type: "error", inputs: [{name: "account", type: "address"}]},
+  {name: "OwnableInvalidOwner", type: "error", inputs: [{name: "owner", type: "address"}]},
 
   // Functions
   {
