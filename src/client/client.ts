@@ -33,7 +33,7 @@ interface ClientConfig {
   provider?: EthereumProvider; // Custom provider for wallet framework integration
 }
 
-const getCustomTransportConfig = (config: ClientConfig) => {
+const getCustomTransportConfig = (config: ClientConfig, chainConfig: GenLayerChain) => {
   const isAddress = typeof config.account !== "object";
 
   return {
@@ -51,12 +51,8 @@ const getCustomTransportConfig = (config: ClientConfig) => {
       }
 
       {
-        if (!config.chain) {
-          throw new Error("Chain is not set");
-        }
-
         try {
-          const response = await fetch(config.chain.rpcUrls.default.http[0], {
+          const response = await fetch(chainConfig.rpcUrls.default.http[0], {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -91,7 +87,7 @@ export const createClient = (config: ClientConfig = {chain: localnet}): GenLayer
     chainConfig.rpcUrls.default.http = [config.endpoint];
   }
 
-  const customTransport = custom(getCustomTransportConfig(config), {retryCount: 0, retryDelay: 0});
+  const customTransport = custom(getCustomTransportConfig(config, chainConfig as GenLayerChain), {retryCount: 0, retryDelay: 0});
   const publicClient = createPublicClient(chainConfig as GenLayerChain, customTransport).extend(
     publicActions,
   );

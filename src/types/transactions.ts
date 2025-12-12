@@ -153,6 +153,21 @@ export type DecodedCallData = {
   type: TransactionType;
 };
 
+export interface LeaderReceipt {
+  calldata: string;
+  class_name: string;
+  contract_state: string;
+  eq_outputs: Record<string, unknown>;
+  error: string | null;
+  execution_result: string;
+  gas_used: number;
+  mode: string;
+  node_config: Record<string, unknown>;
+  pending_transactions: unknown[];
+  vote: string;
+  result: string;
+}
+
 // TODO: make localnet compatible with testnet and unify the types
 export type GenLayerTransaction = {
   // currentTimestamp: testnet
@@ -243,20 +258,7 @@ export type GenLayerTransaction = {
   // consensus_data: localnet // leader_receipt: testnet
   consensus_data?: {
     final: boolean;
-    leader_receipt?: {
-      calldata: string;
-      class_name: string;
-      contract_state: string;
-      eq_outputs: Record<string, unknown>;
-      error: string | null;
-      execution_result: string;
-      gas_used: number;
-      mode: string;
-      node_config: Record<string, unknown>;
-      pending_transactions: unknown[];
-      vote: string;
-      result: string;
-    }[];
+    leader_receipt?: LeaderReceipt[];
     validators?: Record<string, unknown>[];
     votes?: Record<string, string>;
   };

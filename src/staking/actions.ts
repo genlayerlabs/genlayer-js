@@ -8,6 +8,7 @@ import {
   BannedValidatorInfo,
   StakeInfo,
   EpochInfo,
+  EpochData,
   StakingTransactionResult,
   ValidatorJoinResult,
   DelegatorJoinResult,
@@ -559,6 +560,7 @@ export const stakingActions = (
 
       const [
         epoch,
+        finalized,
         validatorMinStake,
         delegatorMinStake,
         activeCount,
@@ -568,6 +570,7 @@ export const stakingActions = (
         epochEven,
       ] = await Promise.all([
         contract.read.epoch() as Promise<bigint>,
+        contract.read.finalized() as Promise<bigint>,
         contract.read.validatorMinStake() as Promise<bigint>,
         contract.read.delegatorMinStake() as Promise<bigint>,
         contract.read.activeValidatorsCount() as Promise<bigint>,
@@ -577,13 +580,11 @@ export const stakingActions = (
         contract.read.epochEven() as Promise<any>,
       ]);
 
-      // Current epoch data (even epochs use epochEven, odd use epochOdd)
+      // Current epoch data for next epoch estimate
       const currentEpochData = epoch % 2n === 0n ? epochEven : epochOdd;
-      const currentEpochStart = new Date(Number(currentEpochData.start) * 1000);
-      const currentEpochEnd = currentEpochData.end > 0n ? new Date(Number(currentEpochData.end) * 1000) : null;
+      const currentEpochEnd = currentEpochData.end > 0n;
 
       // Estimate next epoch: current start + min duration (if epoch hasn't ended)
-      // Epoch 0 uses epochZeroMinDuration, all other epochs use epochMinDuration
       let nextEpochEstimate: Date | null = null;
       if (!currentEpochEnd) {
         const duration = epoch === 0n ? epochZeroMinDuration : epochMinDuration;
@@ -593,20 +594,50 @@ export const stakingActions = (
 
       return {
         currentEpoch: epoch,
+        lastFinalizedEpoch: finalized,
         validatorMinStake: formatStakingAmount(validatorMinStake),
         validatorMinStakeRaw: validatorMinStake,
         delegatorMinStake: formatStakingAmount(delegatorMinStake),
         delegatorMinStakeRaw: delegatorMinStake,
         activeValidatorsCount: activeCount,
         epochMinDuration,
-        currentEpochStart,
-        currentEpochEnd,
         nextEpochEstimate,
-        inflation: formatStakingAmount(currentEpochData.inflation),
-        inflationRaw: currentEpochData.inflation,
-        totalWeight: currentEpochData.weight,
-        totalClaimed: formatStakingAmount(currentEpochData.claimed),
-        totalClaimedRaw: currentEpochData.claimed,
+      };
+    },
+
+    getEpochData: async (epochNumber: bigint): Promise<EpochData> => {
+      const contract = getReadOnlyStakingContract();
+
+      const [currentEpoch, epochOdd, epochEven] = await Promise.all([
+        contract.read.epoch() as Promise<bigint>,
+        contract.read.epochOdd() as Promise<any>,
+        contract.read.epochEven() as Promise<any>,
+      ]);
+
+      // Epochs alternate between odd/even storage slots
+      // Current epoch N uses: N % 2 === 0 ? epochEven : epochOdd
+      // We can only access current epoch and previous epoch (N-1)
+      if (epochNumber > currentEpoch) {
+        throw new Error(`Epoch ${epochNumber} has not started yet (current: ${currentEpoch})`);
+      }
+      if (epochNumber < currentEpoch - 1n && currentEpoch > 0n) {
+        throw new Error(`Epoch ${epochNumber} data no longer available (only current and previous epoch stored)`);
+      }
+
+      const epochData = epochNumber % 2n === 0n ? epochEven : epochOdd;
+
+      return {
+        start: epochData.start,
+        end: epochData.end,
+        inflation: epochData.inflation,
+        weight: epochData.weight,
+        weightDeposit: epochData.weightDeposit,
+        weightWithdrawal: epochData.weightWithdrawal,
+        vcount: epochData.vcount,
+        claimed: epochData.claimed,
+        stakeDeposit: epochData.stakeDeposit,
+        stakeWithdrawal: epochData.stakeWithdrawal,
+        slashed: epochData.slashed,
       };
     },
 
@@ -644,6 +675,13 @@ export const stakingActions = (
         untilEpoch: v.untilEpochBanned,
         permanentlyBanned: v.permanentlyBanned,
       }));
+    },
+
+    getSlashingAddress: async (): Promise<Address> => {
+      const contract = getReadOnlyStakingContract();
+      // contracts() returns tuple: [gen, transactions, idleness, tribunal, slashing, consensus, validatorWalletFactory, nftMinter]
+      const externalContracts = (await contract.read.contracts()) as readonly ViemAddress[];
+      return externalContracts[4] as Address; // slashing is at index 4
     },
 
     getStakingContract,

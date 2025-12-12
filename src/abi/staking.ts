@@ -6,6 +6,9 @@ export const VALIDATOR_WALLET_ABI = [
   {name: "TransferFailed", type: "error", inputs: []},
   {name: "OperatorTransferNotReady", type: "error", inputs: []},
   {name: "NoPendingOperator", type: "error", inputs: []},
+  // OpenZeppelin Ownable errors
+  {name: "OwnableUnauthorizedAccount", type: "error", inputs: [{name: "account", type: "address"}]},
+  {name: "OwnableInvalidOwner", type: "error", inputs: [{name: "owner", type: "address"}]},
 
   // Functions
   {
@@ -312,6 +315,13 @@ export const STAKING_ABI = [
     outputs: [{name: "", type: "uint256"}],
   },
   {
+    name: "finalized",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{name: "", type: "uint256"}],
+  },
+  {
     name: "validatorMinStake",
     type: "function",
     stateMutability: "view",
@@ -359,6 +369,7 @@ export const STAKING_ABI = [
           {name: "claimed", type: "uint256"},
           {name: "stakeDeposit", type: "uint256"},
           {name: "stakeWithdrawal", type: "uint256"},
+          {name: "slashed", type: "uint256"},
         ],
       },
     ],
@@ -383,6 +394,7 @@ export const STAKING_ABI = [
           {name: "claimed", type: "uint256"},
           {name: "stakeDeposit", type: "uint256"},
           {name: "stakeWithdrawal", type: "uint256"},
+          {name: "slashed", type: "uint256"},
         ],
       },
     ],
@@ -621,6 +633,55 @@ export const STAKING_ABI = [
       {name: "delegator", type: "address", indexed: false},
       {name: "validator", type: "address", indexed: false},
       {name: "amount", type: "uint256", indexed: false},
+    ],
+  },
+  {
+    name: "ValidatorPrime",
+    type: "event",
+    inputs: [
+      {name: "validator", type: "address", indexed: false},
+      {name: "epoch", type: "uint256", indexed: false},
+      {name: "validatorRewards", type: "uint256", indexed: false},
+      {name: "delegatorRewards", type: "uint256", indexed: false},
+    ],
+  },
+  // External contracts getter
+  {
+    name: "contracts",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      {name: "gen", type: "address"},
+      {name: "transactions", type: "address"},
+      {name: "idleness", type: "address"},
+      {name: "tribunal", type: "address"},
+      {name: "slashing", type: "address"},
+      {name: "consensus", type: "address"},
+      {name: "validatorWalletFactory", type: "address"},
+      {name: "nftMinter", type: "address"},
+    ],
+  },
+] as const;
+
+// Slash contract ABI for slashing events
+export const SLASH_ABI = [
+  {
+    name: "SlashedFromIdleness",
+    type: "event",
+    inputs: [
+      {name: "validator", type: "address", indexed: true},
+      {name: "txId", type: "bytes32", indexed: false},
+      {name: "epoch", type: "uint256", indexed: false},
+      {name: "percentage", type: "uint256", indexed: false},
+    ],
+  },
+  {
+    name: "SlashEnacted",
+    type: "event",
+    inputs: [
+      {name: "validator", type: "address", indexed: true},
+      {name: "epoch", type: "uint256", indexed: false},
     ],
   },
 ] as const;

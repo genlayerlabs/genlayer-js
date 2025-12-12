@@ -301,8 +301,8 @@ const _sendTransaction = async ({
   }
 
   const validatedSenderAccount = validateAccount(senderAccount);
-
   const nonce = await client.getCurrentNonce({address: validatedSenderAccount.address});
+
   let estimatedGas: bigint;
   try {
     estimatedGas = await client.estimateTransactionGas({
@@ -311,10 +311,57 @@ const _sendTransaction = async ({
       data: encodedData,
       value: value,
     });
-  } catch (error) {
-    console.warn("Gas estimation failed, using fallback value:", error);
+  } catch (err) {
+    console.error("Gas estimation failed, using default 200_000:", err);
     estimatedGas = 200_000n;
   }
+
+  // For local accounts, build transaction request directly to avoid viem's
+  // prepareTransactionRequest which calls eth_fillTransaction (unsupported by GenLayer RPC)
+  if (validatedSenderAccount?.type === "local") {
+    if (!validatedSenderAccount?.signTransaction) {
+      throw new Error("Account does not support signTransaction");
+    }
+
+    const gasPriceHex = (await client.request({
+      method: "eth_gasPrice",
+    })) as string;
+
+    const transactionRequest = {
+      account: validatedSenderAccount,
+      to: client.chain.consensusMainContract?.address as Address,
+      data: encodedData,
+      type: "legacy" as const,
+      nonce: Number(nonce),
+      value: value,
+      gas: estimatedGas,
+      gasPrice: BigInt(gasPriceHex),
+      chainId: client.chain.id,
+    };
+
+    const serializedTransaction = await validatedSenderAccount.signTransaction(transactionRequest);
+    const txHash = await client.sendRawTransaction({serializedTransaction: serializedTransaction});
+    const receipt = await publicClient.waitForTransactionReceipt({hash: txHash});
+
+    if (receipt.status === "reverted") {
+      throw new Error("Transaction reverted");
+    }
+
+    const newTxEvents = parseEventLogs({
+      abi: client.chain.consensusMainContract?.abi as any,
+      eventName: "NewTransaction",
+      logs: receipt.logs,
+    }) as unknown as {args: {txId: `0x${string}`}}[];
+
+    if (newTxEvents.length === 0) {
+      throw new Error("Transaction not processed by consensus");
+    }
+
+    return newTxEvents[0].args["txId"];
+  }
+
+  // For external wallets (e.g., MetaMask via AppKit), use prepareTransactionRequest
+  // which will route eth_* calls through the provider
   const transactionRequest = await client.prepareTransactionRequest({
     account: validatedSenderAccount,
     to: client.chain.consensusMainContract?.address as Address,
@@ -325,44 +372,16 @@ const _sendTransaction = async ({
     gas: estimatedGas,
   });
 
-  if (validatedSenderAccount?.type !== "local") {
-    const formattedRequest = {
-      from: transactionRequest.from,
-      to: transactionRequest.to,
-      data: encodedData,
-      value: transactionRequest.value ? `0x${transactionRequest.value.toString(16)}` : "0x0",
-      gas: transactionRequest.gas ? `0x${transactionRequest.gas.toString(16)}` : "0x5208",
-    };
+  const formattedRequest = {
+    from: transactionRequest.from,
+    to: transactionRequest.to,
+    data: encodedData,
+    value: transactionRequest.value ? `0x${transactionRequest.value.toString(16)}` : "0x0",
+    gas: transactionRequest.gas ? `0x${transactionRequest.gas.toString(16)}` : "0x5208",
+  };
 
-    return await client.request({
-      method: "eth_sendTransaction",
-      params: [formattedRequest as any],
-    });
-  }
-
-  if (!validatedSenderAccount?.signTransaction) {
-    throw new Error("Account does not support signTransaction");
-  }
-
-  const serializedTransaction = await validatedSenderAccount.signTransaction(transactionRequest);
-
-  const txHash = await client.sendRawTransaction({serializedTransaction: serializedTransaction});
-
-  const receipt = await publicClient.waitForTransactionReceipt({hash: txHash});
-
-  if (receipt.status === "reverted") {
-    throw new Error("Transaction reverted");
-  }
-
-  const newTxEvents = parseEventLogs({
-    abi: client.chain.consensusMainContract?.abi as any,
-    eventName: "NewTransaction",
-    logs: receipt.logs,
-  }) as unknown as {args: {txId: `0x${string}`}}[];
-
-  if (newTxEvents.length === 0) {
-    throw new Error("Transaction not processed by consensus");
-  }
-
-  return newTxEvents[0].args["txId"];
+  return await client.request({
+    method: "eth_sendTransaction",
+    params: [formattedRequest as any],
+  });
 };
