@@ -17,6 +17,58 @@ import {
   TransactionLeaderTimeoutEvent,
 } from "./subscriptions";
 
+/**
+ * Status from genCall execution
+ */
+export interface GenCallStatus {
+  /** Status code (0 = success, 1 = user error, 2 = vm error, 3 = internal error) */
+  code: number;
+  /** Human-readable status message */
+  message: string;
+}
+
+/**
+ * Event emitted during contract execution
+ */
+export interface GenCallEvent {
+  /** Event topics as hex strings */
+  topics: string[];
+  /** Event data as hex string */
+  data: string;
+}
+
+/**
+ * Message submitted during contract execution
+ */
+export interface GenCallMessage {
+  messageType: number;
+  recipient: string;
+  value: string;
+  data: string;
+  onAcceptance: boolean;
+  saltNonce: string;
+}
+
+/**
+ * Result from genCall method
+ */
+export interface GenCallResult {
+  /** Execution result as hex string (without 0x prefix from RPC, prefixed by client) */
+  data: `0x${string}`;
+  /** Execution status */
+  status: GenCallStatus;
+  /** Standard output from contract execution */
+  stdout: string;
+  /** Standard error from contract execution */
+  stderr: string;
+  /** Logs from GenVM execution */
+  logs: unknown[];
+  /** Events emitted during execution */
+  events: GenCallEvent[];
+  /** Messages submitted during execution */
+  messages: GenCallMessage[];
+}
+
 export type GenLayerMethod =
   | {method: "sim_fundAccount"; params: [address: Address, amount: number]}
   | {method: "eth_getTransactionByHash"; params: [hash: TransactionHash]}
@@ -113,6 +165,17 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       account?: Account;
       txId: `0x${string}`;
     }) => Promise<any>;
+    genCall: (args: {
+      type: "read" | "write" | "deploy";
+      to: Address;
+      from?: Address;
+      data: `0x${string}`;
+      leaderResults?: Record<string, {data: string; kind: number}> | null;
+      value?: bigint;
+      gas?: bigint;
+      blockNumber?: string;
+      status?: "accepted" | "finalized";
+    }) => Promise<GenCallResult>;
     subscribeToNewTransaction: () => ConsensusEventStream<NewTransactionEvent>;
     subscribeToTransactionAccepted: () => ConsensusEventStream<TransactionAcceptedEvent>;
     subscribeToTransactionActivated: () => ConsensusEventStream<TransactionActivatedEvent>;

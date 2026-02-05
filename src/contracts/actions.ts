@@ -9,6 +9,7 @@ import {
   CalldataEncodable,
   Address,
   TransactionHashVariant,
+  GenCallResult,
 } from "@/types";
 import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs} from "viem";
 import {toJsonSafeDeep, b64ToArray} from "@/utils/jsonifier";
@@ -237,6 +238,118 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         encodedData,
         senderAccount,
       });
+    },
+
+    /**
+     * Low-level gen_call RPC method for transaction simulation.
+     *
+     * Use this for direct control over simulation parameters, including:
+     * - Transaction type (read, write, deploy)
+     * - Leader/validator mode via leader_results parameter
+     * - Raw transaction data (already RLP-encoded)
+     *
+     * For higher-level contract interactions, use readContract, writeContract,
+     * or simulateWriteContract instead.
+     *
+     * @param args.type - Transaction type: "read", "write", or "deploy"
+     * @param args.to - Target contract address
+     * @param args.from - Sender address (optional, uses client account if not provided)
+     * @param args.data - RLP-encoded transaction data
+     * @param args.leaderResults - Equivalence outputs from leader for validator simulation.
+     *                             If provided, simulates as validator; if null/undefined, simulates as leader.
+     * @param args.value - Value to send with the transaction (optional)
+     * @param args.gas - Gas limit for the transaction (optional)
+     * @param args.blockNumber - Block number to simulate at (optional, defaults to latest)
+     * @param args.status - State status: "accepted" or "finalized" (optional, defaults to "accepted")
+     * @returns GenCallResult with execution data, status, stdout, stderr, logs, events, and messages
+     */
+    genCall: async (args: {
+      type: "read" | "write" | "deploy";
+      to: Address;
+      from?: Address;
+      data: `0x${string}`;
+      leaderResults?: Record<string, {data: string; kind: number}> | null;
+      value?: bigint;
+      gas?: bigint;
+      blockNumber?: string;
+      status?: "accepted" | "finalized";
+    }): Promise<GenCallResult> => {
+      const {
+        type,
+        to,
+        from,
+        data,
+        leaderResults,
+        value,
+        gas,
+        blockNumber,
+        status,
+      } = args;
+
+      const senderAddress = from ?? client.account?.address ?? zeroAddress;
+
+      const requestParams: Record<string, unknown> = {
+        type,
+        to,
+        from: senderAddress,
+        data,
+      };
+
+      // Optional parameters
+      if (blockNumber !== undefined) {
+        requestParams.blockNumber = blockNumber;
+      }
+      if (status !== undefined) {
+        requestParams.status = status;
+      }
+      if (value !== undefined) {
+        requestParams.value = `0x${value.toString(16)}`;
+      }
+      if (gas !== undefined) {
+        requestParams.gas = `0x${gas.toString(16)}`;
+      }
+
+      // If leaderResults provided, pass as leader_results for validator simulation (snake_case)
+      if (leaderResults !== undefined && leaderResults !== null) {
+        requestParams.leader_results = leaderResults;
+      }
+
+      const response = await client.request({
+        method: "gen_call",
+        params: [requestParams],
+      });
+
+      // Response format: { data, status: { code, message }, stdout, stderr, logs, events, messages }
+      const resp = response as {
+        data?: string;
+        status?: {code: number; message: string};
+        stdout?: string;
+        stderr?: string;
+        logs?: unknown[];
+        events?: Array<{topics: string[]; data: string}>;
+        messages?: Array<{
+          messageType: number;
+          recipient: string;
+          value: string;
+          data: string;
+          onAcceptance: boolean;
+          saltNonce: string;
+        }>;
+      };
+
+      // Add 0x prefix to data if not present
+      const dataStr = resp.data ?? "";
+      const prefixedData = dataStr.startsWith("0x") ? dataStr as `0x${string}` : `0x${dataStr}` as `0x${string}`;
+
+      return {
+        data: prefixedData,
+        status: resp.status ?? {code: 0, message: "success"},
+        stdout: resp.stdout ?? "",
+        stderr: resp.stderr ?? "",
+        logs: resp.logs ?? [],
+        events: resp.events ?? [],
+        messages: resp.messages ?? [],
+      };
     },
   };
 };
