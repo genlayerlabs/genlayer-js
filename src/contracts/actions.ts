@@ -10,6 +10,7 @@ import {
   Address,
   TransactionHashVariant,
   GenCallResult,
+  GenCallStatusCode,
 } from "@/types";
 import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs} from "viem";
 import {toJsonSafeDeep, b64ToArray} from "@/utils/jsonifier";
@@ -343,7 +344,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
 
       return {
         data: prefixedData,
-        status: resp.status ?? {code: 0, message: "success"},
+        status: resp.status ?? {code: GenCallStatusCode.SUCCESS, message: "success"},
         stdout: resp.stdout ?? "",
         stderr: resp.stderr ?? "",
         logs: resp.logs ?? [],
