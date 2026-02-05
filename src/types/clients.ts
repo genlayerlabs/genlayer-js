@@ -8,6 +8,14 @@ import {Network} from "./network";
 import {SnapSource} from "@/types/snapSource";
 import {MetaMaskClientResult} from "@/types/metamaskClientResult";
 import {StakingActions} from "./staking";
+import {
+  ConsensusEventStream,
+  NewTransactionEvent,
+  TransactionAcceptedEvent,
+  TransactionActivatedEvent,
+  TransactionUndeterminedEvent,
+  TransactionLeaderTimeoutEvent,
+} from "./subscriptions";
 
 export type GenLayerMethod =
   | {method: "sim_fundAccount"; params: [address: Address, amount: number]}
@@ -105,4 +113,9 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       account?: Account;
       txId: `0x${string}`;
     }) => Promise<any>;
+    subscribeToNewTransaction: () => ConsensusEventStream<NewTransactionEvent>;
+    subscribeToTransactionAccepted: () => ConsensusEventStream<TransactionAcceptedEvent>;
+    subscribeToTransactionActivated: () => ConsensusEventStream<TransactionActivatedEvent>;
+    subscribeToTransactionUndetermined: () => ConsensusEventStream<TransactionUndeterminedEvent>;
+    subscribeToTransactionLeaderTimeout: () => ConsensusEventStream<TransactionLeaderTimeoutEvent>;
   } & StakingActions;
