@@ -18,11 +18,21 @@ import {
 } from "./subscriptions";
 
 /**
+ * Status codes from genCall execution
+ */
+export enum GenCallStatusCode {
+  SUCCESS = 0,
+  USER_ERROR = 1,
+  VM_ERROR = 2,
+  INTERNAL_ERROR = 3,
+}
+
+/**
  * Status from genCall execution
  */
 export interface GenCallStatus {
-  /** Status code (0 = success, 1 = user error, 2 = vm error, 3 = internal error) */
-  code: number;
+  /** Status code indicating execution result */
+  code: GenCallStatusCode;
   /** Human-readable status message */
   message: string;
 }
