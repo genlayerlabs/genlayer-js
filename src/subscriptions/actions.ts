@@ -18,7 +18,9 @@ import {
   TransactionActivatedEvent,
   TransactionUndeterminedEvent,
   TransactionLeaderTimeoutEvent,
+  AppealStartedEvent,
   TransactionHash,
+  Address,
 } from "@/types";
 
 const MAX_EVENT_QUEUE_SIZE = 1000;
@@ -212,6 +214,23 @@ export function subscriptionActions(client: GenLayerClient<GenLayerChain>) {
         // ABI uses snake_case `tx_id` for this event
         const decoded = decodeLog<{tx_id: `0x${string}`}>(log, "TransactionLeaderTimeout");
         return {txId: decoded.tx_id as TransactionHash};
+      });
+    },
+
+    subscribeToAppealStarted: (): ConsensusEventStream<AppealStartedEvent> => {
+      return createEventStream(client, "AppealStarted", log => {
+        const decoded = decodeLog<{
+          txId: `0x${string}`;
+          appealer: `0x${string}`;
+          appealBond: bigint;
+          appealValidators: `0x${string}`[];
+        }>(log, "AppealStarted");
+        return {
+          txId: decoded.txId as TransactionHash,
+          appealer: decoded.appealer as Address,
+          appealBond: decoded.appealBond,
+          appealValidators: decoded.appealValidators as Address[],
+        };
       });
     },
   };
