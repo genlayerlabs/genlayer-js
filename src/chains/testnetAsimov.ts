@@ -803,13 +803,18 @@ const CONSENSUS_MAIN_CONTRACT = {
         },
         {
           internalType: "bytes",
-          name: "_txData",
+          name: "_calldata",
           type: "bytes",
+        },
+        {
+          internalType: "uint256",
+          name: "_validUntil",
+          type: "uint256",
         },
       ],
       name: "addTransaction",
       outputs: [],
-      stateMutability: "nonpayable",
+      stateMutability: "payable",
       type: "function",
     },
     {
@@ -3401,7 +3406,7 @@ const CONSENSUS_DATA_CONTRACT = {
       inputs: [
         {
           internalType: "bytes32",
-          name: "_tx_id",
+          name: "_txId",
           type: "bytes32",
         },
         {
@@ -3431,7 +3436,7 @@ const CONSENSUS_DATA_CONTRACT = {
             },
             {
               internalType: "uint256",
-              name: "numOfInitialValidators",
+              name: "initialRotations",
               type: "uint256",
             },
             {
@@ -3460,13 +3465,18 @@ const CONSENSUS_DATA_CONTRACT = {
               type: "uint8",
             },
             {
+              internalType: "bytes32",
+              name: "txExecutionHash",
+              type: "bytes32",
+            },
+            {
               internalType: "bytes",
-              name: "txData",
+              name: "txCalldata",
               type: "bytes",
             },
             {
               internalType: "bytes",
-              name: "txReceipt",
+              name: "eqBlocksOutputs",
               type: "bytes",
             },
             {
@@ -3495,6 +3505,11 @@ const CONSENSUS_DATA_CONTRACT = {
                   internalType: "bool",
                   name: "onAcceptance",
                   type: "bool",
+                },
+                {
+                  internalType: "uint256",
+                  name: "saltNonce",
+                  type: "uint256",
                 },
               ],
               internalType: "struct IMessages.SubmittedMessage[]",
@@ -3601,19 +3616,29 @@ const CONSENSUS_DATA_CONTRACT = {
                   type: "address[]",
                 },
                 {
+                  internalType: "enum ITransactions.VoteType[]",
+                  name: "validatorVotes",
+                  type: "uint8[]",
+                },
+                {
                   internalType: "bytes32[]",
                   name: "validatorVotesHash",
                   type: "bytes32[]",
                 },
                 {
-                  internalType: "enum ITransactions.VoteType[]",
-                  name: "validatorVotes",
-                  type: "uint8[]",
+                  internalType: "bytes32[]",
+                  name: "validatorResultHash",
+                  type: "bytes32[]",
                 },
               ],
               internalType: "struct ITransactions.RoundData",
               name: "lastRound",
               type: "tuple",
+            },
+            {
+              internalType: "address[]",
+              name: "consumedValidators",
+              type: "address[]",
             },
           ],
           internalType: "struct ConsensusData.TransactionData",

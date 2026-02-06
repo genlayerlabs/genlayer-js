@@ -74,15 +74,17 @@ export const decodeInputData = (
 };
 
 export const decodeTransaction = (tx: GenLayerRawTransaction): GenLayerTransaction => {
-  const txDataDecoded = decodeInputData(tx.txData, tx.recipient);
+  const txDataDecoded = decodeInputData(tx.txCalldata, tx.recipient);
 
   const decodedTx = {
     ...tx,
-    txData: tx.txData,
+    // Map new field names to old names for backward compatibility
+    txData: tx.txCalldata,
     txDataDecoded: txDataDecoded,
+    numOfInitialValidators: tx.initialRotations.toString(),
 
     currentTimestamp: tx.currentTimestamp.toString(),
-    numOfInitialValidators: tx.numOfInitialValidators.toString(),
+    initialRotations: tx.initialRotations.toString(),
     txSlot: tx.txSlot.toString(),
     createdTimestamp: tx.createdTimestamp.toString(),
     lastVoteTimestamp: tx.lastVoteTimestamp.toString(),

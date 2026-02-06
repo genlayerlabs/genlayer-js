@@ -420,12 +420,14 @@ const _encodeAddTransactionData = ({
   recipient,
   data,
   consensusMaxRotations = client.chain.defaultConsensusMaxRotations,
+  validUntil = 0n, // 0 means no expiration
 }: {
   client: GenLayerClient<GenLayerChain>;
   senderAccount?: Account;
   recipient?: `0x${string}`;
   data?: `0x${string}`;
   consensusMaxRotations?: number;
+  validUntil?: bigint;
 }): {primaryEncodedData: `0x${string}`; fallbackEncodedData: `0x${string}`} => {
   const validatedSenderAccount = validateAccount(senderAccount);
 
@@ -452,7 +454,7 @@ const _encodeAddTransactionData = ({
   const encodedDataV6 = encodeFunctionData({
     abi: ADD_TRANSACTION_ABI_V6 as any,
     functionName: "addTransaction",
-    args: [...addTransactionArgs, 0n],
+    args: [...addTransactionArgs, validUntil],
   });
 
   if (getAddTransactionInputCount(client.chain.consensusMainContract?.abi) >= 6) {
