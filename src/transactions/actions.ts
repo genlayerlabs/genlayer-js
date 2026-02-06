@@ -83,7 +83,7 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
       functionName: "getTransactionData",
       args: [
         hash,
-        Math.round(new Date().getTime() / 1000), // unix seconds
+        0n, // Pass 0 to use block.timestamp on-chain
       ],
     })) as unknown as GenLayerRawTransaction;
     return decodeTransaction(transaction);

@@ -362,12 +362,14 @@ const _encodeAddTransactionData = ({
   recipient,
   data,
   consensusMaxRotations = client.chain.defaultConsensusMaxRotations,
+  validUntil = 0n, // 0 means no expiration
 }: {
   client: GenLayerClient<GenLayerChain>;
   senderAccount?: Account;
   recipient?: `0x${string}`;
   data?: `0x${string}`;
   consensusMaxRotations?: number;
+  validUntil?: bigint;
 }): `0x${string}` => {
   const validatedSenderAccount = validateAccount(senderAccount);
   return encodeFunctionData({
@@ -379,6 +381,7 @@ const _encodeAddTransactionData = ({
       client.chain.defaultNumberOfInitialValidators,
       consensusMaxRotations,
       data,
+      validUntil,
     ],
   });
 };
