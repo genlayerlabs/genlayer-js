@@ -16,13 +16,13 @@ describe("Testnet Asimov Chain Config", () => {
   });
 
   it("should have consensus main contract address", () => {
-    expect(testnetAsimov.consensusMainContract.address).toBe(
+    expect(testnetAsimov.consensusMainContract?.address).toBe(
       "0x6CAFF6769d70824745AD895663409DC70aB5B28E",
     );
   });
 
   it("should have consensus data contract address", () => {
-    expect(testnetAsimov.consensusDataContract.address).toBe(
+    expect(testnetAsimov.consensusDataContract?.address).toBe(
       "0x0D9d1d74d72Fa5eB94bcf746C8FCcb312a722c9B",
     );
   });
