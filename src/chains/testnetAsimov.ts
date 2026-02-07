@@ -3,15 +3,16 @@ import {GenLayerChain} from "@/types";
 import {STAKING_ABI} from "@/abi/staking";
 
 // chains/localnet.ts
-const TESTNET_JSON_RPC_URL = "https://genlayer-testnet.rpc.caldera.xyz/http";
+const TESTNET_JSON_RPC_URL = "https://zksync-os-testnet-genlayer.zksync.dev";
+const TESTNET_WS_URL = "wss://zksync-os-testnet-alpha.zksync.dev/ws";
 
 const STAKING_CONTRACT = {
-  address: "0x03f410748EBdb4026a6b8299E9B6603A273709D1" as Address,
+  address: "0x63Fa5E0bb10fb6fA98F44726C5518223F767687A" as Address,
   abi: STAKING_ABI,
 };
 const EXPLORER_URL = "https://explorer-asimov.genlayer.com/";
 const CONSENSUS_MAIN_CONTRACT = {
-  address: "0x67fd4aC71530FB220E0B7F90668BAF977B88fF07" as Address,
+  address: "0x6CAFF6769d70824745AD895663409DC70aB5B28E" as Address,
   abi: [
     {
       inputs: [],
@@ -1401,7 +1402,7 @@ const CONSENSUS_MAIN_CONTRACT = {
 };
 
 const CONSENSUS_DATA_CONTRACT = {
-  address: "0xB6E1316E57d47d82FDcEa5002028a554754EF243" as Address,
+  address: "0x0D9d1d74d72Fa5eB94bcf746C8FCcb312a722c9B" as Address,
   abi: [
     {
       inputs: [],
@@ -3989,6 +3990,7 @@ export const testnetAsimov: GenLayerChain = defineChain({
   rpcUrls: {
     default: {
       http: [TESTNET_JSON_RPC_URL],
+      webSocket: [TESTNET_WS_URL],
     },
   },
   nativeCurrency: {
