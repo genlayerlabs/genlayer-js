@@ -316,9 +316,10 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         params: [requestParams],
       });
 
-      // Response format: { data, status: { code, message }, stdout, stderr, logs, events, messages }
+      // Response format: { data, eqOutputs, status: { code, message }, stdout, stderr, logs, events, messages }
       const resp = response as {
         data?: string;
+        eqOutputs?: string[];
         status?: {code: number; message: string};
         stdout?: string;
         stderr?: string;
@@ -340,6 +341,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
 
       return {
         data: prefixedData,
+        eqOutputs: resp.eqOutputs ?? [],
         status: resp.status ?? {code: GenCallStatusCode.SUCCESS, message: "success"},
         stdout: resp.stdout ?? "",
         stderr: resp.stderr ?? "",
