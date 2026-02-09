@@ -561,8 +561,6 @@ export const stakingActions = (
       const [
         epoch,
         finalized,
-        validatorMinStake,
-        delegatorMinStake,
         activeCount,
         epochMinDuration,
         epochZeroMinDuration,
@@ -571,8 +569,6 @@ export const stakingActions = (
       ] = await Promise.all([
         contract.read.epoch() as Promise<bigint>,
         contract.read.finalized() as Promise<bigint>,
-        contract.read.validatorMinStake() as Promise<bigint>,
-        contract.read.delegatorMinStake() as Promise<bigint>,
         contract.read.activeValidatorsCount() as Promise<bigint>,
         contract.read.epochMinDuration() as Promise<bigint>,
         contract.read.epochZeroMinDuration() as Promise<bigint>,
@@ -595,10 +591,6 @@ export const stakingActions = (
       return {
         currentEpoch: epoch,
         lastFinalizedEpoch: finalized,
-        validatorMinStake: formatStakingAmount(validatorMinStake),
-        validatorMinStakeRaw: validatorMinStake,
-        delegatorMinStake: formatStakingAmount(delegatorMinStake),
-        delegatorMinStakeRaw: delegatorMinStake,
         activeValidatorsCount: activeCount,
         epochMinDuration,
         nextEpochEstimate,
@@ -654,7 +646,7 @@ export const stakingActions = (
 
     getQuarantinedValidators: async (): Promise<Address[]> => {
       const contract = getReadOnlyStakingContract();
-      return contract.read.getQuarantinedValidators() as Promise<Address[]>;
+      return contract.read.getValidatorQuarantineList() as Promise<Address[]>;
     },
 
     getBannedValidators: async (startIndex = 0n, size = 100n): Promise<BannedValidatorInfo[]> => {
@@ -675,13 +667,6 @@ export const stakingActions = (
         untilEpoch: v.untilEpochBanned,
         permanentlyBanned: v.permanentlyBanned,
       }));
-    },
-
-    getSlashingAddress: async (): Promise<Address> => {
-      const contract = getReadOnlyStakingContract();
-      // contracts() returns tuple: [gen, transactions, idleness, tribunal, slashing, consensus, validatorWalletFactory, nftMinter]
-      const externalContracts = (await contract.read.contracts()) as readonly ViemAddress[];
-      return externalContracts[4] as Address; // slashing is at index 4
     },
 
     getStakingContract,

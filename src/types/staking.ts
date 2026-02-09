@@ -120,10 +120,6 @@ export interface EpochData {
 export interface EpochInfo {
   currentEpoch: bigint;
   lastFinalizedEpoch: bigint;
-  validatorMinStake: string;
-  validatorMinStakeRaw: bigint;
-  delegatorMinStake: string;
-  delegatorMinStakeRaw: bigint;
   activeValidatorsCount: bigint;
   epochMinDuration: bigint;
   nextEpochEstimate: Date | null;
@@ -218,7 +214,6 @@ export interface StakingActions {
   getEpochData: (epochNumber: bigint) => Promise<EpochData>;
   getActiveValidators: () => Promise<Address[]>;
   getActiveValidatorsCount: () => Promise<bigint>;
-  getSlashingAddress: () => Promise<Address>;
   getStakingContract: () => StakingContract;
   parseStakingAmount: (amount: string | bigint) => bigint;
   formatStakingAmount: (amount: bigint) => string;
