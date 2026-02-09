@@ -68,6 +68,8 @@ export interface GenCallResult {
   data: `0x${string}`;
   /** Execution status */
   status: GenCallStatus;
+  /** Equivalence outputs from non-deterministic operations (hex strings) */
+  eqOutputs: string[];
   /** Standard output from contract execution */
   stdout: string;
   /** Standard error from contract execution */
