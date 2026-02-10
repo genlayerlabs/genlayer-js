@@ -80,6 +80,7 @@ export const decodeTransaction = (tx: GenLayerRawTransaction): GenLayerTransacti
     ...tx,
     // Map new field names to old names for backward compatibility
     txData: tx.txCalldata,
+    txReceipt: tx.eqBlocksOutputs,
     txDataDecoded: txDataDecoded,
     numOfInitialValidators: tx.initialRotations.toString(),
 
