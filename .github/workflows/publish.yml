@@ -28,15 +28,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
-      - name: Upgrade npm for OIDC trusted publishing
-        run: |
-          npm install -g npm@latest
-          npm config set registry https://registry.npmjs.org/
+          node-version: "24"
       - name: Install the dependencies
         run: npm ci
-      - name: Test OIDC auth (dry run)
-        run: npm publish --provenance --access public --dry-run
       - name: Initialize Git User
         run: |
           git config --global user.email "github-actions[bot]@genlayer.com"
@@ -44,3 +38,4 @@ jobs:
       - run: npm run release
         env:
           GITHUB_TOKEN: ${{ steps.ci_bot_token.outputs.token }}
+          NPM_CONFIG_PROVENANCE: "true"
