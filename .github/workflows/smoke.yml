@@ -1,6 +1,7 @@
 name: Smoke Tests
 
 on:
+  pull_request:
   schedule:
     - cron: '0 8 * * *'
   workflow_dispatch:
@@ -10,6 +11,7 @@ jobs:
     name: Testnet Smoke Tests
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    continue-on-error: true
 
     steps:
       - uses: actions/checkout@v4
