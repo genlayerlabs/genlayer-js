@@ -561,8 +561,6 @@ export const stakingActions = (
       const [
         epoch,
         finalized,
-        validatorMinStake,
-        delegatorMinStake,
         activeCount,
         epochMinDuration,
         epochZeroMinDuration,
@@ -571,8 +569,6 @@ export const stakingActions = (
       ] = await Promise.all([
         contract.read.epoch() as Promise<bigint>,
         contract.read.finalized() as Promise<bigint>,
-        contract.read.validatorMinStake() as Promise<bigint>,
-        contract.read.delegatorMinStake() as Promise<bigint>,
         contract.read.activeValidatorsCount() as Promise<bigint>,
         contract.read.epochMinDuration() as Promise<bigint>,
         contract.read.epochZeroMinDuration() as Promise<bigint>,
@@ -580,8 +576,21 @@ export const stakingActions = (
         contract.read.epochEven() as Promise<any>,
       ]);
 
-      // Current epoch data for next epoch estimate
-      const currentEpochData = epoch % 2n === 0n ? epochEven : epochOdd;
+      // epochOdd/epochEven return arrays: [start, end, inflation, weight, weightDeposit, weightWithdrawal, vcount, claimed, stakeDeposit, stakeWithdrawal, slashed]
+      const raw = epoch % 2n === 0n ? epochEven : epochOdd;
+      const currentEpochData = {
+        start: raw[0] as bigint,
+        end: raw[1] as bigint,
+        inflation: raw[2] as bigint,
+        weight: raw[3] as bigint,
+        weightDeposit: raw[4] as bigint,
+        weightWithdrawal: raw[5] as bigint,
+        vcount: raw[6] as bigint,
+        claimed: raw[7] as bigint,
+        stakeDeposit: raw[8] as bigint,
+        stakeWithdrawal: raw[9] as bigint,
+        slashed: raw[10] as bigint,
+      };
       const currentEpochEnd = currentEpochData.end > 0n;
 
       // Estimate next epoch: current start + min duration (if epoch hasn't ended)
@@ -595,10 +604,6 @@ export const stakingActions = (
       return {
         currentEpoch: epoch,
         lastFinalizedEpoch: finalized,
-        validatorMinStake: formatStakingAmount(validatorMinStake),
-        validatorMinStakeRaw: validatorMinStake,
-        delegatorMinStake: formatStakingAmount(delegatorMinStake),
-        delegatorMinStakeRaw: delegatorMinStake,
         activeValidatorsCount: activeCount,
         epochMinDuration,
         nextEpochEstimate,
@@ -624,20 +629,21 @@ export const stakingActions = (
         throw new Error(`Epoch ${epochNumber} data no longer available (only current and previous epoch stored)`);
       }
 
-      const epochData = epochNumber % 2n === 0n ? epochEven : epochOdd;
+      // epochOdd/epochEven return arrays: [start, end, inflation, weight, weightDeposit, weightWithdrawal, vcount, claimed, stakeDeposit, stakeWithdrawal, slashed]
+      const raw = epochNumber % 2n === 0n ? epochEven : epochOdd;
 
       return {
-        start: epochData.start,
-        end: epochData.end,
-        inflation: epochData.inflation,
-        weight: epochData.weight,
-        weightDeposit: epochData.weightDeposit,
-        weightWithdrawal: epochData.weightWithdrawal,
-        vcount: epochData.vcount,
-        claimed: epochData.claimed,
-        stakeDeposit: epochData.stakeDeposit,
-        stakeWithdrawal: epochData.stakeWithdrawal,
-        slashed: epochData.slashed,
+        start: raw[0] as bigint,
+        end: raw[1] as bigint,
+        inflation: raw[2] as bigint,
+        weight: raw[3] as bigint,
+        weightDeposit: raw[4] as bigint,
+        weightWithdrawal: raw[5] as bigint,
+        vcount: raw[6] as bigint,
+        claimed: raw[7] as bigint,
+        stakeDeposit: raw[8] as bigint,
+        stakeWithdrawal: raw[9] as bigint,
+        slashed: raw[10] as bigint,
       };
     },
 
@@ -654,7 +660,7 @@ export const stakingActions = (
 
     getQuarantinedValidators: async (): Promise<Address[]> => {
       const contract = getReadOnlyStakingContract();
-      return contract.read.getQuarantinedValidators() as Promise<Address[]>;
+      return contract.read.getValidatorQuarantineList() as Promise<Address[]>;
     },
 
     getBannedValidators: async (startIndex = 0n, size = 100n): Promise<BannedValidatorInfo[]> => {
@@ -675,13 +681,6 @@ export const stakingActions = (
         untilEpoch: v.untilEpochBanned,
         permanentlyBanned: v.permanentlyBanned,
       }));
-    },
-
-    getSlashingAddress: async (): Promise<Address> => {
-      const contract = getReadOnlyStakingContract();
-      // contracts() returns tuple: [gen, transactions, idleness, tribunal, slashing, consensus, validatorWalletFactory, nftMinter]
-      const externalContracts = (await contract.read.contracts()) as readonly ViemAddress[];
-      return externalContracts[4] as Address; // slashing is at index 4
     },
 
     getStakingContract,

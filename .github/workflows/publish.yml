@@ -6,6 +6,10 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+  id-token: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -22,20 +26,16 @@ jobs:
         with:
           token: ${{ steps.ci_bot_token.outputs.token }}
       - name: Setup Node.js
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
       - name: Install the dependencies
         run: npm ci
       - name: Initialize Git User
         run: |
           git config --global user.email "github-actions[bot]@genlayer.com"
           git config --global user.name "github-actions[bot]"
-      - name: Initialize the NPM configuration
-        run: npm config set //registry.npmjs.org/:_authToken=$NPM_AUTH_TOKEN
-        env:
-          NPM_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
       - run: npm run release
         env:
           GITHUB_TOKEN: ${{ steps.ci_bot_token.outputs.token }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}

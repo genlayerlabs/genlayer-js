@@ -5,11 +5,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    exclude: ["node_modules/**", "tests/smoke.test.ts"],
-    coverage: {
-      reporter: ["text", "json", "html"],
-      exclude: ["node_modules/"],
-    },
+    include: ["tests/smoke.test.ts"],
+    testTimeout: 30_000,
   },
   resolve: {
     alias: {
