@@ -32,43 +32,18 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - name: Upgrade npm for OIDC trusted publishing
         run: npm install -g npm@latest
-      - name: Obtain OIDC token for npm
-        run: |
-          echo "Getting OIDC token from GitHub..."
-          OIDC_RESPONSE=$(curl -sS \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm" \
-            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}")
-          echo "OIDC response keys: $(echo "$OIDC_RESPONSE" | jq -r 'keys[]')"
-          OIDC_TOKEN=$(echo "$OIDC_RESPONSE" | jq -r '.value')
-          echo "OIDC token length: ${#OIDC_TOKEN}"
-
-          echo "Exchanging with npm registry..."
-          EXCHANGE_RESPONSE=$(curl -sS -w "\nHTTP_STATUS:%{http_code}" \
-            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/genlayer-js" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${OIDC_TOKEN}" \
-            -d "{}")
-          HTTP_STATUS=$(echo "$EXCHANGE_RESPONSE" | tail -1 | sed 's/HTTP_STATUS://')
-          BODY=$(echo "$EXCHANGE_RESPONSE" | sed '$d')
-          echo "Exchange HTTP status: $HTTP_STATUS"
-          echo "Exchange response keys: $(echo "$BODY" | jq -r 'keys[]' 2>/dev/null || echo 'not JSON')"
-          echo "Exchange response (redacted): $(echo "$BODY" | jq 'del(.token)' 2>/dev/null || echo "$BODY")"
-
-          NPM_TOKEN=$(echo "$BODY" | jq -r '.token // empty')
-          if [ -z "$NPM_TOKEN" ]; then
-            echo "::error::Failed to obtain npm token from OIDC exchange"
-            exit 1
-          fi
-          echo "::add-mask::${NPM_TOKEN}"
-          echo "NPM_TOKEN=${NPM_TOKEN}" >> "$GITHUB_ENV"
-          echo "Token obtained successfully (length: ${#NPM_TOKEN})"
       - name: Install the dependencies
         run: npm ci
-      - name: Initialize Git User
+      - name: Test direct npm publish (dry-run)
         run: |
-          git config --global user.email "github-actions[bot]@genlayer.com"
-          git config --global user.name "github-actions[bot]"
-      - run: npm run release
-        env:
-          GITHUB_TOKEN: ${{ steps.ci_bot_token.outputs.token }}
-          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
+          echo "NODE_AUTH_TOKEN value length: ${#NODE_AUTH_TOKEN}"
+          echo "Stripping _authToken from npmrc..."
+          sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG"
+          echo "npmrc after strip:"
+          cat "$NPM_CONFIG_USERCONFIG"
+          unset NODE_AUTH_TOKEN
+          echo "NODE_AUTH_TOKEN after unset: '${NODE_AUTH_TOKEN:-UNSET}'"
+          npm publish --provenance --access public --dry-run 2>&1 || true
+          echo "---"
+          echo "Now testing real publish with --dry-run..."
+          npm publish --provenance --access public --dry-run
