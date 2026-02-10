@@ -7,11 +7,29 @@ import {
 } from "@/subscriptions/actions";
 import {GenLayerClient, GenLayerChain} from "@/types";
 
+// Track createPublicClient calls and captured onError handlers
+const {createPublicClientSpy, getCapturedOnError, setCapturedOnError} = vi.hoisted(() => {
+  let capturedOnError: ((error: Error) => void) | null = null;
+  return {
+    createPublicClientSpy: vi.fn(() => ({
+      watchContractEvent: vi.fn((opts: {onError?: (error: Error) => void}) => {
+        capturedOnError = opts.onError ?? null;
+        return vi.fn(); // unwatch function
+      }),
+    })),
+    getCapturedOnError: () => capturedOnError,
+    setCapturedOnError: (v: ((error: Error) => void) | null) => {
+      capturedOnError = v;
+    },
+  };
+});
+
 // Mock viem module for WebSocket-related tests
 vi.mock("viem", async importOriginal => {
   const actual = (await importOriginal()) as object;
   return {
     ...actual,
+    createPublicClient: createPublicClientSpy,
     webSocket: vi.fn(() => ({
       request: vi.fn(),
       type: "webSocket" as const,
@@ -187,5 +205,35 @@ describe("ConsensusEventStream interface", () => {
     expect(typeof actions.subscribeToTransactionActivated).toBe("function");
     expect(typeof actions.subscribeToTransactionUndetermined).toBe("function");
     expect(typeof actions.subscribeToTransactionLeaderTimeout).toBe("function");
+  });
+});
+
+describe("WebSocket client cache eviction on error", () => {
+  afterEach(() => {
+    setCapturedOnError(null);
+    vi.restoreAllMocks();
+  });
+
+  it("should evict cached wsClient on WebSocket error so next subscription creates a fresh client", () => {
+    createPublicClientSpy.mockClear();
+    const client = createMockClient({webSocketUrl: "wss://example.com/ws"});
+    const actions = subscriptionActions(client);
+
+    // First subscription creates the wsClient
+    actions.subscribeToNewTransaction();
+    expect(createPublicClientSpy).toHaveBeenCalledTimes(1);
+
+    // Second subscription reuses the cached wsClient
+    actions.subscribeToNewTransaction();
+    expect(createPublicClientSpy).toHaveBeenCalledTimes(1);
+
+    // Simulate a WebSocket error
+    const onError = getCapturedOnError();
+    expect(onError).not.toBeNull();
+    onError!(new Error("WebSocket connection closed"));
+
+    // Third subscription should create a new wsClient because the cache was evicted
+    actions.subscribeToNewTransaction();
+    expect(createPublicClientSpy).toHaveBeenCalledTimes(2);
   });
 });
