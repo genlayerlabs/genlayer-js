@@ -141,7 +141,7 @@ describe("Testnet Asimov - Staking over WebSocket", () => {
     const nonZero = validators.filter(v => v !== "0x0000000000000000000000000000000000000000");
     if (nonZero.length === 0) return;
 
-    const view = await contract.read.validatorView([nonZero[0]]);
+    const view = await contract.read.validatorView([nonZero[0]]) as unknown as readonly unknown[];
     expect(Array.isArray(view)).toBe(true);
     // view is [left, right, parent, eBanned, ePrimed, vStake, vShares, dStake, dShares, vDeposit, vWithdrawal, live]
     expect(view.length).toBe(12);
