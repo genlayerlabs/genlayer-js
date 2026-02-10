@@ -29,19 +29,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org"
       - name: Upgrade npm for OIDC trusted publishing
-        run: npm install -g npm@latest
-      - name: Debug OIDC environment
         run: |
-          echo "npm version: $(npm --version)"
-          echo "node version: $(node --version)"
-          echo "NPM_CONFIG_USERCONFIG: $NPM_CONFIG_USERCONFIG"
-          echo ".npmrc contents:"
-          cat "$NPM_CONFIG_USERCONFIG" 2>/dev/null || echo "no npmrc"
-          echo "ACTIONS_ID_TOKEN_REQUEST_URL set: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
-          echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN set: ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+yes}"
-          npm config list
+          npm install -g npm@latest
+          npm config set registry https://registry.npmjs.org/
       - name: Install the dependencies
         run: npm ci
       - name: Initialize Git User
@@ -51,4 +42,3 @@ jobs:
       - run: npm run release
         env:
           GITHUB_TOKEN: ${{ steps.ci_bot_token.outputs.token }}
-          NODE_AUTH_TOKEN: ""
