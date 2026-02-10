@@ -28,7 +28,23 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@latest
+      - name: Obtain OIDC token for npm
+        run: |
+          OIDC_TOKEN=$(curl -sS \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm" \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            | jq -r '.value')
+          NPM_TOKEN=$(curl -sS \
+            "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/genlayer-js" \
+            -H "Content-Type: application/json" \
+            -d "{\"oidcToken\": \"${OIDC_TOKEN}\"}" \
+            | jq -r '.token')
+          echo "::add-mask::${NPM_TOKEN}"
+          echo "NPM_TOKEN=${NPM_TOKEN}" >> "$GITHUB_ENV"
       - name: Install the dependencies
         run: npm ci
       - name: Initialize Git User
@@ -38,4 +54,4 @@ jobs:
       - run: npm run release
         env:
           GITHUB_TOKEN: ${{ steps.ci_bot_token.outputs.token }}
-          NPM_CONFIG_PROVENANCE: "true"
+          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
