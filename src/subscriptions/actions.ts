@@ -95,6 +95,7 @@ function createEventStream<T>(
         } else {
           // Prevent unbounded queue growth
           if (eventQueue.length >= MAX_EVENT_QUEUE_SIZE) {
+            console.warn(`[genlayer-js] ${eventName} event queue full (${MAX_EVENT_QUEUE_SIZE}), dropping oldest event`);
             eventQueue.shift(); // Drop oldest event
           }
           eventQueue.push(event);
@@ -112,6 +113,13 @@ function createEventStream<T>(
       rejectNext(error);
       resolveNext = null;
       rejectNext = null;
+    }
+    // Auto-terminate stream on WebSocket failure so subsequent next() calls
+    // return {done: true} instead of hanging indefinitely
+    isUnsubscribed = true;
+    if (unwatch) {
+      unwatch();
+      unwatch = null;
     }
   };
 

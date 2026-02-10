@@ -16,7 +16,7 @@ import {
   TransactionUndeterminedEvent,
   TransactionLeaderTimeoutEvent,
   AppealStartedEvent,
-} from "./subscriptions";
+} from "@/types/subscriptions";
 
 /**
  * Status codes from genCall execution

@@ -1,10 +1,10 @@
 // tests/genCall.test.ts
-import {describe, it, expect, vi, beforeEach, afterEach} from "vitest";
-import {createClient} from "../src/client/client";
+import {describe, it, expect, vi, beforeEach, afterEach, afterAll} from "vitest";
+import {createClient} from "@/client/client";
 import {localnet} from "@/chains/localnet";
-import {Address} from "../src/types/accounts";
-import {createAccount, generatePrivateKey} from "../src/accounts/account";
-import {GenCallStatusCode} from "../src/types/clients";
+import {Address} from "@/types/accounts";
+import {createAccount, generatePrivateKey} from "@/accounts/account";
+import {GenCallStatusCode} from "@/types/clients";
 import {zeroAddress} from "viem";
 
 // Setup fetch mock
@@ -62,6 +62,10 @@ describe("genCall", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  afterAll(() => {
+    vi.unstubAllGlobals();
   });
 
   it("should send basic genCall request with required parameters", async () => {

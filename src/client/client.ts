@@ -15,7 +15,7 @@ import {contractActions} from "../contracts/actions";
 import {receiptActions, transactionActions} from "../transactions/actions";
 import {walletActions as genlayerWalletActions} from "../wallet/actions";
 import {stakingActions} from "../staking/actions";
-import {subscriptionActions} from "../subscriptions/actions";
+import {subscriptionActions} from "@/subscriptions/actions";
 import {GenLayerClient, GenLayerChain} from "@/types";
 import {chainActions} from "@/chains/actions";
 import {localnet} from "@/chains";
@@ -84,16 +84,19 @@ const getCustomTransportConfig = (config: ClientConfig, chainConfig: GenLayerCha
 };
 
 export const createClient = (config: ClientConfig = {chain: localnet}): GenLayerClient<GenLayerChain> => {
-  const chainConfig = config.chain || localnet;
-  if (config.endpoint) {
-    chainConfig.rpcUrls.default.http = [config.endpoint];
-  }
-  if (config.webSocketEndpoint) {
-    chainConfig.rpcUrls.default = {
-      ...chainConfig.rpcUrls.default,
-      webSocket: [config.webSocketEndpoint],
-    };
-  }
+  const baseChain = config.chain || localnet;
+  // Clone to avoid mutating the shared chain config singleton
+  const chainConfig = {
+    ...baseChain,
+    rpcUrls: {
+      ...baseChain.rpcUrls,
+      default: {
+        ...baseChain.rpcUrls.default,
+        ...(config.endpoint ? {http: [config.endpoint]} : {}),
+        ...(config.webSocketEndpoint ? {webSocket: [config.webSocketEndpoint]} : {}),
+      },
+    },
+  };
 
   const customTransport = custom(getCustomTransportConfig(config, chainConfig as GenLayerChain), {retryCount: 0, retryDelay: 0});
   const publicClient = createPublicClient(chainConfig as GenLayerChain, customTransport).extend(
