@@ -34,17 +34,33 @@ jobs:
         run: npm install -g npm@latest
       - name: Obtain OIDC token for npm
         run: |
-          OIDC_TOKEN=$(curl -sS \
+          echo "Getting OIDC token from GitHub..."
+          OIDC_RESPONSE=$(curl -sS \
             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm" \
-            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
-            | jq -r '.value')
-          NPM_TOKEN=$(curl -sS \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}")
+          echo "OIDC response keys: $(echo "$OIDC_RESPONSE" | jq -r 'keys[]')"
+          OIDC_TOKEN=$(echo "$OIDC_RESPONSE" | jq -r '.value')
+          echo "OIDC token length: ${#OIDC_TOKEN}"
+
+          echo "Exchanging with npm registry..."
+          EXCHANGE_RESPONSE=$(curl -sS -w "\nHTTP_STATUS:%{http_code}" \
             "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/genlayer-js" \
             -H "Content-Type: application/json" \
-            -d "{\"oidcToken\": \"${OIDC_TOKEN}\"}" \
-            | jq -r '.token')
+            -d "{\"oidcToken\": \"${OIDC_TOKEN}\"}")
+          HTTP_STATUS=$(echo "$EXCHANGE_RESPONSE" | tail -1 | sed 's/HTTP_STATUS://')
+          BODY=$(echo "$EXCHANGE_RESPONSE" | sed '$d')
+          echo "Exchange HTTP status: $HTTP_STATUS"
+          echo "Exchange response keys: $(echo "$BODY" | jq -r 'keys[]' 2>/dev/null || echo 'not JSON')"
+          echo "Exchange response (redacted): $(echo "$BODY" | jq 'del(.token)' 2>/dev/null || echo "$BODY")"
+
+          NPM_TOKEN=$(echo "$BODY" | jq -r '.token // empty')
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::error::Failed to obtain npm token from OIDC exchange"
+            exit 1
+          fi
           echo "::add-mask::${NPM_TOKEN}"
           echo "NPM_TOKEN=${NPM_TOKEN}" >> "$GITHUB_ENV"
+          echo "Token obtained successfully (length: ${#NPM_TOKEN})"
       - name: Install the dependencies
         run: npm ci
       - name: Initialize Git User
