@@ -35,6 +35,8 @@ jobs:
           npm config set registry https://registry.npmjs.org/
       - name: Install the dependencies
         run: npm ci
+      - name: Test OIDC auth (dry run)
+        run: npm publish --provenance --access public --dry-run
       - name: Initialize Git User
         run: |
           git config --global user.email "github-actions[bot]@genlayer.com"
