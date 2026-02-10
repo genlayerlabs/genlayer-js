@@ -4,7 +4,7 @@ import {STAKING_ABI} from "@/abi/staking";
 
 // chains/localnet.ts
 const TESTNET_JSON_RPC_URL = "https://zksync-os-testnet-genlayer.zksync.dev";
-const TESTNET_WS_URL = "wss://zksync-os-testnet-alpha.zksync.dev/ws";
+const TESTNET_WS_URL = "wss://zksync-os-testnet-genlayer.zksync.dev/ws";
 
 const STAKING_CONTRACT = {
   address: "0x63Fa5E0bb10fb6fA98F44726C5518223F767687A" as Address,

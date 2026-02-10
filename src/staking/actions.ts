@@ -576,8 +576,21 @@ export const stakingActions = (
         contract.read.epochEven() as Promise<any>,
       ]);
 
-      // Current epoch data for next epoch estimate
-      const currentEpochData = epoch % 2n === 0n ? epochEven : epochOdd;
+      // epochOdd/epochEven return arrays: [start, end, inflation, weight, weightDeposit, weightWithdrawal, vcount, claimed, stakeDeposit, stakeWithdrawal, slashed]
+      const raw = epoch % 2n === 0n ? epochEven : epochOdd;
+      const currentEpochData = {
+        start: raw[0] as bigint,
+        end: raw[1] as bigint,
+        inflation: raw[2] as bigint,
+        weight: raw[3] as bigint,
+        weightDeposit: raw[4] as bigint,
+        weightWithdrawal: raw[5] as bigint,
+        vcount: raw[6] as bigint,
+        claimed: raw[7] as bigint,
+        stakeDeposit: raw[8] as bigint,
+        stakeWithdrawal: raw[9] as bigint,
+        slashed: raw[10] as bigint,
+      };
       const currentEpochEnd = currentEpochData.end > 0n;
 
       // Estimate next epoch: current start + min duration (if epoch hasn't ended)
@@ -616,20 +629,21 @@ export const stakingActions = (
         throw new Error(`Epoch ${epochNumber} data no longer available (only current and previous epoch stored)`);
       }
 
-      const epochData = epochNumber % 2n === 0n ? epochEven : epochOdd;
+      // epochOdd/epochEven return arrays: [start, end, inflation, weight, weightDeposit, weightWithdrawal, vcount, claimed, stakeDeposit, stakeWithdrawal, slashed]
+      const raw = epochNumber % 2n === 0n ? epochEven : epochOdd;
 
       return {
-        start: epochData.start,
-        end: epochData.end,
-        inflation: epochData.inflation,
-        weight: epochData.weight,
-        weightDeposit: epochData.weightDeposit,
-        weightWithdrawal: epochData.weightWithdrawal,
-        vcount: epochData.vcount,
-        claimed: epochData.claimed,
-        stakeDeposit: epochData.stakeDeposit,
-        stakeWithdrawal: epochData.stakeWithdrawal,
-        slashed: epochData.slashed,
+        start: raw[0] as bigint,
+        end: raw[1] as bigint,
+        inflation: raw[2] as bigint,
+        weight: raw[3] as bigint,
+        weightDeposit: raw[4] as bigint,
+        weightWithdrawal: raw[5] as bigint,
+        vcount: raw[6] as bigint,
+        claimed: raw[7] as bigint,
+        stakeDeposit: raw[8] as bigint,
+        stakeWithdrawal: raw[9] as bigint,
+        slashed: raw[10] as bigint,
       };
     },
 
