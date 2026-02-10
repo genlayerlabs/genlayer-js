@@ -31,6 +31,10 @@
   "keywords": [],
   "author": "GenLayer",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/genlayerlabs/genlayer-js.git"
+  },
   "devDependencies": {
     "@release-it/conventional-changelog": "^8.0.2",
     "@types/jest": "^29.5.13",

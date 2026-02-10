@@ -32,8 +32,6 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - name: Upgrade npm for OIDC trusted publishing
         run: npm install -g npm@latest
-      - name: Strip legacy token for OIDC auth
-        run: sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG"
       - name: Install the dependencies
         run: npm ci
       - name: Initialize Git User
@@ -43,3 +41,4 @@ jobs:
       - run: npm run release
         env:
           GITHUB_TOKEN: ${{ steps.ci_bot_token.outputs.token }}
+          NODE_AUTH_TOKEN: ""
