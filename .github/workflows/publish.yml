@@ -29,6 +29,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+      - name: Clear .npmrc auth token
+        run: sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG"
       - name: Install the dependencies
         run: npm ci
       - name: Initialize Git User
