@@ -1,5 +1,5 @@
-import {Address} from "./accounts";
-import {TransactionHash} from "./transactions";
+import {Address} from "@/types/accounts";
+import {TransactionHash} from "@/types/transactions";
 
 export type NewTransactionEvent = {
   txId: TransactionHash;

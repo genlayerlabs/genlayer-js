@@ -18,7 +18,7 @@ describe("Client Creation", () => {
   it("should create a client for the localnet", () => {
     const client = createClient({chain: localnet});
     expect(client).toBeDefined();
-    expect(client.chain).toBe(localnet);
+    expect(client.chain).toStrictEqual(localnet);
   });
 });
 

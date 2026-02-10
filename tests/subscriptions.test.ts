@@ -4,8 +4,8 @@ import {
   WebSocketNotConfiguredError,
   ConsensusContractNotInitializedError,
   subscriptionActions,
-} from "../src/subscriptions/actions";
-import {GenLayerClient, GenLayerChain} from "../src/types";
+} from "@/subscriptions/actions";
+import {GenLayerClient, GenLayerChain} from "@/types";
 
 // Mock viem module for WebSocket-related tests
 vi.mock("viem", async importOriginal => {
@@ -121,11 +121,7 @@ describe("Subscription Actions", () => {
 
       // Should not throw WebSocketNotConfiguredError
       // (may throw other errors due to mocking, but not this specific one)
-      try {
-        actions.subscribeToNewTransaction();
-      } catch (error) {
-        expect(error).not.toBeInstanceOf(WebSocketNotConfiguredError);
-      }
+      expect(() => actions.subscribeToNewTransaction()).not.toThrow(WebSocketNotConfiguredError);
     });
   });
 
