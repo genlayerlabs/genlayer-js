@@ -52,4 +52,4 @@ jobs:
           echo "=== npm version ==="
           npm --version
           echo "=== attempting publish ==="
-          npm publish --provenance --access public 2>&1; echo "EXIT: $?"
+          npm publish --provenance --access public --verbose 2>&1; echo "EXIT: $?"
