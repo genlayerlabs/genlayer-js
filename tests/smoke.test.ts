@@ -7,7 +7,7 @@ import {describe, it, expect, beforeAll} from "vitest";
 import {createPublicClient, http, webSocket, getContract, Address as ViemAddress} from "viem";
 import {testnetAsimov} from "@/chains/testnetAsimov";
 import {createClient} from "@/client/client";
-import {STAKING_ABI, VALIDATOR_WALLET_ABI} from "@/abi/staking";
+import {STAKING_ABI} from "@/abi/staking";
 import {Address} from "@/types/accounts";
 
 const TIMEOUT = 30_000;
