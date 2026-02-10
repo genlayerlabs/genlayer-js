@@ -46,7 +46,8 @@ jobs:
           EXCHANGE_RESPONSE=$(curl -sS -w "\nHTTP_STATUS:%{http_code}" \
             "https://registry.npmjs.org/-/npm/v1/oidc/token/exchange/package/genlayer-js" \
             -H "Content-Type: application/json" \
-            -d "{\"oidcToken\": \"${OIDC_TOKEN}\"}")
+            -H "Authorization: Bearer ${OIDC_TOKEN}" \
+            -d "{}")
           HTTP_STATUS=$(echo "$EXCHANGE_RESPONSE" | tail -1 | sed 's/HTTP_STATUS://')
           BODY=$(echo "$EXCHANGE_RESPONSE" | sed '$d')
           echo "Exchange HTTP status: $HTTP_STATUS"
