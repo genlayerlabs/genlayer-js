@@ -32,24 +32,20 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - name: Upgrade npm for OIDC trusted publishing
         run: npm install -g npm@latest
+      - name: Configure OIDC auth
+        run: |
+          sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG"
+          unset NODE_AUTH_TOKEN
       - name: Install the dependencies
         run: npm ci
-      - name: Test OIDC auth
+      - name: Initialize Git User
         run: |
-          # Remove ALL npmrc files and env vars that could interfere
-          rm -f "$NPM_CONFIG_USERCONFIG" ~/.npmrc
-          unset NPM_CONFIG_USERCONFIG
+          git config --global user.email "github-actions[bot]@genlayer.com"
+          git config --global user.name "github-actions[bot]"
+      - name: Release
+        run: |
+          sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG"
           unset NODE_AUTH_TOKEN
-          # Set registry explicitly
-          npm config set registry https://registry.npmjs.org/
-          # Show clean config
-          echo "=== npm config ==="
-          npm config list
-          echo "=== env check ==="
-          echo "NODE_AUTH_TOKEN: '${NODE_AUTH_TOKEN:-UNSET}'"
-          echo "NPM_CONFIG_USERCONFIG: '${NPM_CONFIG_USERCONFIG:-UNSET}'"
-          echo "ACTIONS_ID_TOKEN_REQUEST_URL set: ${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
-          echo "=== npm version ==="
-          npm --version
-          echo "=== attempting publish ==="
-          npm publish --provenance --access public --verbose 2>&1; echo "EXIT: $?"
+          npm run release
+        env:
+          GITHUB_TOKEN: ${{ steps.ci_bot_token.outputs.token }}
