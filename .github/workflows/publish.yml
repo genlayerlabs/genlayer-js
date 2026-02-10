@@ -30,8 +30,8 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
-      - name: Clear .npmrc auth token
-        run: sed -i '/_authToken/d' "$NPM_CONFIG_USERCONFIG"
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@latest
       - name: Install the dependencies
         run: npm ci
       - name: Initialize Git User
