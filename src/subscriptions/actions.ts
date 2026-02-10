@@ -114,6 +114,8 @@ function createEventStream<T>(
       resolveNext = null;
       rejectNext = null;
     }
+    // Evict the dead WebSocket client so the next subscription creates a fresh one
+    wsClientCache.delete(client);
     // Auto-terminate stream on WebSocket failure so subsequent next() calls
     // return {done: true} instead of hanging indefinitely
     isUnsubscribed = true;
