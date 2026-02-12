@@ -183,7 +183,7 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       to: Address;
       from?: Address;
       data: `0x${string}`;
-      leaderResults?: Record<string, {data: string; kind: number}> | null;
+      leaderResults?: string[] | null;
       value?: bigint;
       gas?: bigint;
       blockNumber?: string;
