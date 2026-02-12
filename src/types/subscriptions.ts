@@ -24,11 +24,15 @@ export type TransactionLeaderTimeoutEvent = {
   txId: TransactionHash;
 };
 
+export type TransactionFinalizedEvent = {
+  txId: TransactionHash;
+};
+
 export type AppealStartedEvent = {
   txId: TransactionHash;
-  appealer: Address;
-  appealBond: bigint;
-  appealValidators: Address[];
+  appellant: Address;
+  bond: bigint;
+  validators: Address[];
 };
 
 export type ConsensusEventName =
@@ -37,6 +41,7 @@ export type ConsensusEventName =
   | "TransactionActivated"
   | "TransactionUndetermined"
   | "TransactionLeaderTimeout"
+  | "TransactionFinalized"
   | "AppealStarted";
 
 export type ConsensusEventMap = {
@@ -45,6 +50,7 @@ export type ConsensusEventMap = {
   TransactionActivated: TransactionActivatedEvent;
   TransactionUndetermined: TransactionUndeterminedEvent;
   TransactionLeaderTimeout: TransactionLeaderTimeoutEvent;
+  TransactionFinalized: TransactionFinalizedEvent;
   AppealStarted: AppealStartedEvent;
 };
 

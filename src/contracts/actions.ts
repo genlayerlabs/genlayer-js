@@ -472,13 +472,14 @@ const _encodeAddTransactionData = ({
 }): {primaryEncodedData: `0x${string}`; fallbackEncodedData: `0x${string}`} => {
   const validatedSenderAccount = validateAccount(senderAccount);
 
-  const addTransactionArgs: [
-    Address,
-    `0x${string}` | undefined,
-    number,
-    number | undefined,
-    `0x${string}` | undefined,
-  ] = [
+  // Detect if ABI has the WithFees variant (7 params including FeesDistribution tuple)
+  const abi = client.chain.consensusMainContract?.abi as any[];
+  const addTxEntry = abi?.find(
+    (e: any) => e.type === "function" && e.name === "addTransaction",
+  );
+  const hasFees = addTxEntry?.inputs?.length === 7;
+
+  const args: unknown[] = [
     validatedSenderAccount.address,
     recipient,
     client.chain.defaultNumberOfInitialValidators,
@@ -486,28 +487,30 @@ const _encodeAddTransactionData = ({
     data,
   ];
 
-  const encodedDataV5 = encodeFunctionData({
-    abi: ADD_TRANSACTION_ABI_V5 as any,
-    functionName: "addTransaction",
-    args: addTransactionArgs,
-  });
-
-  const encodedDataV6 = encodeFunctionData({
-    abi: ADD_TRANSACTION_ABI_V6 as any,
-    functionName: "addTransaction",
-    args: [...addTransactionArgs, validUntil],
-  });
-
-  if (getAddTransactionInputCount(client.chain.consensusMainContract?.abi) >= 6) {
-    return {
-      primaryEncodedData: encodedDataV6,
-      fallbackEncodedData: encodedDataV5,
-    };
+  if (hasFees) {
+    // Insert default FeesDistribution struct with zero values
+    args.push({
+      leaderTimeoutFee: 0n,
+      validatorsTimeoutFee: 0n,
+      appealRounds: 0n,
+      rollupStorageFee: 0n,
+      rollupGenVMFee: 0n,
+      totalMessageFees: 0n,
+      rotations: [],
+    });
   }
 
+  args.push(validUntil);
+
+  const encoded = encodeFunctionData({
+    abi: client.chain.consensusMainContract?.abi as any,
+    functionName: "addTransaction",
+    args,
+  });
+
   return {
-    primaryEncodedData: encodedDataV5,
-    fallbackEncodedData: encodedDataV6,
+    primaryEncodedData: encoded,
+    fallbackEncodedData: encoded,
   };
 };
 

@@ -18,6 +18,7 @@ import {
   TransactionActivatedEvent,
   TransactionUndeterminedEvent,
   TransactionLeaderTimeoutEvent,
+  TransactionFinalizedEvent,
   AppealStartedEvent,
   TransactionHash,
   Address,
@@ -198,11 +199,9 @@ export function subscriptionActions(client: GenLayerClient<GenLayerChain>) {
     },
 
     subscribeToTransactionAccepted: (): ConsensusEventStream<TransactionAcceptedEvent> => {
-      return createEventStream(client, "TransactionAccepted", log => {
-        // ABI uses snake_case `tx_id` for this event
-        const decoded = decodeLog<{tx_id: `0x${string}`}>(log, "TransactionAccepted");
-        return {txId: decoded.tx_id as TransactionHash};
-      });
+      return createEventStream(client, "TransactionAccepted", log =>
+        decodeLog<TransactionAcceptedEvent>(log, "TransactionAccepted"),
+      );
     },
 
     subscribeToTransactionActivated: (): ConsensusEventStream<TransactionActivatedEvent> => {
@@ -212,34 +211,36 @@ export function subscriptionActions(client: GenLayerClient<GenLayerChain>) {
     },
 
     subscribeToTransactionUndetermined: (): ConsensusEventStream<TransactionUndeterminedEvent> => {
-      return createEventStream(client, "TransactionUndetermined", log => {
-        // ABI uses snake_case `tx_id` for this event
-        const decoded = decodeLog<{tx_id: `0x${string}`}>(log, "TransactionUndetermined");
-        return {txId: decoded.tx_id as TransactionHash};
-      });
+      return createEventStream(client, "TransactionUndetermined", log =>
+        decodeLog<TransactionUndeterminedEvent>(log, "TransactionUndetermined"),
+      );
     },
 
     subscribeToTransactionLeaderTimeout: (): ConsensusEventStream<TransactionLeaderTimeoutEvent> => {
-      return createEventStream(client, "TransactionLeaderTimeout", log => {
-        // ABI uses snake_case `tx_id` for this event
-        const decoded = decodeLog<{tx_id: `0x${string}`}>(log, "TransactionLeaderTimeout");
-        return {txId: decoded.tx_id as TransactionHash};
-      });
+      return createEventStream(client, "TransactionLeaderTimeout", log =>
+        decodeLog<TransactionLeaderTimeoutEvent>(log, "TransactionLeaderTimeout"),
+      );
+    },
+
+    subscribeToTransactionFinalized: (): ConsensusEventStream<TransactionFinalizedEvent> => {
+      return createEventStream(client, "TransactionFinalized", log =>
+        decodeLog<TransactionFinalizedEvent>(log, "TransactionFinalized"),
+      );
     },
 
     subscribeToAppealStarted: (): ConsensusEventStream<AppealStartedEvent> => {
       return createEventStream(client, "AppealStarted", log => {
         const decoded = decodeLog<{
           txId: `0x${string}`;
-          appealer: `0x${string}`;
-          appealBond: bigint;
-          appealValidators: `0x${string}`[];
+          appellant: `0x${string}`;
+          bond: bigint;
+          validators: `0x${string}`[];
         }>(log, "AppealStarted");
         return {
           txId: decoded.txId as TransactionHash,
-          appealer: decoded.appealer as Address,
-          appealBond: decoded.appealBond,
-          appealValidators: decoded.appealValidators as Address[],
+          appellant: decoded.appellant as Address,
+          bond: decoded.bond,
+          validators: decoded.validators as Address[],
         };
       });
     },
