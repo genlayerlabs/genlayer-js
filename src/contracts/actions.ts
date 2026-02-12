@@ -12,7 +12,7 @@ import {
   GenCallResult,
   GenCallStatusCode,
 } from "@/types";
-import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs} from "viem";
+import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs, TransactionReceipt} from "viem";
 import {toJsonSafeDeep, b64ToArray} from "@/utils/jsonifier";
 
 export const contractActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => {
@@ -173,13 +173,29 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         data: serializedData,
         consensusMaxRotations,
       });
-      return _sendTransaction({
+      const result = await _sendTransaction({
         client,
         publicClient,
         encodedData,
         senderAccount,
         value,
       });
+
+      if ("hash" in result) {
+        return result.hash;
+      }
+
+      const newTxEvents = parseEventLogs({
+        abi: client.chain.consensusMainContract?.abi as any,
+        eventName: "NewTransaction",
+        logs: result.receipt.logs,
+      }) as unknown as {args: {txId: `0x${string}`}}[];
+
+      if (newTxEvents.length === 0) {
+        throw new Error("Transaction not processed by consensus");
+      }
+
+      return newTxEvents[0].args["txId"];
     },
     deployContract: async (args: {
       account?: Account;
@@ -211,12 +227,28 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         data: serializedData,
         consensusMaxRotations,
       });
-      return _sendTransaction({
+      const result = await _sendTransaction({
         client,
         publicClient,
         encodedData,
         senderAccount,
       });
+
+      if ("hash" in result) {
+        return result.hash;
+      }
+
+      const newTxEvents = parseEventLogs({
+        abi: client.chain.consensusMainContract?.abi as any,
+        eventName: "NewTransaction",
+        logs: result.receipt.logs,
+      }) as unknown as {args: {txId: `0x${string}`}}[];
+
+      if (newTxEvents.length === 0) {
+        throw new Error("Transaction not processed by consensus");
+      }
+
+      return newTxEvents[0].args["txId"];
     },
     appealTransaction: async (args: {
       account?: Account;
@@ -225,12 +257,18 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       const {account, txId} = args;
       const senderAccount = account || client.account;
       const encodedData = _encodeSubmitAppealData({client, txId});
-      return _sendTransaction({
+      const result = await _sendTransaction({
         client,
         publicClient,
         encodedData,
         senderAccount,
       });
+
+      if ("hash" in result) {
+        return result.hash;
+      }
+
+      return result.receipt.transactionHash;
     },
 
     /**
@@ -248,8 +286,9 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
      * @param args.to - Target contract address
      * @param args.from - Sender address (optional, uses client account if not provided)
      * @param args.data - RLP-encoded transaction data
-     * @param args.leaderResults - Equivalence outputs from leader for validator simulation.
-     *                             If provided, simulates as validator; if null/undefined, simulates as leader.
+     * @param args.leaderResults - Array of hex-encoded eq_outputs from leader for validator simulation.
+     *                             Each entry is a hex string (e.g. "00d102"). If provided, simulates as validator;
+     *                             if null/undefined, simulates as leader.
      * @param args.value - Value to send with the transaction (optional)
      * @param args.gas - Gas limit for the transaction (optional)
      * @param args.blockNumber - Block number to simulate at (optional, defaults to latest)
@@ -261,7 +300,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       to: Address;
       from?: Address;
       data: `0x${string}`;
-      leaderResults?: Record<string, {data: string; kind: number}> | null;
+      leaderResults?: string[] | null;
       value?: bigint;
       gas?: bigint;
       blockNumber?: string;
@@ -414,7 +453,7 @@ const _sendTransaction = async ({
   encodedData: `0x${string}`;
   senderAccount?: Account;
   value?: bigint;
-}) => {
+}): Promise<{receipt: TransactionReceipt} | {hash: `0x${string}`}> => {
   if (!client.chain.consensusMainContract?.address) {
     throw new Error("Consensus main contract not initialized. Please ensure client is properly initialized.");
   }
@@ -466,17 +505,7 @@ const _sendTransaction = async ({
       throw new Error("Transaction reverted");
     }
 
-    const newTxEvents = parseEventLogs({
-      abi: client.chain.consensusMainContract?.abi as any,
-      eventName: "NewTransaction",
-      logs: receipt.logs,
-    }) as unknown as {args: {txId: `0x${string}`}}[];
-
-    if (newTxEvents.length === 0) {
-      throw new Error("Transaction not processed by consensus");
-    }
-
-    return newTxEvents[0].args["txId"];
+    return {receipt};
   }
 
   // For external wallets (e.g., MetaMask via AppKit), use prepareTransactionRequest
@@ -499,8 +528,11 @@ const _sendTransaction = async ({
     gas: transactionRequest.gas ? `0x${transactionRequest.gas.toString(16)}` : "0x5208",
   };
 
-  return await client.request({
-    method: "eth_sendTransaction",
-    params: [formattedRequest as any],
-  });
+  return {
+    hash: (await client.request({
+      method: "eth_sendTransaction",
+      params: [formattedRequest as any],
+    })) as `0x${string}`,
+  };
 };
+

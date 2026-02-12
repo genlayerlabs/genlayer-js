@@ -153,10 +153,7 @@ describe("genCall", () => {
     const client = createClient({chain: localnet});
     const contractAddress = "0x1234567890123456789012345678901234567890" as Address;
 
-    const leaderResults = {
-      "web_request_1": {data: "response_data", kind: 1},
-      "web_request_2": {data: "other_data", kind: 2},
-    };
+    const leaderResults = ["0010", "00d102"];
 
     await client.genCall({
       type: "write",
