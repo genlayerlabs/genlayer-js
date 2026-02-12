@@ -15,1393 +15,1535 @@ const CONSENSUS_MAIN_CONTRACT = {
   address: "0x6CAFF6769d70824745AD895663409DC70aB5B28E" as Address,
   abi: [
     {
-      inputs: [],
-      name: "AccessControlBadConfirmation",
-      type: "error",
+      "inputs": [],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
     },
     {
-      inputs: [
+      "inputs": [],
+      "name": "CallerNotMessages",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "CanNotAppeal",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InsufficientFees",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidDeploymentWithSalt",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidGhostContract",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidInitialization",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidRevealLeaderData",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidVote",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NotInitializing",
+      "type": "error"
+    },
+    {
+      "inputs": [
         {
-          internalType: "address",
-          name: "account",
-          type: "address",
-        },
-        {
-          internalType: "bytes32",
-          name: "neededRole",
-          type: "bytes32",
-        },
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
       ],
-      name: "AccessControlUnauthorizedAccount",
-      type: "error",
+      "name": "OwnableInvalidOwner",
+      "type": "error"
     },
     {
-      inputs: [],
-      name: "CallerNotMessages",
-      type: "error",
-    },
-    {
-      inputs: [],
-      name: "CanNotAppeal",
-      type: "error",
-    },
-    {
-      inputs: [],
-      name: "EmptyTransaction",
-      type: "error",
-    },
-    {
-      inputs: [],
-      name: "FinalizationNotAllowed",
-      type: "error",
-    },
-    {
-      inputs: [],
-      name: "InvalidAddress",
-      type: "error",
-    },
-    {
-      inputs: [],
-      name: "InvalidGhostContract",
-      type: "error",
-    },
-    {
-      inputs: [],
-      name: "InvalidInitialization",
-      type: "error",
-    },
-    {
-      inputs: [],
-      name: "InvalidVote",
-      type: "error",
-    },
-    {
-      inputs: [],
-      name: "MaxNumOfIterationsInPendingQueueReached",
-      type: "error",
-    },
-    {
-      inputs: [
+      "inputs": [
         {
-          internalType: "uint256",
-          name: "numOfMessages",
-          type: "uint256",
-        },
-        {
-          internalType: "uint256",
-          name: "maxAllocatedMessages",
-          type: "uint256",
-        },
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
       ],
-      name: "MaxNumOfMessagesExceeded",
-      type: "error",
+      "name": "OwnableUnauthorizedAccount",
+      "type": "error"
     },
     {
-      inputs: [],
-      name: "NonGenVMContract",
-      type: "error",
+      "inputs": [],
+      "name": "ReentrancyGuardReentrantCall",
+      "type": "error"
     },
     {
-      inputs: [],
-      name: "NotInitializing",
-      type: "error",
-    },
-    {
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          internalType: "address",
-          name: "owner",
-          type: "address",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
         },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "oldActivator",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newActivator",
+          "type": "address"
+        }
       ],
-      name: "OwnableInvalidOwner",
-      type: "error",
+      "name": "ActivatorReplaced",
+      "type": "event"
     },
     {
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          internalType: "address",
-          name: "account",
-          type: "address",
-        },
+          "indexed": true,
+          "internalType": "address",
+          "name": "addressManager",
+          "type": "address"
+        }
       ],
-      name: "OwnableUnauthorizedAccount",
-      type: "error",
+      "name": "AddressManagerSet",
+      "type": "event"
     },
     {
-      inputs: [],
-      name: "ReentrancyGuardReentrantCall",
-      type: "error",
-    },
-    {
-      inputs: [],
-      name: "TransactionNotAtPendingQueueHead",
-      type: "error",
-    },
-    {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "txId",
-          type: "bytes32",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
         },
         {
-          indexed: true,
-          internalType: "address",
-          name: "appealer",
-          type: "address",
-        },
-        {
-          indexed: false,
-          internalType: "uint256",
-          name: "appealBond",
-          type: "uint256",
-        },
-        {
-          indexed: false,
-          internalType: "address[]",
-          name: "appealValidators",
-          type: "address[]",
-        },
+          "indexed": false,
+          "internalType": "enum ITransactions.TransactionStatus",
+          "name": "newStatus",
+          "type": "uint8"
+        }
       ],
-      name: "AppealStarted",
-      type: "event",
+      "name": "AllVotesCommitted",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "txId",
-          type: "bytes32",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
         },
         {
-          indexed: true,
-          internalType: "address",
-          name: "recipient",
-          type: "address",
+          "indexed": true,
+          "internalType": "address",
+          "name": "appellant",
+          "type": "address"
         },
         {
-          indexed: false,
-          internalType: "bytes",
-          name: "data",
-          type: "bytes",
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "bond",
+          "type": "uint256"
         },
+        {
+          "indexed": false,
+          "internalType": "address[]",
+          "name": "validators",
+          "type": "address[]"
+        }
       ],
-      name: "ErrorMessage",
-      type: "event",
+      "name": "AppealStarted",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: false,
-          internalType: "address",
-          name: "ghostFactory",
-          type: "address",
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "attempted",
+          "type": "uint256"
         },
         {
-          indexed: false,
-          internalType: "address",
-          name: "genManager",
-          type: "address",
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "succeeded",
+          "type": "uint256"
         },
         {
-          indexed: false,
-          internalType: "address",
-          name: "genTransactions",
-          type: "address",
-        },
-        {
-          indexed: false,
-          internalType: "address",
-          name: "genQueue",
-          type: "address",
-        },
-        {
-          indexed: false,
-          internalType: "address",
-          name: "genStaking",
-          type: "address",
-        },
-        {
-          indexed: false,
-          internalType: "address",
-          name: "genMessages",
-          type: "address",
-        },
-        {
-          indexed: false,
-          internalType: "address",
-          name: "idleness",
-          type: "address",
-        },
-        {
-          indexed: false,
-          internalType: "address",
-          name: "tribunalAppeal",
-          type: "address",
-        },
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "failed",
+          "type": "uint256"
+        }
       ],
-      name: "ExternalContractsSet",
-      type: "event",
+      "name": "BatchFinalizationCompleted",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: false,
-          internalType: "uint64",
-          name: "version",
-          type: "uint64",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
         },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "txSlot",
+          "type": "uint256"
+        }
       ],
-      name: "Initialized",
-      type: "event",
+      "name": "CreatedTransaction",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "txId",
-          type: "bytes32",
-        },
-        {
-          indexed: true,
-          internalType: "address",
-          name: "recipient",
-          type: "address",
-        },
-        {
-          indexed: true,
-          internalType: "address",
-          name: "activator",
-          type: "address",
-        },
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "version",
+          "type": "uint64"
+        }
       ],
-      name: "InternalMessageProcessed",
-      type: "event",
+      "name": "Initialized",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "txId",
-          type: "bytes32",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
         },
         {
-          indexed: true,
-          internalType: "address",
-          name: "recipient",
-          type: "address",
+          "indexed": true,
+          "internalType": "address",
+          "name": "recipient",
+          "type": "address"
         },
         {
-          indexed: true,
-          internalType: "address",
-          name: "activator",
-          type: "address",
-        },
+          "indexed": true,
+          "internalType": "address",
+          "name": "activator",
+          "type": "address"
+        }
       ],
-      name: "NewTransaction",
-      type: "event",
+      "name": "InternalMessageProcessed",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "address",
-          name: "previousOwner",
-          type: "address",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
         },
         {
-          indexed: true,
-          internalType: "address",
-          name: "newOwner",
-          type: "address",
+          "indexed": true,
+          "internalType": "address",
+          "name": "oldLeader",
+          "type": "address"
         },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "newLeader",
+          "type": "address"
+        }
       ],
-      name: "OwnershipTransferStarted",
-      type: "event",
+      "name": "LeaderIdlenessProcessed",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "address",
-          name: "previousOwner",
-          type: "address",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
         },
         {
-          indexed: true,
-          internalType: "address",
-          name: "newOwner",
-          type: "address",
+          "indexed": true,
+          "internalType": "address",
+          "name": "recipient",
+          "type": "address"
         },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "activator",
+          "type": "address"
+        }
       ],
-      name: "OwnershipTransferred",
-      type: "event",
+      "name": "NewTransaction",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "role",
-          type: "bytes32",
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
         },
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "previousAdminRole",
-          type: "bytes32",
-        },
-        {
-          indexed: true,
-          internalType: "bytes32",
-          name: "newAdminRole",
-          type: "bytes32",
-        },
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
       ],
-      name: "RoleAdminChanged",
-      type: "event",
+      "name": "OwnershipTransferStarted",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "role",
-          type: "bytes32",
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
         },
         {
-          indexed: true,
-          internalType: "address",
-          name: "account",
-          type: "address",
-        },
-        {
-          indexed: true,
-          internalType: "address",
-          name: "sender",
-          type: "address",
-        },
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
       ],
-      name: "RoleGranted",
-      type: "event",
+      "name": "OwnershipTransferred",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "role",
-          type: "bytes32",
-        },
-        {
-          indexed: true,
-          internalType: "address",
-          name: "account",
-          type: "address",
-        },
-        {
-          indexed: true,
-          internalType: "address",
-          name: "sender",
-          type: "address",
-        },
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
+        }
       ],
-      name: "RoleRevoked",
-      type: "event",
+      "name": "ProcessIdlenessAccepted",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "txId",
-          type: "bytes32",
-        },
-        {
-          indexed: true,
-          internalType: "address",
-          name: "sender",
-          type: "address",
-        },
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
+        }
       ],
-      name: "SlashAppealSubmitted",
-      type: "event",
+      "name": "TransactionAccepted",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "tx_id",
-          type: "bytes32",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
         },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "leader",
+          "type": "address"
+        }
       ],
-      name: "TransactionAccepted",
-      type: "event",
+      "name": "TransactionActivated",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "txId",
-          type: "bytes32",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
         },
         {
-          indexed: true,
-          internalType: "address",
-          name: "leader",
-          type: "address",
-        },
+          "indexed": true,
+          "internalType": "address",
+          "name": "cancelledBy",
+          "type": "address"
+        }
       ],
-      name: "TransactionActivated",
-      type: "event",
+      "name": "TransactionCancelled",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "txId",
-          type: "bytes32",
-        },
-        {
-          indexed: true,
-          internalType: "address",
-          name: "sender",
-          type: "address",
-        },
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
+        }
       ],
-      name: "TransactionCancelled",
-      type: "event",
+      "name": "TransactionFinalizationFailed",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "tx_id",
-          type: "bytes32",
-        },
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
+        }
       ],
-      name: "TransactionFinalized",
-      type: "event",
+      "name": "TransactionFinalized",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "txId",
-          type: "bytes32",
-        },
-        {
-          indexed: true,
-          internalType: "address",
-          name: "oldValidator",
-          type: "address",
-        },
-        {
-          indexed: true,
-          internalType: "address",
-          name: "newValidator",
-          type: "address",
-        },
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
+        }
       ],
-      name: "TransactionIdleValidatorReplaced",
-      type: "event",
+      "name": "TransactionLeaderRevealed",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "txId",
-          type: "bytes32",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
         },
         {
-          indexed: true,
-          internalType: "uint256",
-          name: "validatorIndex",
-          type: "uint256",
-        },
+          "indexed": true,
+          "internalType": "address",
+          "name": "newLeader",
+          "type": "address"
+        }
       ],
-      name: "TransactionIdleValidatorReplacementFailed",
-      type: "event",
+      "name": "TransactionLeaderRotated",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "txId",
-          type: "bytes32",
-        },
-        {
-          indexed: true,
-          internalType: "address",
-          name: "newLeader",
-          type: "address",
-        },
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
+        }
       ],
-      name: "TransactionLeaderRotated",
-      type: "event",
+      "name": "TransactionLeaderTimeout",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "tx_id",
-          type: "bytes32",
-        },
+          "indexed": false,
+          "internalType": "bytes32[]",
+          "name": "txIds",
+          "type": "bytes32[]"
+        }
       ],
-      name: "TransactionLeaderTimeout",
-      type: "event",
+      "name": "TransactionNeedsRecomputation",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: false,
-          internalType: "bytes32[]",
-          name: "tx_ids",
-          type: "bytes32[]",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
         },
+        {
+          "indexed": false,
+          "internalType": "address[]",
+          "name": "validators",
+          "type": "address[]"
+        }
       ],
-      name: "TransactionNeedsRecomputation",
-      type: "event",
+      "name": "TransactionReceiptProposed",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "tx_id",
-          type: "bytes32",
-        },
-        {
-          indexed: false,
-          internalType: "address[]",
-          name: "validators",
-          type: "address[]",
-        },
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
+        }
       ],
-      name: "TransactionReceiptProposed",
-      type: "event",
+      "name": "TransactionUndetermined",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "tx_id",
-          type: "bytes32",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
         },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "tribunalIndex",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "validator",
+          "type": "address"
+        }
       ],
-      name: "TransactionUndetermined",
-      type: "event",
+      "name": "TribunalAppealVoteCommitted",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "txId",
-          type: "bytes32",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
         },
         {
-          indexed: true,
-          internalType: "address",
-          name: "validator",
-          type: "address",
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "tribunalIndex",
+          "type": "uint256"
         },
         {
-          indexed: false,
-          internalType: "bool",
-          name: "isLastVote",
-          type: "bool",
+          "indexed": true,
+          "internalType": "address",
+          "name": "validator",
+          "type": "address"
         },
+        {
+          "indexed": false,
+          "internalType": "enum ITransactions.VoteType",
+          "name": "voteType",
+          "type": "uint8"
+        }
       ],
-      name: "TribunalAppealVoteCommitted",
-      type: "event",
+      "name": "TribunalAppealVoteRevealed",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "txId",
-          type: "bytes32",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
         },
         {
-          indexed: true,
-          internalType: "address",
-          name: "validator",
-          type: "address",
+          "indexed": true,
+          "internalType": "address",
+          "name": "oldValidator",
+          "type": "address"
         },
         {
-          indexed: false,
-          internalType: "bool",
-          name: "isLastVote",
-          type: "bool",
+          "indexed": true,
+          "internalType": "address",
+          "name": "newValidator",
+          "type": "address"
         },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "validatorIndex",
+          "type": "uint256"
+        }
       ],
-      name: "TribunalAppealVoteRevealed",
-      type: "event",
+      "name": "ValidatorReplaced",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "txId",
-          type: "bytes32",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
         },
         {
-          indexed: true,
-          internalType: "address",
-          name: "validator",
-          type: "address",
+          "indexed": true,
+          "internalType": "address",
+          "name": "recipient",
+          "type": "address"
         },
         {
-          indexed: false,
-          internalType: "bool",
-          name: "isLastVote",
-          type: "bool",
-        },
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "value",
+          "type": "uint256"
+        }
       ],
-      name: "VoteCommitted",
-      type: "event",
+      "name": "ValueWithdrawalFailed",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "txId",
-          type: "bytes32",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
         },
         {
-          indexed: true,
-          internalType: "address",
-          name: "validator",
-          type: "address",
+          "indexed": true,
+          "internalType": "address",
+          "name": "validator",
+          "type": "address"
         },
         {
-          indexed: false,
-          internalType: "enum ITransactions.VoteType",
-          name: "voteType",
-          type: "uint8",
-        },
-        {
-          indexed: false,
-          internalType: "bool",
-          name: "isLastVote",
-          type: "bool",
-        },
-        {
-          indexed: false,
-          internalType: "enum ITransactions.ResultType",
-          name: "result",
-          type: "uint8",
-        },
+          "indexed": false,
+          "internalType": "bool",
+          "name": "isLastVote",
+          "type": "bool"
+        }
       ],
-      name: "VoteRevealed",
-      type: "event",
+      "name": "VoteCommitted",
+      "type": "event"
     },
     {
-      inputs: [],
-      name: "DEFAULT_ADMIN_ROLE",
-      outputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "",
-          type: "bytes32",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
         },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "validator",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "enum ITransactions.VoteType",
+          "name": "voteType",
+          "type": "uint8"
+        },
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "isLastVote",
+          "type": "bool"
+        },
+        {
+          "indexed": false,
+          "internalType": "enum ITransactions.ResultType",
+          "name": "result",
+          "type": "uint8"
+        }
       ],
-      stateMutability: "view",
-      type: "function",
+      "name": "VoteRevealed",
+      "type": "event"
     },
     {
-      inputs: [],
-      name: "acceptOwnership",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
-    },
-    {
-      inputs: [
+      "inputs": [],
+      "name": "EVENTS_BATCH_SIZE",
+      "outputs": [
         {
-          internalType: "bytes32",
-          name: "_txId",
-          type: "bytes32",
-        },
-        {
-          internalType: "bytes",
-          name: "_vrfProof",
-          type: "bytes",
-        },
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
       ],
-      name: "activateTransaction",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [],
+      "name": "VERSION",
+      "outputs": [
         {
-          internalType: "address",
-          name: "_sender",
-          type: "address",
-        },
-        {
-          internalType: "address",
-          name: "_recipient",
-          type: "address",
-        },
-        {
-          internalType: "uint256",
-          name: "_numOfInitialValidators",
-          type: "uint256",
-        },
-        {
-          internalType: "uint256",
-          name: "_maxRotations",
-          type: "uint256",
-        },
-        {
-          internalType: "bytes",
-          name: "_calldata",
-          type: "bytes",
-        },
-        {
-          internalType: "uint256",
-          name: "_validUntil",
-          type: "uint256",
-        },
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
       ],
-      name: "addTransaction",
-      outputs: [],
-      stateMutability: "payable",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
-        {
-          internalType: "bytes32",
-          name: "_txId",
-          type: "bytes32",
-        },
-      ],
-      name: "cancelTransaction",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
+      "inputs": [],
+      "name": "acceptOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "_txId",
-          type: "bytes32",
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
         },
         {
-          internalType: "bytes32",
-          name: "_commitHash",
-          type: "bytes32",
+          "internalType": "address",
+          "name": "_operator",
+          "type": "address"
         },
+        {
+          "internalType": "bytes",
+          "name": "_vrfProof",
+          "type": "bytes"
+        }
       ],
-      name: "commitTribunalAppealVote",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
+      "name": "activateTransaction",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "_txId",
-          type: "bytes32",
+          "internalType": "address",
+          "name": "_sender",
+          "type": "address"
         },
         {
-          internalType: "bytes32",
-          name: "_commitHash",
-          type: "bytes32",
-        },
-      ],
-      name: "commitVote",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
-    },
-    {
-      inputs: [],
-      name: "contracts",
-      outputs: [
-        {
-          internalType: "contract IGenManager",
-          name: "genManager",
-          type: "address",
+          "internalType": "address",
+          "name": "_recipient",
+          "type": "address"
         },
         {
-          internalType: "contract ITransactions",
-          name: "genTransactions",
-          type: "address",
+          "internalType": "uint256",
+          "name": "_numOfInitialValidators",
+          "type": "uint256"
         },
         {
-          internalType: "contract IQueues",
-          name: "genQueue",
-          type: "address",
+          "internalType": "uint256",
+          "name": "_maxRotations",
+          "type": "uint256"
         },
         {
-          internalType: "contract IGhostFactory",
-          name: "ghostFactory",
-          type: "address",
+          "internalType": "bytes",
+          "name": "_calldata",
+          "type": "bytes"
         },
         {
-          internalType: "contract IGenStaking",
-          name: "genStaking",
-          type: "address",
-        },
-        {
-          internalType: "contract IMessages",
-          name: "genMessages",
-          type: "address",
-        },
-        {
-          internalType: "contract IIdleness",
-          name: "idleness",
-          type: "address",
-        },
-        {
-          internalType: "contract ITribunalAppeal",
-          name: "tribunalAppeal",
-          type: "address",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
-    },
-    {
-      inputs: [
-        {
-          internalType: "address",
-          name: "_recipient",
-          type: "address",
-        },
-        {
-          internalType: "uint256",
-          name: "_value",
-          type: "uint256",
-        },
-        {
-          internalType: "bytes",
-          name: "_data",
-          type: "bytes",
-        },
-      ],
-      name: "executeMessage",
-      outputs: [
-        {
-          internalType: "bool",
-          name: "success",
-          type: "bool",
-        },
-      ],
-      stateMutability: "nonpayable",
-      type: "function",
-    },
-    {
-      inputs: [
-        {
-          internalType: "bytes32",
-          name: "_txId",
-          type: "bytes32",
-        },
-      ],
-      name: "finalizeTransaction",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
-    },
-    {
-      inputs: [],
-      name: "getContracts",
-      outputs: [
-        {
-          components: [
+          "components": [
             {
-              internalType: "contract IGenManager",
-              name: "genManager",
-              type: "address",
+              "internalType": "uint256",
+              "name": "leaderTimeoutFee",
+              "type": "uint256"
             },
             {
-              internalType: "contract ITransactions",
-              name: "genTransactions",
-              type: "address",
+              "internalType": "uint256",
+              "name": "validatorsTimeoutFee",
+              "type": "uint256"
             },
             {
-              internalType: "contract IQueues",
-              name: "genQueue",
-              type: "address",
+              "internalType": "uint256",
+              "name": "appealRounds",
+              "type": "uint256"
             },
             {
-              internalType: "contract IGhostFactory",
-              name: "ghostFactory",
-              type: "address",
+              "internalType": "uint256",
+              "name": "rollupStorageFee",
+              "type": "uint256"
             },
             {
-              internalType: "contract IGenStaking",
-              name: "genStaking",
-              type: "address",
+              "internalType": "uint256",
+              "name": "rollupGenVMFee",
+              "type": "uint256"
             },
             {
-              internalType: "contract IMessages",
-              name: "genMessages",
-              type: "address",
+              "internalType": "uint256",
+              "name": "totalMessageFees",
+              "type": "uint256"
             },
             {
-              internalType: "contract IIdleness",
-              name: "idleness",
-              type: "address",
-            },
-            {
-              internalType: "contract ITribunalAppeal",
-              name: "tribunalAppeal",
-              type: "address",
-            },
+              "internalType": "uint256[]",
+              "name": "rotations",
+              "type": "uint256[]"
+            }
           ],
-          internalType: "struct IConsensusMain.ExternalContracts",
-          name: "",
-          type: "tuple",
+          "internalType": "struct IFeeManager.FeesDistribution",
+          "name": "_feesDistribution",
+          "type": "tuple"
         },
+        {
+          "internalType": "uint256",
+          "name": "_validUntil",
+          "type": "uint256"
+        }
       ],
-      stateMutability: "view",
-      type: "function",
+      "name": "addTransaction",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [],
+      "name": "addressManager",
+      "outputs": [
         {
-          internalType: "bytes32",
-          name: "role",
-          type: "bytes32",
-        },
+          "internalType": "contract IAddressManager",
+          "name": "",
+          "type": "address"
+        }
       ],
-      name: "getRoleAdmin",
-      outputs: [
-        {
-          internalType: "bytes32",
-          name: "",
-          type: "bytes32",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "address",
-          name: "addr",
-          type: "address",
-        },
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
+        }
       ],
-      name: "ghostContracts",
-      outputs: [
-        {
-          internalType: "bool",
-          name: "isGhost",
-          type: "bool",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
+      "name": "cancelTransaction",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "role",
-          type: "bytes32",
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
         },
         {
-          internalType: "address",
-          name: "account",
-          type: "address",
+          "internalType": "uint256",
+          "name": "_tribunalIndex",
+          "type": "uint256"
         },
+        {
+          "internalType": "bytes32",
+          "name": "_commitHash",
+          "type": "bytes32"
+        }
       ],
-      name: "grantRole",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
+      "name": "commitTribunalAppealVote",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "role",
-          type: "bytes32",
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
         },
         {
-          internalType: "address",
-          name: "account",
-          type: "address",
+          "internalType": "bytes32",
+          "name": "_commitHash",
+          "type": "bytes32"
         },
+        {
+          "internalType": "uint256",
+          "name": "_validatorIndex",
+          "type": "uint256"
+        }
       ],
-      name: "hasRole",
-      outputs: [
-        {
-          internalType: "bool",
-          name: "",
-          type: "bool",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
+      "name": "commitVote",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      inputs: [],
-      name: "initialize",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
-    },
-    {
-      inputs: [],
-      name: "owner",
-      outputs: [
+      "inputs": [
         {
-          internalType: "address",
-          name: "",
-          type: "address",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
-    },
-    {
-      inputs: [],
-      name: "pendingOwner",
-      outputs: [
-        {
-          internalType: "address",
-          name: "",
-          type: "address",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
-    },
-    {
-      inputs: [
-        {
-          internalType: "address",
-          name: "recipient",
-          type: "address",
-        },
-      ],
-      name: "proceedPendingQueueProcessing",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
-    },
-    {
-      inputs: [
-        {
-          internalType: "bytes32",
-          name: "_txId",
-          type: "bytes32",
+          "internalType": "address",
+          "name": "_sender",
+          "type": "address"
         },
         {
-          internalType: "bytes",
-          name: "_txReceipt",
-          type: "bytes",
+          "internalType": "uint256",
+          "name": "_numOfInitialValidators",
+          "type": "uint256"
         },
         {
-          internalType: "uint256",
-          name: "_processingBlock",
-          type: "uint256",
+          "internalType": "uint256",
+          "name": "_maxRotations",
+          "type": "uint256"
         },
         {
-          components: [
+          "internalType": "bytes",
+          "name": "_calldata",
+          "type": "bytes"
+        },
+        {
+          "components": [
             {
-              internalType: "enum IMessages.MessageType",
-              name: "messageType",
-              type: "uint8",
+              "internalType": "uint256",
+              "name": "leaderTimeoutFee",
+              "type": "uint256"
             },
             {
-              internalType: "address",
-              name: "recipient",
-              type: "address",
+              "internalType": "uint256",
+              "name": "validatorsTimeoutFee",
+              "type": "uint256"
             },
             {
-              internalType: "uint256",
-              name: "value",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "appealRounds",
+              "type": "uint256"
             },
             {
-              internalType: "bytes",
-              name: "data",
-              type: "bytes",
+              "internalType": "uint256",
+              "name": "rollupStorageFee",
+              "type": "uint256"
             },
             {
-              internalType: "bool",
-              name: "onAcceptance",
-              type: "bool",
+              "internalType": "uint256",
+              "name": "rollupGenVMFee",
+              "type": "uint256"
             },
+            {
+              "internalType": "uint256",
+              "name": "totalMessageFees",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256[]",
+              "name": "rotations",
+              "type": "uint256[]"
+            }
           ],
-          internalType: "struct IMessages.SubmittedMessage[]",
-          name: "_messages",
-          type: "tuple[]",
+          "internalType": "struct IFeeManager.FeesDistribution",
+          "name": "_feesDistribution",
+          "type": "tuple"
         },
         {
-          internalType: "bytes",
-          name: "_vrfProof",
-          type: "bytes",
+          "internalType": "uint256",
+          "name": "_saltNonce",
+          "type": "uint256"
         },
+        {
+          "internalType": "uint256",
+          "name": "_validUntil",
+          "type": "uint256"
+        }
       ],
-      name: "proposeReceipt",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
+      "name": "deploySalted",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
     },
     {
-      inputs: [],
-      name: "renounceOwnership",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_recipient",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_value",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes",
+          "name": "_data",
+          "type": "bytes"
+        }
+      ],
+      "name": "executeMessage",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "success",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "role",
-          type: "bytes32",
-        },
-        {
-          internalType: "address",
-          name: "callerConfirmation",
-          type: "address",
-        },
+          "internalType": "bytes32[]",
+          "name": "_txIds",
+          "type": "bytes32[]"
+        }
       ],
-      name: "renounceRole",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
+      "name": "finalizeIdlenessTxs",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "_txId",
-          type: "bytes32",
-        },
-        {
-          internalType: "bytes32",
-          name: "_voteHash",
-          type: "bytes32",
-        },
-        {
-          internalType: "enum ITribunalAppeal.TribunalVoteType",
-          name: "_voteType",
-          type: "uint8",
-        },
-        {
-          internalType: "uint256",
-          name: "_nonce",
-          type: "uint256",
-        },
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
+        }
       ],
-      name: "revealTribunalAppealVote",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
+      "name": "finalizeTransaction",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "_txId",
-          type: "bytes32",
-        },
-        {
-          internalType: "bytes32",
-          name: "_voteHash",
-          type: "bytes32",
-        },
-        {
-          internalType: "enum ITransactions.VoteType",
-          name: "_voteType",
-          type: "uint8",
-        },
-        {
-          internalType: "uint256",
-          name: "_nonce",
-          type: "uint256",
-        },
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
+        }
       ],
-      name: "revealVote",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
+      "name": "flushExternalMessages",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [],
+      "name": "getAddressManager",
+      "outputs": [
         {
-          internalType: "bytes32",
-          name: "role",
-          type: "bytes32",
-        },
-        {
-          internalType: "address",
-          name: "account",
-          type: "address",
-        },
+          "internalType": "contract IAddressManager",
+          "name": "",
+          "type": "address"
+        }
       ],
-      name: "revokeRole",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "address",
-          name: "_ghostFactory",
-          type: "address",
-        },
-        {
-          internalType: "address",
-          name: "_genManager",
-          type: "address",
-        },
-        {
-          internalType: "address",
-          name: "_genTransactions",
-          type: "address",
-        },
-        {
-          internalType: "address",
-          name: "_genQueue",
-          type: "address",
-        },
-        {
-          internalType: "address",
-          name: "_genStaking",
-          type: "address",
-        },
-        {
-          internalType: "address",
-          name: "_genMessages",
-          type: "address",
-        },
-        {
-          internalType: "address",
-          name: "_idleness",
-          type: "address",
-        },
-        {
-          internalType: "address",
-          name: "_tribunalAppeal",
-          type: "address",
-        },
+          "internalType": "bytes32",
+          "name": "txId",
+          "type": "bytes32"
+        }
       ],
-      name: "setExternalContracts",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
+      "name": "getPendingTransactionValue",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "_txId",
-          type: "bytes32",
-        },
+          "internalType": "address",
+          "name": "_addressManager",
+          "type": "address"
+        }
       ],
-      name: "submitAppeal",
-      outputs: [],
-      stateMutability: "payable",
-      type: "function",
+      "name": "initialize",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "_txId",
-          type: "bytes32",
-        },
+          "internalType": "address",
+          "name": "addr",
+          "type": "address"
+        }
       ],
-      name: "submitSlashAppeal",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
+      "name": "isGhostContract",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes4",
-          name: "interfaceId",
-          type: "bytes4",
-        },
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
+        }
       ],
-      name: "supportsInterface",
-      outputs: [
-        {
-          internalType: "bool",
-          name: "",
-          type: "bool",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
+      "name": "leaderIdleness",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "address",
-          name: "newOwner",
-          type: "address",
-        },
+          "components": [
+            {
+              "internalType": "bytes32",
+              "name": "txId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint256",
+              "name": "saltAsAValidator",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "txExecutionHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "messagesAndOtherFieldsHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "otherExecutionFieldsHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "enum ITransactions.VoteType",
+              "name": "resultValue",
+              "type": "uint8"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "enum IMessages.MessageType",
+                  "name": "messageType",
+                  "type": "uint8"
+                },
+                {
+                  "internalType": "address",
+                  "name": "recipient",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "value",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "bytes",
+                  "name": "data",
+                  "type": "bytes"
+                },
+                {
+                  "internalType": "bool",
+                  "name": "onAcceptance",
+                  "type": "bool"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "saltNonce",
+                  "type": "uint256"
+                }
+              ],
+              "internalType": "struct IMessages.SubmittedMessage[]",
+              "name": "messages",
+              "type": "tuple[]"
+            }
+          ],
+          "internalType": "struct IConsensusMainWithFees.LeaderRevealVoteParams",
+          "name": "leaderRevealVoteParams",
+          "type": "tuple"
+        }
       ],
-      name: "transferOwnership",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
+      "name": "leaderRevealVote",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
+    {
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "pendingOwner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "processIdleness",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "_txExecutionHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_processingBlock",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address",
+          "name": "_operator",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes",
+          "name": "_eqBlocksOutputs",
+          "type": "bytes"
+        },
+        {
+          "internalType": "bytes",
+          "name": "_vrfProof",
+          "type": "bytes"
+        }
+      ],
+      "name": "proposeReceipt",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "ghost",
+          "type": "address"
+        }
+      ],
+      "name": "registerGhostContract",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "renounceOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_tribunalIndex",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "_voteHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "enum ITransactions.VoteType",
+          "name": "_voteType",
+          "type": "uint8"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "_otherExecutionFieldsHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_nonce",
+          "type": "uint256"
+        }
+      ],
+      "name": "revealTribunalAppealVote",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "_voteHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "enum ITransactions.VoteType",
+          "name": "_voteType",
+          "type": "uint8"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "_otherExecutionFieldsHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_nonce",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "_validatorIndex",
+          "type": "uint256"
+        }
+      ],
+      "name": "revealVote",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "_addressManager",
+          "type": "address"
+        }
+      ],
+      "name": "setAddressManager",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "submitAppeal",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
+        },
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "leaderTimeoutFee",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "validatorsTimeoutFee",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "appealRounds",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "rollupStorageFee",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "rollupGenVMFee",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "totalMessageFees",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256[]",
+              "name": "rotations",
+              "type": "uint256[]"
+            }
+          ],
+          "internalType": "struct IFeeManager.FeesDistribution",
+          "name": "_feesDistribution",
+          "type": "tuple"
+        }
+      ],
+      "name": "topUpAndSubmitAppeal",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
+        },
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "leaderTimeoutFee",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "validatorsTimeoutFee",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "appealRounds",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "rollupStorageFee",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "rollupGenVMFee",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "totalMessageFees",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256[]",
+              "name": "rotations",
+              "type": "uint256[]"
+            }
+          ],
+          "internalType": "struct IFeeManager.FeesDistribution",
+          "name": "_feesDistribution",
+          "type": "tuple"
+        }
+      ],
+      "name": "topUpFees",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
+      ],
+      "name": "transferOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "stateMutability": "payable",
+      "type": "receive"
+    }
   ],
   bytecode: "",
 };
@@ -1410,2600 +1552,1965 @@ const CONSENSUS_DATA_CONTRACT = {
   address: "0x0D9d1d74d72Fa5eB94bcf746C8FCcb312a722c9B" as Address,
   abi: [
     {
-      inputs: [],
-      name: "AccessControlBadConfirmation",
-      type: "error",
+      "inputs": [],
+      "name": "AccessControlBadConfirmation",
+      "type": "error"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "address",
-          name: "account",
-          type: "address",
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
         },
         {
-          internalType: "bytes32",
-          name: "neededRole",
-          type: "bytes32",
-        },
+          "internalType": "bytes32",
+          "name": "neededRole",
+          "type": "bytes32"
+        }
       ],
-      name: "AccessControlUnauthorizedAccount",
-      type: "error",
+      "name": "AccessControlUnauthorizedAccount",
+      "type": "error"
     },
     {
-      inputs: [],
-      name: "InvalidInitialization",
-      type: "error",
+      "inputs": [],
+      "name": "InvalidInitialization",
+      "type": "error"
     },
     {
-      inputs: [],
-      name: "NotInitializing",
-      type: "error",
+      "inputs": [],
+      "name": "NotInitializing",
+      "type": "error"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "address",
-          name: "owner",
-          type: "address",
-        },
+          "internalType": "address",
+          "name": "owner",
+          "type": "address"
+        }
       ],
-      name: "OwnableInvalidOwner",
-      type: "error",
+      "name": "OwnableInvalidOwner",
+      "type": "error"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "address",
-          name: "account",
-          type: "address",
-        },
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
       ],
-      name: "OwnableUnauthorizedAccount",
-      type: "error",
+      "name": "OwnableUnauthorizedAccount",
+      "type": "error"
     },
     {
-      inputs: [],
-      name: "ReentrancyGuardReentrantCall",
-      type: "error",
+      "inputs": [],
+      "name": "ReentrancyGuardReentrantCall",
+      "type": "error"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: false,
-          internalType: "uint64",
-          name: "version",
-          type: "uint64",
-        },
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "version",
+          "type": "uint64"
+        }
       ],
-      name: "Initialized",
-      type: "event",
+      "name": "Initialized",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "address",
-          name: "previousOwner",
-          type: "address",
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
         },
         {
-          indexed: true,
-          internalType: "address",
-          name: "newOwner",
-          type: "address",
-        },
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
       ],
-      name: "OwnershipTransferStarted",
-      type: "event",
+      "name": "OwnershipTransferStarted",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "address",
-          name: "previousOwner",
-          type: "address",
+          "indexed": true,
+          "internalType": "address",
+          "name": "previousOwner",
+          "type": "address"
         },
         {
-          indexed: true,
-          internalType: "address",
-          name: "newOwner",
-          type: "address",
-        },
+          "indexed": true,
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
       ],
-      name: "OwnershipTransferred",
-      type: "event",
+      "name": "OwnershipTransferred",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "role",
-          type: "bytes32",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "role",
+          "type": "bytes32"
         },
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "previousAdminRole",
-          type: "bytes32",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "previousAdminRole",
+          "type": "bytes32"
         },
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "newAdminRole",
-          type: "bytes32",
-        },
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "newAdminRole",
+          "type": "bytes32"
+        }
       ],
-      name: "RoleAdminChanged",
-      type: "event",
+      "name": "RoleAdminChanged",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "role",
-          type: "bytes32",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "role",
+          "type": "bytes32"
         },
         {
-          indexed: true,
-          internalType: "address",
-          name: "account",
-          type: "address",
+          "indexed": true,
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
         },
         {
-          indexed: true,
-          internalType: "address",
-          name: "sender",
-          type: "address",
-        },
+          "indexed": true,
+          "internalType": "address",
+          "name": "sender",
+          "type": "address"
+        }
       ],
-      name: "RoleGranted",
-      type: "event",
+      "name": "RoleGranted",
+      "type": "event"
     },
     {
-      anonymous: false,
-      inputs: [
+      "anonymous": false,
+      "inputs": [
         {
-          indexed: true,
-          internalType: "bytes32",
-          name: "role",
-          type: "bytes32",
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "role",
+          "type": "bytes32"
         },
         {
-          indexed: true,
-          internalType: "address",
-          name: "account",
-          type: "address",
+          "indexed": true,
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
         },
         {
-          indexed: true,
-          internalType: "address",
-          name: "sender",
-          type: "address",
-        },
+          "indexed": true,
+          "internalType": "address",
+          "name": "sender",
+          "type": "address"
+        }
       ],
-      name: "RoleRevoked",
-      type: "event",
+      "name": "RoleRevoked",
+      "type": "event"
     },
     {
-      inputs: [],
-      name: "DEFAULT_ADMIN_ROLE",
-      outputs: [
+      "inputs": [],
+      "name": "DEFAULT_ADMIN_ROLE",
+      "outputs": [
         {
-          internalType: "bytes32",
-          name: "",
-          type: "bytes32",
-        },
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
       ],
-      stateMutability: "view",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [],
-      name: "acceptOwnership",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
+      "inputs": [],
+      "name": "acceptOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [],
+      "name": "addressManager",
+      "outputs": [
         {
-          internalType: "bytes32",
-          name: "_txId",
-          type: "bytes32",
-        },
-        {
-          internalType: "uint256",
-          name: "_currentTimestamp",
-          type: "uint256",
-        },
+          "internalType": "contract IAddressManager",
+          "name": "",
+          "type": "address"
+        }
       ],
-      name: "canFinalize",
-      outputs: [
-        {
-          internalType: "bool",
-          name: "",
-          type: "bool",
-        },
-        {
-          internalType: "uint256",
-          name: "",
-          type: "uint256",
-        },
-        {
-          internalType: "uint256",
-          name: "",
-          type: "uint256",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [],
-      name: "consensusMain",
-      outputs: [
+      "inputs": [
         {
-          internalType: "contract IConsensusMain",
-          name: "",
-          type: "address",
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
         },
+        {
+          "internalType": "uint256",
+          "name": "_currentTimestamp",
+          "type": "uint256"
+        }
       ],
-      stateMutability: "view",
-      type: "function",
+      "name": "canFinalize",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "_tx_id",
-          type: "bytes32",
-        },
+          "internalType": "address",
+          "name": "recipient",
+          "type": "address"
+        }
       ],
-      name: "getLastAppealResult",
-      outputs: [
+      "name": "getLatestAcceptedTransaction",
+      "outputs": [
         {
-          internalType: "enum ITransactions.ResultType",
-          name: "",
-          type: "uint8",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
-    },
-    {
-      inputs: [
-        {
-          internalType: "address",
-          name: "recipient",
-          type: "address",
-        },
-      ],
-      name: "getLatestAcceptedTransaction",
-      outputs: [
-        {
-          components: [
+          "components": [
             {
-              internalType: "uint256",
-              name: "currentTimestamp",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "currentTimestamp",
+              "type": "uint256"
             },
             {
-              internalType: "address",
-              name: "sender",
-              type: "address",
+              "internalType": "address",
+              "name": "sender",
+              "type": "address"
             },
             {
-              internalType: "address",
-              name: "recipient",
-              type: "address",
+              "internalType": "address",
+              "name": "recipient",
+              "type": "address"
             },
             {
-              internalType: "uint256",
-              name: "numOfInitialValidators",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "initialRotations",
+              "type": "uint256"
             },
             {
-              internalType: "uint256",
-              name: "txSlot",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "txSlot",
+              "type": "uint256"
             },
             {
-              internalType: "uint256",
-              name: "createdTimestamp",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "createdTimestamp",
+              "type": "uint256"
             },
             {
-              internalType: "uint256",
-              name: "lastVoteTimestamp",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "lastVoteTimestamp",
+              "type": "uint256"
             },
             {
-              internalType: "bytes32",
-              name: "randomSeed",
-              type: "bytes32",
+              "internalType": "bytes32",
+              "name": "randomSeed",
+              "type": "bytes32"
             },
             {
-              internalType: "enum ITransactions.ResultType",
-              name: "result",
-              type: "uint8",
+              "internalType": "enum ITransactions.ResultType",
+              "name": "result",
+              "type": "uint8"
             },
             {
-              internalType: "bytes",
-              name: "txData",
-              type: "bytes",
+              "internalType": "bytes32",
+              "name": "txExecutionHash",
+              "type": "bytes32"
             },
             {
-              internalType: "bytes",
-              name: "txReceipt",
-              type: "bytes",
+              "internalType": "bytes",
+              "name": "txCalldata",
+              "type": "bytes"
             },
             {
-              components: [
+              "internalType": "bytes",
+              "name": "eqBlocksOutputs",
+              "type": "bytes"
+            },
+            {
+              "components": [
                 {
-                  internalType: "enum IMessages.MessageType",
-                  name: "messageType",
-                  type: "uint8",
+                  "internalType": "enum IMessages.MessageType",
+                  "name": "messageType",
+                  "type": "uint8"
                 },
                 {
-                  internalType: "address",
-                  name: "recipient",
-                  type: "address",
+                  "internalType": "address",
+                  "name": "recipient",
+                  "type": "address"
                 },
                 {
-                  internalType: "uint256",
-                  name: "value",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "value",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "bytes",
-                  name: "data",
-                  type: "bytes",
+                  "internalType": "bytes",
+                  "name": "data",
+                  "type": "bytes"
                 },
                 {
-                  internalType: "bool",
-                  name: "onAcceptance",
-                  type: "bool",
+                  "internalType": "bool",
+                  "name": "onAcceptance",
+                  "type": "bool"
                 },
+                {
+                  "internalType": "uint256",
+                  "name": "saltNonce",
+                  "type": "uint256"
+                }
               ],
-              internalType: "struct IMessages.SubmittedMessage[]",
-              name: "messages",
-              type: "tuple[]",
+              "internalType": "struct IMessages.SubmittedMessage[]",
+              "name": "messages",
+              "type": "tuple[]"
             },
             {
-              internalType: "enum IQueues.QueueType",
-              name: "queueType",
-              type: "uint8",
+              "internalType": "enum IQueues.QueueType",
+              "name": "queueType",
+              "type": "uint8"
             },
             {
-              internalType: "uint256",
-              name: "queuePosition",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "queuePosition",
+              "type": "uint256"
             },
             {
-              internalType: "address",
-              name: "activator",
-              type: "address",
+              "internalType": "address",
+              "name": "activator",
+              "type": "address"
             },
             {
-              internalType: "address",
-              name: "lastLeader",
-              type: "address",
+              "internalType": "address",
+              "name": "lastLeader",
+              "type": "address"
             },
             {
-              internalType: "enum ITransactions.TransactionStatus",
-              name: "status",
-              type: "uint8",
+              "internalType": "enum ITransactions.TransactionStatus",
+              "name": "status",
+              "type": "uint8"
             },
             {
-              internalType: "bytes32",
-              name: "txId",
-              type: "bytes32",
+              "internalType": "bytes32",
+              "name": "txId",
+              "type": "bytes32"
             },
             {
-              components: [
+              "components": [
                 {
-                  internalType: "uint256",
-                  name: "activationBlock",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "activationBlock",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "processingBlock",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "processingBlock",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "proposalBlock",
-                  type: "uint256",
-                },
+                  "internalType": "uint256",
+                  "name": "proposalBlock",
+                  "type": "uint256"
+                }
               ],
-              internalType: "struct ITransactions.ReadStateBlockRange",
-              name: "readStateBlockRange",
-              type: "tuple",
+              "internalType": "struct ITransactions.ReadStateBlockRange",
+              "name": "readStateBlockRange",
+              "type": "tuple"
             },
             {
-              internalType: "uint256",
-              name: "numOfRounds",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "numOfRounds",
+              "type": "uint256"
             },
             {
-              components: [
+              "components": [
                 {
-                  internalType: "uint256",
-                  name: "round",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "round",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "leaderIndex",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "leaderIndex",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "votesCommitted",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "votesCommitted",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "votesRevealed",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "votesRevealed",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "appealBond",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "appealBond",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "rotationsLeft",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "rotationsLeft",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "enum ITransactions.ResultType",
-                  name: "result",
-                  type: "uint8",
+                  "internalType": "enum ITransactions.ResultType",
+                  "name": "result",
+                  "type": "uint8"
                 },
                 {
-                  internalType: "address[]",
-                  name: "roundValidators",
-                  type: "address[]",
+                  "internalType": "address[]",
+                  "name": "roundValidators",
+                  "type": "address[]"
                 },
                 {
-                  internalType: "bytes32[]",
-                  name: "validatorVotesHash",
-                  type: "bytes32[]",
+                  "internalType": "enum ITransactions.VoteType[]",
+                  "name": "validatorVotes",
+                  "type": "uint8[]"
                 },
                 {
-                  internalType: "enum ITransactions.VoteType[]",
-                  name: "validatorVotes",
-                  type: "uint8[]",
+                  "internalType": "bytes32[]",
+                  "name": "validatorVotesHash",
+                  "type": "bytes32[]"
                 },
+                {
+                  "internalType": "bytes32[]",
+                  "name": "validatorResultHash",
+                  "type": "bytes32[]"
+                }
               ],
-              internalType: "struct ITransactions.RoundData",
-              name: "lastRound",
-              type: "tuple",
+              "internalType": "struct ITransactions.RoundData",
+              "name": "lastRound",
+              "type": "tuple"
             },
+            {
+              "internalType": "address[]",
+              "name": "consumedValidators",
+              "type": "address[]"
+            }
           ],
-          internalType: "struct ConsensusData.TransactionData",
-          name: "txData",
-          type: "tuple",
-        },
+          "internalType": "struct ConsensusData.TransactionData",
+          "name": "inputData",
+          "type": "tuple"
+        }
       ],
-      stateMutability: "view",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "address",
-          name: "recipient",
-          type: "address",
+          "internalType": "address",
+          "name": "recipient",
+          "type": "address"
         },
         {
-          internalType: "uint256",
-          name: "startIndex",
-          type: "uint256",
+          "internalType": "uint256",
+          "name": "startIndex",
+          "type": "uint256"
         },
         {
-          internalType: "uint256",
-          name: "pageSize",
-          type: "uint256",
-        },
+          "internalType": "uint256",
+          "name": "pageSize",
+          "type": "uint256"
+        }
       ],
-      name: "getLatestAcceptedTransactions",
-      outputs: [
+      "name": "getLatestAcceptedTransactions",
+      "outputs": [
         {
-          components: [
+          "components": [
             {
-              internalType: "uint256",
-              name: "currentTimestamp",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "currentTimestamp",
+              "type": "uint256"
             },
             {
-              internalType: "address",
-              name: "sender",
-              type: "address",
+              "internalType": "address",
+              "name": "sender",
+              "type": "address"
             },
             {
-              internalType: "address",
-              name: "recipient",
-              type: "address",
+              "internalType": "address",
+              "name": "recipient",
+              "type": "address"
             },
             {
-              internalType: "uint256",
-              name: "numOfInitialValidators",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "initialRotations",
+              "type": "uint256"
             },
             {
-              internalType: "uint256",
-              name: "txSlot",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "txSlot",
+              "type": "uint256"
             },
             {
-              internalType: "uint256",
-              name: "createdTimestamp",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "createdTimestamp",
+              "type": "uint256"
             },
             {
-              internalType: "uint256",
-              name: "lastVoteTimestamp",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "lastVoteTimestamp",
+              "type": "uint256"
             },
             {
-              internalType: "bytes32",
-              name: "randomSeed",
-              type: "bytes32",
+              "internalType": "bytes32",
+              "name": "randomSeed",
+              "type": "bytes32"
             },
             {
-              internalType: "enum ITransactions.ResultType",
-              name: "result",
-              type: "uint8",
+              "internalType": "enum ITransactions.ResultType",
+              "name": "result",
+              "type": "uint8"
             },
             {
-              internalType: "bytes",
-              name: "txData",
-              type: "bytes",
+              "internalType": "bytes32",
+              "name": "txExecutionHash",
+              "type": "bytes32"
             },
             {
-              internalType: "bytes",
-              name: "txReceipt",
-              type: "bytes",
+              "internalType": "bytes",
+              "name": "txCalldata",
+              "type": "bytes"
             },
             {
-              components: [
+              "internalType": "bytes",
+              "name": "eqBlocksOutputs",
+              "type": "bytes"
+            },
+            {
+              "components": [
                 {
-                  internalType: "enum IMessages.MessageType",
-                  name: "messageType",
-                  type: "uint8",
+                  "internalType": "enum IMessages.MessageType",
+                  "name": "messageType",
+                  "type": "uint8"
                 },
                 {
-                  internalType: "address",
-                  name: "recipient",
-                  type: "address",
+                  "internalType": "address",
+                  "name": "recipient",
+                  "type": "address"
                 },
                 {
-                  internalType: "uint256",
-                  name: "value",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "value",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "bytes",
-                  name: "data",
-                  type: "bytes",
+                  "internalType": "bytes",
+                  "name": "data",
+                  "type": "bytes"
                 },
                 {
-                  internalType: "bool",
-                  name: "onAcceptance",
-                  type: "bool",
+                  "internalType": "bool",
+                  "name": "onAcceptance",
+                  "type": "bool"
                 },
+                {
+                  "internalType": "uint256",
+                  "name": "saltNonce",
+                  "type": "uint256"
+                }
               ],
-              internalType: "struct IMessages.SubmittedMessage[]",
-              name: "messages",
-              type: "tuple[]",
+              "internalType": "struct IMessages.SubmittedMessage[]",
+              "name": "messages",
+              "type": "tuple[]"
             },
             {
-              internalType: "enum IQueues.QueueType",
-              name: "queueType",
-              type: "uint8",
+              "internalType": "enum IQueues.QueueType",
+              "name": "queueType",
+              "type": "uint8"
             },
             {
-              internalType: "uint256",
-              name: "queuePosition",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "queuePosition",
+              "type": "uint256"
             },
             {
-              internalType: "address",
-              name: "activator",
-              type: "address",
+              "internalType": "address",
+              "name": "activator",
+              "type": "address"
             },
             {
-              internalType: "address",
-              name: "lastLeader",
-              type: "address",
+              "internalType": "address",
+              "name": "lastLeader",
+              "type": "address"
             },
             {
-              internalType: "enum ITransactions.TransactionStatus",
-              name: "status",
-              type: "uint8",
+              "internalType": "enum ITransactions.TransactionStatus",
+              "name": "status",
+              "type": "uint8"
             },
             {
-              internalType: "bytes32",
-              name: "txId",
-              type: "bytes32",
+              "internalType": "bytes32",
+              "name": "txId",
+              "type": "bytes32"
             },
             {
-              components: [
+              "components": [
                 {
-                  internalType: "uint256",
-                  name: "activationBlock",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "activationBlock",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "processingBlock",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "processingBlock",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "proposalBlock",
-                  type: "uint256",
-                },
+                  "internalType": "uint256",
+                  "name": "proposalBlock",
+                  "type": "uint256"
+                }
               ],
-              internalType: "struct ITransactions.ReadStateBlockRange",
-              name: "readStateBlockRange",
-              type: "tuple",
+              "internalType": "struct ITransactions.ReadStateBlockRange",
+              "name": "readStateBlockRange",
+              "type": "tuple"
             },
             {
-              internalType: "uint256",
-              name: "numOfRounds",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "numOfRounds",
+              "type": "uint256"
             },
             {
-              components: [
+              "components": [
                 {
-                  internalType: "uint256",
-                  name: "round",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "round",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "leaderIndex",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "leaderIndex",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "votesCommitted",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "votesCommitted",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "votesRevealed",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "votesRevealed",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "appealBond",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "appealBond",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "rotationsLeft",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "rotationsLeft",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "enum ITransactions.ResultType",
-                  name: "result",
-                  type: "uint8",
+                  "internalType": "enum ITransactions.ResultType",
+                  "name": "result",
+                  "type": "uint8"
                 },
                 {
-                  internalType: "address[]",
-                  name: "roundValidators",
-                  type: "address[]",
+                  "internalType": "address[]",
+                  "name": "roundValidators",
+                  "type": "address[]"
                 },
                 {
-                  internalType: "bytes32[]",
-                  name: "validatorVotesHash",
-                  type: "bytes32[]",
+                  "internalType": "enum ITransactions.VoteType[]",
+                  "name": "validatorVotes",
+                  "type": "uint8[]"
                 },
                 {
-                  internalType: "enum ITransactions.VoteType[]",
-                  name: "validatorVotes",
-                  type: "uint8[]",
+                  "internalType": "bytes32[]",
+                  "name": "validatorVotesHash",
+                  "type": "bytes32[]"
                 },
+                {
+                  "internalType": "bytes32[]",
+                  "name": "validatorResultHash",
+                  "type": "bytes32[]"
+                }
               ],
-              internalType: "struct ITransactions.RoundData",
-              name: "lastRound",
-              type: "tuple",
+              "internalType": "struct ITransactions.RoundData",
+              "name": "lastRound",
+              "type": "tuple"
             },
+            {
+              "internalType": "address[]",
+              "name": "consumedValidators",
+              "type": "address[]"
+            }
           ],
-          internalType: "struct ConsensusData.TransactionData[]",
-          name: "",
-          type: "tuple[]",
-        },
+          "internalType": "struct ConsensusData.TransactionData[]",
+          "name": "",
+          "type": "tuple[]"
+        }
       ],
-      stateMutability: "view",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "address",
-          name: "recipient",
-          type: "address",
-        },
+          "internalType": "address",
+          "name": "recipient",
+          "type": "address"
+        }
       ],
-      name: "getLatestAcceptedTxCount",
-      outputs: [
+      "name": "getLatestAcceptedTxCount",
+      "outputs": [
         {
-          internalType: "uint256",
-          name: "",
-          type: "uint256",
-        },
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
       ],
-      stateMutability: "view",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "address",
-          name: "recipient",
-          type: "address",
-        },
+          "internalType": "address",
+          "name": "recipient",
+          "type": "address"
+        }
       ],
-      name: "getLatestFinalizedTransaction",
-      outputs: [
+      "name": "getLatestFinalizedTransaction",
+      "outputs": [
         {
-          components: [
+          "components": [
             {
-              internalType: "uint256",
-              name: "currentTimestamp",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "currentTimestamp",
+              "type": "uint256"
             },
             {
-              internalType: "address",
-              name: "sender",
-              type: "address",
+              "internalType": "address",
+              "name": "sender",
+              "type": "address"
             },
             {
-              internalType: "address",
-              name: "recipient",
-              type: "address",
+              "internalType": "address",
+              "name": "recipient",
+              "type": "address"
             },
             {
-              internalType: "uint256",
-              name: "numOfInitialValidators",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "initialRotations",
+              "type": "uint256"
             },
             {
-              internalType: "uint256",
-              name: "txSlot",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "txSlot",
+              "type": "uint256"
             },
             {
-              internalType: "uint256",
-              name: "createdTimestamp",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "createdTimestamp",
+              "type": "uint256"
             },
             {
-              internalType: "uint256",
-              name: "lastVoteTimestamp",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "lastVoteTimestamp",
+              "type": "uint256"
             },
             {
-              internalType: "bytes32",
-              name: "randomSeed",
-              type: "bytes32",
+              "internalType": "bytes32",
+              "name": "randomSeed",
+              "type": "bytes32"
             },
             {
-              internalType: "enum ITransactions.ResultType",
-              name: "result",
-              type: "uint8",
+              "internalType": "enum ITransactions.ResultType",
+              "name": "result",
+              "type": "uint8"
             },
             {
-              internalType: "bytes",
-              name: "txData",
-              type: "bytes",
+              "internalType": "bytes32",
+              "name": "txExecutionHash",
+              "type": "bytes32"
             },
             {
-              internalType: "bytes",
-              name: "txReceipt",
-              type: "bytes",
+              "internalType": "bytes",
+              "name": "txCalldata",
+              "type": "bytes"
             },
             {
-              components: [
+              "internalType": "bytes",
+              "name": "eqBlocksOutputs",
+              "type": "bytes"
+            },
+            {
+              "components": [
                 {
-                  internalType: "enum IMessages.MessageType",
-                  name: "messageType",
-                  type: "uint8",
+                  "internalType": "enum IMessages.MessageType",
+                  "name": "messageType",
+                  "type": "uint8"
                 },
                 {
-                  internalType: "address",
-                  name: "recipient",
-                  type: "address",
+                  "internalType": "address",
+                  "name": "recipient",
+                  "type": "address"
                 },
                 {
-                  internalType: "uint256",
-                  name: "value",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "value",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "bytes",
-                  name: "data",
-                  type: "bytes",
+                  "internalType": "bytes",
+                  "name": "data",
+                  "type": "bytes"
                 },
                 {
-                  internalType: "bool",
-                  name: "onAcceptance",
-                  type: "bool",
+                  "internalType": "bool",
+                  "name": "onAcceptance",
+                  "type": "bool"
                 },
+                {
+                  "internalType": "uint256",
+                  "name": "saltNonce",
+                  "type": "uint256"
+                }
               ],
-              internalType: "struct IMessages.SubmittedMessage[]",
-              name: "messages",
-              type: "tuple[]",
+              "internalType": "struct IMessages.SubmittedMessage[]",
+              "name": "messages",
+              "type": "tuple[]"
             },
             {
-              internalType: "enum IQueues.QueueType",
-              name: "queueType",
-              type: "uint8",
+              "internalType": "enum IQueues.QueueType",
+              "name": "queueType",
+              "type": "uint8"
             },
             {
-              internalType: "uint256",
-              name: "queuePosition",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "queuePosition",
+              "type": "uint256"
             },
             {
-              internalType: "address",
-              name: "activator",
-              type: "address",
+              "internalType": "address",
+              "name": "activator",
+              "type": "address"
             },
             {
-              internalType: "address",
-              name: "lastLeader",
-              type: "address",
+              "internalType": "address",
+              "name": "lastLeader",
+              "type": "address"
             },
             {
-              internalType: "enum ITransactions.TransactionStatus",
-              name: "status",
-              type: "uint8",
+              "internalType": "enum ITransactions.TransactionStatus",
+              "name": "status",
+              "type": "uint8"
             },
             {
-              internalType: "bytes32",
-              name: "txId",
-              type: "bytes32",
+              "internalType": "bytes32",
+              "name": "txId",
+              "type": "bytes32"
             },
             {
-              components: [
+              "components": [
                 {
-                  internalType: "uint256",
-                  name: "activationBlock",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "activationBlock",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "processingBlock",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "processingBlock",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "proposalBlock",
-                  type: "uint256",
-                },
+                  "internalType": "uint256",
+                  "name": "proposalBlock",
+                  "type": "uint256"
+                }
               ],
-              internalType: "struct ITransactions.ReadStateBlockRange",
-              name: "readStateBlockRange",
-              type: "tuple",
+              "internalType": "struct ITransactions.ReadStateBlockRange",
+              "name": "readStateBlockRange",
+              "type": "tuple"
             },
             {
-              internalType: "uint256",
-              name: "numOfRounds",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "numOfRounds",
+              "type": "uint256"
             },
             {
-              components: [
+              "components": [
                 {
-                  internalType: "uint256",
-                  name: "round",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "round",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "leaderIndex",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "leaderIndex",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "votesCommitted",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "votesCommitted",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "votesRevealed",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "votesRevealed",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "appealBond",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "appealBond",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "rotationsLeft",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "rotationsLeft",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "enum ITransactions.ResultType",
-                  name: "result",
-                  type: "uint8",
+                  "internalType": "enum ITransactions.ResultType",
+                  "name": "result",
+                  "type": "uint8"
                 },
                 {
-                  internalType: "address[]",
-                  name: "roundValidators",
-                  type: "address[]",
+                  "internalType": "address[]",
+                  "name": "roundValidators",
+                  "type": "address[]"
                 },
                 {
-                  internalType: "bytes32[]",
-                  name: "validatorVotesHash",
-                  type: "bytes32[]",
+                  "internalType": "enum ITransactions.VoteType[]",
+                  "name": "validatorVotes",
+                  "type": "uint8[]"
                 },
                 {
-                  internalType: "enum ITransactions.VoteType[]",
-                  name: "validatorVotes",
-                  type: "uint8[]",
+                  "internalType": "bytes32[]",
+                  "name": "validatorVotesHash",
+                  "type": "bytes32[]"
                 },
+                {
+                  "internalType": "bytes32[]",
+                  "name": "validatorResultHash",
+                  "type": "bytes32[]"
+                }
               ],
-              internalType: "struct ITransactions.RoundData",
-              name: "lastRound",
-              type: "tuple",
+              "internalType": "struct ITransactions.RoundData",
+              "name": "lastRound",
+              "type": "tuple"
             },
+            {
+              "internalType": "address[]",
+              "name": "consumedValidators",
+              "type": "address[]"
+            }
           ],
-          internalType: "struct ConsensusData.TransactionData",
-          name: "txData",
-          type: "tuple",
-        },
+          "internalType": "struct ConsensusData.TransactionData",
+          "name": "inputData",
+          "type": "tuple"
+        }
       ],
-      stateMutability: "view",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "address",
-          name: "recipient",
-          type: "address",
+          "internalType": "address",
+          "name": "recipient",
+          "type": "address"
         },
         {
-          internalType: "uint256",
-          name: "startIndex",
-          type: "uint256",
+          "internalType": "uint256",
+          "name": "startIndex",
+          "type": "uint256"
         },
         {
-          internalType: "uint256",
-          name: "pageSize",
-          type: "uint256",
-        },
+          "internalType": "uint256",
+          "name": "pageSize",
+          "type": "uint256"
+        }
       ],
-      name: "getLatestFinalizedTransactions",
-      outputs: [
+      "name": "getLatestFinalizedTransactions",
+      "outputs": [
         {
-          components: [
+          "components": [
             {
-              internalType: "uint256",
-              name: "currentTimestamp",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "currentTimestamp",
+              "type": "uint256"
             },
             {
-              internalType: "address",
-              name: "sender",
-              type: "address",
+              "internalType": "address",
+              "name": "sender",
+              "type": "address"
             },
             {
-              internalType: "address",
-              name: "recipient",
-              type: "address",
+              "internalType": "address",
+              "name": "recipient",
+              "type": "address"
             },
             {
-              internalType: "uint256",
-              name: "numOfInitialValidators",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "initialRotations",
+              "type": "uint256"
             },
             {
-              internalType: "uint256",
-              name: "txSlot",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "txSlot",
+              "type": "uint256"
             },
             {
-              internalType: "uint256",
-              name: "createdTimestamp",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "createdTimestamp",
+              "type": "uint256"
             },
             {
-              internalType: "uint256",
-              name: "lastVoteTimestamp",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "lastVoteTimestamp",
+              "type": "uint256"
             },
             {
-              internalType: "bytes32",
-              name: "randomSeed",
-              type: "bytes32",
+              "internalType": "bytes32",
+              "name": "randomSeed",
+              "type": "bytes32"
             },
             {
-              internalType: "enum ITransactions.ResultType",
-              name: "result",
-              type: "uint8",
+              "internalType": "enum ITransactions.ResultType",
+              "name": "result",
+              "type": "uint8"
             },
             {
-              internalType: "bytes",
-              name: "txData",
-              type: "bytes",
+              "internalType": "bytes32",
+              "name": "txExecutionHash",
+              "type": "bytes32"
             },
             {
-              internalType: "bytes",
-              name: "txReceipt",
-              type: "bytes",
+              "internalType": "bytes",
+              "name": "txCalldata",
+              "type": "bytes"
             },
             {
-              components: [
+              "internalType": "bytes",
+              "name": "eqBlocksOutputs",
+              "type": "bytes"
+            },
+            {
+              "components": [
                 {
-                  internalType: "enum IMessages.MessageType",
-                  name: "messageType",
-                  type: "uint8",
+                  "internalType": "enum IMessages.MessageType",
+                  "name": "messageType",
+                  "type": "uint8"
                 },
                 {
-                  internalType: "address",
-                  name: "recipient",
-                  type: "address",
+                  "internalType": "address",
+                  "name": "recipient",
+                  "type": "address"
                 },
                 {
-                  internalType: "uint256",
-                  name: "value",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "value",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "bytes",
-                  name: "data",
-                  type: "bytes",
+                  "internalType": "bytes",
+                  "name": "data",
+                  "type": "bytes"
                 },
                 {
-                  internalType: "bool",
-                  name: "onAcceptance",
-                  type: "bool",
+                  "internalType": "bool",
+                  "name": "onAcceptance",
+                  "type": "bool"
                 },
+                {
+                  "internalType": "uint256",
+                  "name": "saltNonce",
+                  "type": "uint256"
+                }
               ],
-              internalType: "struct IMessages.SubmittedMessage[]",
-              name: "messages",
-              type: "tuple[]",
+              "internalType": "struct IMessages.SubmittedMessage[]",
+              "name": "messages",
+              "type": "tuple[]"
             },
             {
-              internalType: "enum IQueues.QueueType",
-              name: "queueType",
-              type: "uint8",
+              "internalType": "enum IQueues.QueueType",
+              "name": "queueType",
+              "type": "uint8"
             },
             {
-              internalType: "uint256",
-              name: "queuePosition",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "queuePosition",
+              "type": "uint256"
             },
             {
-              internalType: "address",
-              name: "activator",
-              type: "address",
+              "internalType": "address",
+              "name": "activator",
+              "type": "address"
             },
             {
-              internalType: "address",
-              name: "lastLeader",
-              type: "address",
+              "internalType": "address",
+              "name": "lastLeader",
+              "type": "address"
             },
             {
-              internalType: "enum ITransactions.TransactionStatus",
-              name: "status",
-              type: "uint8",
+              "internalType": "enum ITransactions.TransactionStatus",
+              "name": "status",
+              "type": "uint8"
             },
             {
-              internalType: "bytes32",
-              name: "txId",
-              type: "bytes32",
+              "internalType": "bytes32",
+              "name": "txId",
+              "type": "bytes32"
             },
             {
-              components: [
+              "components": [
                 {
-                  internalType: "uint256",
-                  name: "activationBlock",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "activationBlock",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "processingBlock",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "processingBlock",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "proposalBlock",
-                  type: "uint256",
-                },
+                  "internalType": "uint256",
+                  "name": "proposalBlock",
+                  "type": "uint256"
+                }
               ],
-              internalType: "struct ITransactions.ReadStateBlockRange",
-              name: "readStateBlockRange",
-              type: "tuple",
+              "internalType": "struct ITransactions.ReadStateBlockRange",
+              "name": "readStateBlockRange",
+              "type": "tuple"
             },
             {
-              internalType: "uint256",
-              name: "numOfRounds",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "numOfRounds",
+              "type": "uint256"
             },
             {
-              components: [
+              "components": [
                 {
-                  internalType: "uint256",
-                  name: "round",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "round",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "leaderIndex",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "leaderIndex",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "votesCommitted",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "votesCommitted",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "votesRevealed",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "votesRevealed",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "appealBond",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "appealBond",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "rotationsLeft",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "rotationsLeft",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "enum ITransactions.ResultType",
-                  name: "result",
-                  type: "uint8",
+                  "internalType": "enum ITransactions.ResultType",
+                  "name": "result",
+                  "type": "uint8"
                 },
                 {
-                  internalType: "address[]",
-                  name: "roundValidators",
-                  type: "address[]",
+                  "internalType": "address[]",
+                  "name": "roundValidators",
+                  "type": "address[]"
                 },
                 {
-                  internalType: "bytes32[]",
-                  name: "validatorVotesHash",
-                  type: "bytes32[]",
+                  "internalType": "enum ITransactions.VoteType[]",
+                  "name": "validatorVotes",
+                  "type": "uint8[]"
                 },
                 {
-                  internalType: "enum ITransactions.VoteType[]",
-                  name: "validatorVotes",
-                  type: "uint8[]",
+                  "internalType": "bytes32[]",
+                  "name": "validatorVotesHash",
+                  "type": "bytes32[]"
                 },
+                {
+                  "internalType": "bytes32[]",
+                  "name": "validatorResultHash",
+                  "type": "bytes32[]"
+                }
               ],
-              internalType: "struct ITransactions.RoundData",
-              name: "lastRound",
-              type: "tuple",
+              "internalType": "struct ITransactions.RoundData",
+              "name": "lastRound",
+              "type": "tuple"
             },
+            {
+              "internalType": "address[]",
+              "name": "consumedValidators",
+              "type": "address[]"
+            }
           ],
-          internalType: "struct ConsensusData.TransactionData[]",
-          name: "",
-          type: "tuple[]",
-        },
+          "internalType": "struct ConsensusData.TransactionData[]",
+          "name": "",
+          "type": "tuple[]"
+        }
       ],
-      stateMutability: "view",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "address",
-          name: "recipient",
-          type: "address",
-        },
+          "internalType": "address",
+          "name": "recipient",
+          "type": "address"
+        }
       ],
-      name: "getLatestFinalizedTxCount",
-      outputs: [
+      "name": "getLatestFinalizedTxCount",
+      "outputs": [
         {
-          internalType: "uint256",
-          name: "",
-          type: "uint256",
-        },
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
       ],
-      stateMutability: "view",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "address",
-          name: "recipient",
-          type: "address",
-        },
+          "internalType": "bytes32",
+          "name": "role",
+          "type": "bytes32"
+        }
       ],
-      name: "getLatestPendingTxCount",
-      outputs: [
+      "name": "getRoleAdmin",
+      "outputs": [
         {
-          internalType: "uint256",
-          name: "",
-          type: "uint256",
-        },
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
       ],
-      stateMutability: "view",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "address",
-          name: "recipient",
-          type: "address",
-        },
-        {
-          internalType: "uint256",
-          name: "slot",
-          type: "uint256",
-        },
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
+        }
       ],
-      name: "getLatestPendingTxId",
-      outputs: [
+      "name": "getTransactionAllData",
+      "outputs": [
         {
-          internalType: "bytes32",
-          name: "",
-          type: "bytes32",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
-    },
-    {
-      inputs: [
-        {
-          internalType: "address",
-          name: "recipient",
-          type: "address",
-        },
-      ],
-      name: "getLatestUndeterminedTransaction",
-      outputs: [
-        {
-          components: [
+          "components": [
             {
-              internalType: "uint256",
-              name: "currentTimestamp",
-              type: "uint256",
+              "internalType": "enum ITransactions.ResultType",
+              "name": "result",
+              "type": "uint8"
             },
             {
-              internalType: "address",
-              name: "sender",
-              type: "address",
+              "internalType": "enum ITransactions.VoteType",
+              "name": "txExecutionResult",
+              "type": "uint8"
             },
             {
-              internalType: "address",
-              name: "recipient",
-              type: "address",
+              "internalType": "enum ITransactions.TransactionStatus",
+              "name": "previousStatus",
+              "type": "uint8"
             },
             {
-              internalType: "uint256",
-              name: "numOfInitialValidators",
-              type: "uint256",
+              "internalType": "enum ITransactions.TransactionStatus",
+              "name": "status",
+              "type": "uint8"
             },
             {
-              internalType: "uint256",
-              name: "txSlot",
-              type: "uint256",
+              "internalType": "address",
+              "name": "txOrigin",
+              "type": "address"
             },
             {
-              internalType: "uint256",
-              name: "createdTimestamp",
-              type: "uint256",
+              "internalType": "address",
+              "name": "sender",
+              "type": "address"
             },
             {
-              internalType: "uint256",
-              name: "lastVoteTimestamp",
-              type: "uint256",
+              "internalType": "address",
+              "name": "recipient",
+              "type": "address"
             },
             {
-              internalType: "bytes32",
-              name: "randomSeed",
-              type: "bytes32",
+              "internalType": "address",
+              "name": "activator",
+              "type": "address"
             },
             {
-              internalType: "enum ITransactions.ResultType",
-              name: "result",
-              type: "uint8",
+              "internalType": "uint256",
+              "name": "txSlot",
+              "type": "uint256"
             },
             {
-              internalType: "bytes",
-              name: "txData",
-              type: "bytes",
+              "internalType": "uint256",
+              "name": "initialRotations",
+              "type": "uint256"
             },
             {
-              internalType: "bytes",
-              name: "txReceipt",
-              type: "bytes",
+              "internalType": "uint256",
+              "name": "numOfInitialValidators",
+              "type": "uint256"
             },
             {
-              components: [
+              "internalType": "uint256",
+              "name": "epoch",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "id",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "randomSeed",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "txExecutionHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "resultHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes",
+              "name": "txCalldata",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes",
+              "name": "eqBlocksOutputs",
+              "type": "bytes"
+            },
+            {
+              "components": [
                 {
-                  internalType: "enum IMessages.MessageType",
-                  name: "messageType",
-                  type: "uint8",
+                  "internalType": "uint256",
+                  "name": "activationBlock",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "address",
-                  name: "recipient",
-                  type: "address",
+                  "internalType": "uint256",
+                  "name": "processingBlock",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "value",
-                  type: "uint256",
-                },
-                {
-                  internalType: "bytes",
-                  name: "data",
-                  type: "bytes",
-                },
-                {
-                  internalType: "bool",
-                  name: "onAcceptance",
-                  type: "bool",
-                },
+                  "internalType": "uint256",
+                  "name": "proposalBlock",
+                  "type": "uint256"
+                }
               ],
-              internalType: "struct IMessages.SubmittedMessage[]",
-              name: "messages",
-              type: "tuple[]",
+              "internalType": "struct ITransactions.ReadStateBlockRange[]",
+              "name": "readStateBlockRanges",
+              "type": "tuple[]"
             },
             {
-              internalType: "enum IQueues.QueueType",
-              name: "queueType",
-              type: "uint8",
+              "internalType": "uint256",
+              "name": "validUntil",
+              "type": "uint256"
             },
             {
-              internalType: "uint256",
-              name: "queuePosition",
-              type: "uint256",
-            },
-            {
-              internalType: "address",
-              name: "activator",
-              type: "address",
-            },
-            {
-              internalType: "address",
-              name: "lastLeader",
-              type: "address",
-            },
-            {
-              internalType: "enum ITransactions.TransactionStatus",
-              name: "status",
-              type: "uint8",
-            },
-            {
-              internalType: "bytes32",
-              name: "txId",
-              type: "bytes32",
-            },
-            {
-              components: [
-                {
-                  internalType: "uint256",
-                  name: "activationBlock",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "processingBlock",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "proposalBlock",
-                  type: "uint256",
-                },
-              ],
-              internalType: "struct ITransactions.ReadStateBlockRange",
-              name: "readStateBlockRange",
-              type: "tuple",
-            },
-            {
-              internalType: "uint256",
-              name: "numOfRounds",
-              type: "uint256",
-            },
-            {
-              components: [
-                {
-                  internalType: "uint256",
-                  name: "round",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "leaderIndex",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "votesCommitted",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "votesRevealed",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "appealBond",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "rotationsLeft",
-                  type: "uint256",
-                },
-                {
-                  internalType: "enum ITransactions.ResultType",
-                  name: "result",
-                  type: "uint8",
-                },
-                {
-                  internalType: "address[]",
-                  name: "roundValidators",
-                  type: "address[]",
-                },
-                {
-                  internalType: "bytes32[]",
-                  name: "validatorVotesHash",
-                  type: "bytes32[]",
-                },
-                {
-                  internalType: "enum ITransactions.VoteType[]",
-                  name: "validatorVotes",
-                  type: "uint8[]",
-                },
-              ],
-              internalType: "struct ITransactions.RoundData",
-              name: "lastRound",
-              type: "tuple",
-            },
+              "internalType": "uint256",
+              "name": "value",
+              "type": "uint256"
+            }
           ],
-          internalType: "struct ConsensusData.TransactionData",
-          name: "txData",
-          type: "tuple",
+          "internalType": "struct ITransactions.Transaction",
+          "name": "transaction",
+          "type": "tuple"
         },
-      ],
-      stateMutability: "view",
-      type: "function",
-    },
-    {
-      inputs: [
         {
-          internalType: "address",
-          name: "recipient",
-          type: "address",
-        },
-      ],
-      name: "getLatestUndeterminedTxCount",
-      outputs: [
-        {
-          internalType: "uint256",
-          name: "",
-          type: "uint256",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
-    },
-    {
-      inputs: [
-        {
-          internalType: "bytes32",
-          name: "_tx_id",
-          type: "bytes32",
-        },
-      ],
-      name: "getMessagesForTransaction",
-      outputs: [
-        {
-          components: [
+          "components": [
             {
-              internalType: "enum IMessages.MessageType",
-              name: "messageType",
-              type: "uint8",
+              "internalType": "uint256",
+              "name": "round",
+              "type": "uint256"
             },
             {
-              internalType: "address",
-              name: "recipient",
-              type: "address",
+              "internalType": "uint256",
+              "name": "leaderIndex",
+              "type": "uint256"
             },
             {
-              internalType: "uint256",
-              name: "value",
-              type: "uint256",
+              "internalType": "uint256",
+              "name": "votesCommitted",
+              "type": "uint256"
             },
             {
-              internalType: "bytes",
-              name: "data",
-              type: "bytes",
+              "internalType": "uint256",
+              "name": "votesRevealed",
+              "type": "uint256"
             },
             {
-              internalType: "bool",
-              name: "onAcceptance",
-              type: "bool",
+              "internalType": "uint256",
+              "name": "appealBond",
+              "type": "uint256"
             },
+            {
+              "internalType": "uint256",
+              "name": "rotationsLeft",
+              "type": "uint256"
+            },
+            {
+              "internalType": "enum ITransactions.ResultType",
+              "name": "result",
+              "type": "uint8"
+            },
+            {
+              "internalType": "address[]",
+              "name": "roundValidators",
+              "type": "address[]"
+            },
+            {
+              "internalType": "enum ITransactions.VoteType[]",
+              "name": "validatorVotes",
+              "type": "uint8[]"
+            },
+            {
+              "internalType": "bytes32[]",
+              "name": "validatorVotesHash",
+              "type": "bytes32[]"
+            },
+            {
+              "internalType": "bytes32[]",
+              "name": "validatorResultHash",
+              "type": "bytes32[]"
+            }
           ],
-          internalType: "struct IMessages.SubmittedMessage[]",
-          name: "",
-          type: "tuple[]",
-        },
-        {
-          internalType: "address",
-          name: "ghostAddress",
-          type: "address",
-        },
-        {
-          internalType: "uint256",
-          name: "numOfMessagesIssuedOnAcceptance",
-          type: "uint256",
-        },
-        {
-          internalType: "uint256",
-          name: "numOfMessagesIssuedOnFinalization",
-          type: "uint256",
-        },
+          "internalType": "struct ITransactions.RoundData[]",
+          "name": "roundsData",
+          "type": "tuple[]"
+        }
       ],
-      stateMutability: "view",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "_tx_id",
-          type: "bytes32",
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
         },
+        {
+          "internalType": "uint256",
+          "name": "_timestamp",
+          "type": "uint256"
+        }
       ],
-      name: "getReadStateBlockRangeForTransaction",
-      outputs: [
+      "name": "getTransactionData",
+      "outputs": [
         {
-          internalType: "uint256",
-          name: "activationBlock",
-          type: "uint256",
-        },
-        {
-          internalType: "uint256",
-          name: "processingBlock",
-          type: "uint256",
-        },
-        {
-          internalType: "uint256",
-          name: "proposalBlock",
-          type: "uint256",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
-    },
-    {
-      inputs: [
-        {
-          internalType: "address",
-          name: "recipient",
-          type: "address",
-        },
-        {
-          internalType: "uint256",
-          name: "startIndex",
-          type: "uint256",
-        },
-        {
-          internalType: "uint256",
-          name: "endIndex",
-          type: "uint256",
-        },
-      ],
-      name: "getRecipientQueues",
-      outputs: [
-        {
-          components: [
+          "components": [
             {
-              components: [
+              "internalType": "uint256",
+              "name": "currentTimestamp",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "sender",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "recipient",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "initialRotations",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "txSlot",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "createdTimestamp",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "lastVoteTimestamp",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "randomSeed",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "enum ITransactions.ResultType",
+              "name": "result",
+              "type": "uint8"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "txExecutionHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes",
+              "name": "txCalldata",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes",
+              "name": "eqBlocksOutputs",
+              "type": "bytes"
+            },
+            {
+              "components": [
                 {
-                  internalType: "uint256",
-                  name: "head",
-                  type: "uint256",
+                  "internalType": "enum IMessages.MessageType",
+                  "name": "messageType",
+                  "type": "uint8"
                 },
                 {
-                  internalType: "uint256",
-                  name: "tail",
-                  type: "uint256",
+                  "internalType": "address",
+                  "name": "recipient",
+                  "type": "address"
                 },
                 {
-                  internalType: "bytes32[]",
-                  name: "txIds",
-                  type: "bytes32[]",
+                  "internalType": "uint256",
+                  "name": "value",
+                  "type": "uint256"
                 },
+                {
+                  "internalType": "bytes",
+                  "name": "data",
+                  "type": "bytes"
+                },
+                {
+                  "internalType": "bool",
+                  "name": "onAcceptance",
+                  "type": "bool"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "saltNonce",
+                  "type": "uint256"
+                }
               ],
-              internalType: "struct IQueues.QueueInfoView",
-              name: "pending",
-              type: "tuple",
+              "internalType": "struct IMessages.SubmittedMessage[]",
+              "name": "messages",
+              "type": "tuple[]"
             },
             {
-              components: [
+              "internalType": "enum IQueues.QueueType",
+              "name": "queueType",
+              "type": "uint8"
+            },
+            {
+              "internalType": "uint256",
+              "name": "queuePosition",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "activator",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "lastLeader",
+              "type": "address"
+            },
+            {
+              "internalType": "enum ITransactions.TransactionStatus",
+              "name": "status",
+              "type": "uint8"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "txId",
+              "type": "bytes32"
+            },
+            {
+              "components": [
                 {
-                  internalType: "uint256",
-                  name: "head",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "activationBlock",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "tail",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "processingBlock",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "bytes32[]",
-                  name: "txIds",
-                  type: "bytes32[]",
-                },
+                  "internalType": "uint256",
+                  "name": "proposalBlock",
+                  "type": "uint256"
+                }
               ],
-              internalType: "struct IQueues.QueueInfoView",
-              name: "accepted",
-              type: "tuple",
+              "internalType": "struct ITransactions.ReadStateBlockRange",
+              "name": "readStateBlockRange",
+              "type": "tuple"
             },
             {
-              components: [
+              "internalType": "uint256",
+              "name": "numOfRounds",
+              "type": "uint256"
+            },
+            {
+              "components": [
                 {
-                  internalType: "uint256",
-                  name: "head",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "round",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "uint256",
-                  name: "tail",
-                  type: "uint256",
+                  "internalType": "uint256",
+                  "name": "leaderIndex",
+                  "type": "uint256"
                 },
                 {
-                  internalType: "bytes32[]",
-                  name: "txIds",
-                  type: "bytes32[]",
+                  "internalType": "uint256",
+                  "name": "votesCommitted",
+                  "type": "uint256"
                 },
+                {
+                  "internalType": "uint256",
+                  "name": "votesRevealed",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "appealBond",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "rotationsLeft",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "enum ITransactions.ResultType",
+                  "name": "result",
+                  "type": "uint8"
+                },
+                {
+                  "internalType": "address[]",
+                  "name": "roundValidators",
+                  "type": "address[]"
+                },
+                {
+                  "internalType": "enum ITransactions.VoteType[]",
+                  "name": "validatorVotes",
+                  "type": "uint8[]"
+                },
+                {
+                  "internalType": "bytes32[]",
+                  "name": "validatorVotesHash",
+                  "type": "bytes32[]"
+                },
+                {
+                  "internalType": "bytes32[]",
+                  "name": "validatorResultHash",
+                  "type": "bytes32[]"
+                }
               ],
-              internalType: "struct IQueues.QueueInfoView",
-              name: "undetermined",
-              type: "tuple",
+              "internalType": "struct ITransactions.RoundData",
+              "name": "lastRound",
+              "type": "tuple"
             },
             {
-              internalType: "uint256",
-              name: "finalizedCount",
-              type: "uint256",
-            },
-            {
-              internalType: "uint256",
-              name: "issuedTxCount",
-              type: "uint256",
-            },
+              "internalType": "address[]",
+              "name": "consumedValidators",
+              "type": "address[]"
+            }
           ],
-          internalType: "struct IQueues.RecipientQueuesView",
-          name: "",
-          type: "tuple",
-        },
+          "internalType": "struct ConsensusData.TransactionData",
+          "name": "",
+          "type": "tuple"
+        }
       ],
-      stateMutability: "view",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "role",
-          type: "bytes32",
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
         },
-      ],
-      name: "getRoleAdmin",
-      outputs: [
         {
-          internalType: "bytes32",
-          name: "",
-          type: "bytes32",
-        },
+          "internalType": "uint256",
+          "name": "_timestamp",
+          "type": "uint256"
+        }
       ],
-      stateMutability: "view",
-      type: "function",
+      "name": "getTransactionStatus",
+      "outputs": [
+        {
+          "internalType": "enum ITransactions.TransactionStatus",
+          "name": "",
+          "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [],
-      name: "getTotalNumOfTransactions",
-      outputs: [
+      "inputs": [
         {
-          internalType: "uint256",
-          name: "",
-          type: "uint256",
-        },
+          "internalType": "bytes32",
+          "name": "_txId",
+          "type": "bytes32"
+        }
       ],
-      stateMutability: "view",
-      type: "function",
+      "name": "getValidatorsForLastRound",
+      "outputs": [
+        {
+          "internalType": "address[]",
+          "name": "validators",
+          "type": "address[]"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "_tx_id",
-          type: "bytes32",
+          "internalType": "bytes32",
+          "name": "role",
+          "type": "bytes32"
         },
-      ],
-      name: "getTransactionAllData",
-      outputs: [
         {
-          components: [
-            {
-              internalType: "bytes32",
-              name: "id",
-              type: "bytes32",
-            },
-            {
-              internalType: "address",
-              name: "sender",
-              type: "address",
-            },
-            {
-              internalType: "address",
-              name: "recipient",
-              type: "address",
-            },
-            {
-              internalType: "uint256",
-              name: "numOfInitialValidators",
-              type: "uint256",
-            },
-            {
-              internalType: "uint256",
-              name: "txSlot",
-              type: "uint256",
-            },
-            {
-              internalType: "address",
-              name: "activator",
-              type: "address",
-            },
-            {
-              internalType: "enum ITransactions.TransactionStatus",
-              name: "status",
-              type: "uint8",
-            },
-            {
-              internalType: "enum ITransactions.TransactionStatus",
-              name: "previousStatus",
-              type: "uint8",
-            },
-            {
-              components: [
-                {
-                  internalType: "uint256",
-                  name: "created",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "pending",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "activated",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "proposed",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "committed",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "lastVote",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "appealSubmitted",
-                  type: "uint256",
-                },
-              ],
-              internalType: "struct ITransactions.Timestamps",
-              name: "timestamps",
-              type: "tuple",
-            },
-            {
-              internalType: "bytes32",
-              name: "randomSeed",
-              type: "bytes32",
-            },
-            {
-              internalType: "bool",
-              name: "onAcceptanceMessages",
-              type: "bool",
-            },
-            {
-              internalType: "enum ITransactions.ResultType",
-              name: "result",
-              type: "uint8",
-            },
-            {
-              components: [
-                {
-                  internalType: "uint256",
-                  name: "activationBlock",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "processingBlock",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "proposalBlock",
-                  type: "uint256",
-                },
-              ],
-              internalType: "struct ITransactions.ReadStateBlockRange",
-              name: "readStateBlockRange",
-              type: "tuple",
-            },
-            {
-              internalType: "bytes",
-              name: "txData",
-              type: "bytes",
-            },
-            {
-              internalType: "bytes",
-              name: "txReceipt",
-              type: "bytes",
-            },
-            {
-              components: [
-                {
-                  internalType: "enum IMessages.MessageType",
-                  name: "messageType",
-                  type: "uint8",
-                },
-                {
-                  internalType: "address",
-                  name: "recipient",
-                  type: "address",
-                },
-                {
-                  internalType: "uint256",
-                  name: "value",
-                  type: "uint256",
-                },
-                {
-                  internalType: "bytes",
-                  name: "data",
-                  type: "bytes",
-                },
-                {
-                  internalType: "bool",
-                  name: "onAcceptance",
-                  type: "bool",
-                },
-              ],
-              internalType: "struct IMessages.SubmittedMessage[]",
-              name: "messages",
-              type: "tuple[]",
-            },
-            {
-              internalType: "address[]",
-              name: "consumedValidators",
-              type: "address[]",
-            },
-            {
-              components: [
-                {
-                  internalType: "uint256",
-                  name: "round",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "leaderIndex",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "votesCommitted",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "votesRevealed",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "appealBond",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "rotationsLeft",
-                  type: "uint256",
-                },
-                {
-                  internalType: "enum ITransactions.ResultType",
-                  name: "result",
-                  type: "uint8",
-                },
-                {
-                  internalType: "address[]",
-                  name: "roundValidators",
-                  type: "address[]",
-                },
-                {
-                  internalType: "bytes32[]",
-                  name: "validatorVotesHash",
-                  type: "bytes32[]",
-                },
-                {
-                  internalType: "enum ITransactions.VoteType[]",
-                  name: "validatorVotes",
-                  type: "uint8[]",
-                },
-              ],
-              internalType: "struct ITransactions.RoundData[]",
-              name: "roundData",
-              type: "tuple[]",
-            },
-            {
-              internalType: "uint256",
-              name: "numOfMessagesIssuedOnAcceptance",
-              type: "uint256",
-            },
-            {
-              internalType: "uint256",
-              name: "numOfMessagesIssuedOnFinalization",
-              type: "uint256",
-            },
-            {
-              internalType: "address",
-              name: "txOrigin",
-              type: "address",
-            },
-            {
-              internalType: "uint256",
-              name: "initialRotations",
-              type: "uint256",
-            },
-          ],
-          internalType: "struct ITransactions.Transaction",
-          name: "transaction",
-          type: "tuple",
-        },
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
       ],
-      stateMutability: "view",
-      type: "function",
+      "name": "grantRole",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "_txId",
-          type: "bytes32",
+          "internalType": "bytes32",
+          "name": "role",
+          "type": "bytes32"
         },
         {
-          internalType: "uint256",
-          name: "_timestamp",
-          type: "uint256",
-        },
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
       ],
-      name: "getTransactionData",
-      outputs: [
+      "name": "hasRole",
+      "outputs": [
         {
-          components: [
-            {
-              internalType: "uint256",
-              name: "currentTimestamp",
-              type: "uint256",
-            },
-            {
-              internalType: "address",
-              name: "sender",
-              type: "address",
-            },
-            {
-              internalType: "address",
-              name: "recipient",
-              type: "address",
-            },
-            {
-              internalType: "uint256",
-              name: "initialRotations",
-              type: "uint256",
-            },
-            {
-              internalType: "uint256",
-              name: "txSlot",
-              type: "uint256",
-            },
-            {
-              internalType: "uint256",
-              name: "createdTimestamp",
-              type: "uint256",
-            },
-            {
-              internalType: "uint256",
-              name: "lastVoteTimestamp",
-              type: "uint256",
-            },
-            {
-              internalType: "bytes32",
-              name: "randomSeed",
-              type: "bytes32",
-            },
-            {
-              internalType: "enum ITransactions.ResultType",
-              name: "result",
-              type: "uint8",
-            },
-            {
-              internalType: "bytes32",
-              name: "txExecutionHash",
-              type: "bytes32",
-            },
-            {
-              internalType: "bytes",
-              name: "txCalldata",
-              type: "bytes",
-            },
-            {
-              internalType: "bytes",
-              name: "eqBlocksOutputs",
-              type: "bytes",
-            },
-            {
-              components: [
-                {
-                  internalType: "enum IMessages.MessageType",
-                  name: "messageType",
-                  type: "uint8",
-                },
-                {
-                  internalType: "address",
-                  name: "recipient",
-                  type: "address",
-                },
-                {
-                  internalType: "uint256",
-                  name: "value",
-                  type: "uint256",
-                },
-                {
-                  internalType: "bytes",
-                  name: "data",
-                  type: "bytes",
-                },
-                {
-                  internalType: "bool",
-                  name: "onAcceptance",
-                  type: "bool",
-                },
-                {
-                  internalType: "uint256",
-                  name: "saltNonce",
-                  type: "uint256",
-                },
-              ],
-              internalType: "struct IMessages.SubmittedMessage[]",
-              name: "messages",
-              type: "tuple[]",
-            },
-            {
-              internalType: "enum IQueues.QueueType",
-              name: "queueType",
-              type: "uint8",
-            },
-            {
-              internalType: "uint256",
-              name: "queuePosition",
-              type: "uint256",
-            },
-            {
-              internalType: "address",
-              name: "activator",
-              type: "address",
-            },
-            {
-              internalType: "address",
-              name: "lastLeader",
-              type: "address",
-            },
-            {
-              internalType: "enum ITransactions.TransactionStatus",
-              name: "status",
-              type: "uint8",
-            },
-            {
-              internalType: "bytes32",
-              name: "txId",
-              type: "bytes32",
-            },
-            {
-              components: [
-                {
-                  internalType: "uint256",
-                  name: "activationBlock",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "processingBlock",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "proposalBlock",
-                  type: "uint256",
-                },
-              ],
-              internalType: "struct ITransactions.ReadStateBlockRange",
-              name: "readStateBlockRange",
-              type: "tuple",
-            },
-            {
-              internalType: "uint256",
-              name: "numOfRounds",
-              type: "uint256",
-            },
-            {
-              components: [
-                {
-                  internalType: "uint256",
-                  name: "round",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "leaderIndex",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "votesCommitted",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "votesRevealed",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "appealBond",
-                  type: "uint256",
-                },
-                {
-                  internalType: "uint256",
-                  name: "rotationsLeft",
-                  type: "uint256",
-                },
-                {
-                  internalType: "enum ITransactions.ResultType",
-                  name: "result",
-                  type: "uint8",
-                },
-                {
-                  internalType: "address[]",
-                  name: "roundValidators",
-                  type: "address[]",
-                },
-                {
-                  internalType: "enum ITransactions.VoteType[]",
-                  name: "validatorVotes",
-                  type: "uint8[]",
-                },
-                {
-                  internalType: "bytes32[]",
-                  name: "validatorVotesHash",
-                  type: "bytes32[]",
-                },
-                {
-                  internalType: "bytes32[]",
-                  name: "validatorResultHash",
-                  type: "bytes32[]",
-                },
-              ],
-              internalType: "struct ITransactions.RoundData",
-              name: "lastRound",
-              type: "tuple",
-            },
-            {
-              internalType: "address[]",
-              name: "consumedValidators",
-              type: "address[]",
-            },
-          ],
-          internalType: "struct ConsensusData.TransactionData",
-          name: "",
-          type: "tuple",
-        },
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
       ],
-      stateMutability: "view",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "uint256",
-          name: "startIndex",
-          type: "uint256",
-        },
-        {
-          internalType: "uint256",
-          name: "endIndex",
-          type: "uint256",
-        },
+          "internalType": "address",
+          "name": "_addressManager",
+          "type": "address"
+        }
       ],
-      name: "getTransactionIndexToTxId",
-      outputs: [
-        {
-          internalType: "bytes32[]",
-          name: "",
-          type: "bytes32[]",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
+      "name": "initialize",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [],
+      "name": "owner",
+      "outputs": [
         {
-          internalType: "bytes32",
-          name: "_tx_id",
-          type: "bytes32",
-        },
-        {
-          internalType: "uint256",
-          name: "_timestamp",
-          type: "uint256",
-        },
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
       ],
-      name: "getTransactionStatus",
-      outputs: [
-        {
-          internalType: "enum ITransactions.TransactionStatus",
-          name: "",
-          type: "uint8",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [],
+      "name": "pendingOwner",
+      "outputs": [
         {
-          internalType: "bytes32",
-          name: "_tx_id",
-          type: "bytes32",
-        },
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
       ],
-      name: "getValidatorsForLastAppeal",
-      outputs: [
-        {
-          internalType: "address[]",
-          name: "",
-          type: "address[]",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
-        {
-          internalType: "bytes32",
-          name: "_tx_id",
-          type: "bytes32",
-        },
-      ],
-      name: "getValidatorsForLastRound",
-      outputs: [
-        {
-          internalType: "address[]",
-          name: "",
-          type: "address[]",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
+      "inputs": [],
+      "name": "renounceOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "role",
-          type: "bytes32",
+          "internalType": "bytes32",
+          "name": "role",
+          "type": "bytes32"
         },
         {
-          internalType: "address",
-          name: "account",
-          type: "address",
-        },
+          "internalType": "address",
+          "name": "callerConfirmation",
+          "type": "address"
+        }
       ],
-      name: "grantRole",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
+      "name": "renounceRole",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "role",
-          type: "bytes32",
+          "internalType": "bytes32",
+          "name": "role",
+          "type": "bytes32"
         },
         {
-          internalType: "address",
-          name: "account",
-          type: "address",
-        },
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        }
       ],
-      name: "hasRole",
-      outputs: [
-        {
-          internalType: "bool",
-          name: "",
-          type: "bool",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
+      "name": "revokeRole",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "_tx_id",
-          type: "bytes32",
-        },
+          "internalType": "address",
+          "name": "_addressManager",
+          "type": "address"
+        }
       ],
-      name: "hasTransactionOnAcceptanceMessages",
-      outputs: [
-        {
-          internalType: "bool",
-          name: "",
-          type: "bool",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
+      "name": "setAddressManager",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "bytes32",
-          name: "_tx_id",
-          type: "bytes32",
-        },
+          "internalType": "bytes4",
+          "name": "interfaceId",
+          "type": "bytes4"
+        }
       ],
-      name: "hasTransactionOnFinalizationMessages",
-      outputs: [
+      "name": "supportsInterface",
+      "outputs": [
         {
-          internalType: "bool",
-          name: "",
-          type: "bool",
-        },
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
       ],
-      stateMutability: "view",
-      type: "function",
+      "stateMutability": "view",
+      "type": "function"
     },
     {
-      inputs: [
+      "inputs": [
         {
-          internalType: "address",
-          name: "_consensusMain",
-          type: "address",
-        },
-        {
-          internalType: "address",
-          name: "_transactions",
-          type: "address",
-        },
-        {
-          internalType: "address",
-          name: "_queues",
-          type: "address",
-        },
+          "internalType": "address",
+          "name": "newOwner",
+          "type": "address"
+        }
       ],
-      name: "initialize",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
-    },
-    {
-      inputs: [],
-      name: "owner",
-      outputs: [
-        {
-          internalType: "address",
-          name: "",
-          type: "address",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
-    },
-    {
-      inputs: [],
-      name: "pendingOwner",
-      outputs: [
-        {
-          internalType: "address",
-          name: "",
-          type: "address",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
-    },
-    {
-      inputs: [],
-      name: "queues",
-      outputs: [
-        {
-          internalType: "contract IQueues",
-          name: "",
-          type: "address",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
-    },
-    {
-      inputs: [],
-      name: "renounceOwnership",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
-    },
-    {
-      inputs: [
-        {
-          internalType: "bytes32",
-          name: "role",
-          type: "bytes32",
-        },
-        {
-          internalType: "address",
-          name: "callerConfirmation",
-          type: "address",
-        },
-      ],
-      name: "renounceRole",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
-    },
-    {
-      inputs: [
-        {
-          internalType: "bytes32",
-          name: "role",
-          type: "bytes32",
-        },
-        {
-          internalType: "address",
-          name: "account",
-          type: "address",
-        },
-      ],
-      name: "revokeRole",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
-    },
-    {
-      inputs: [
-        {
-          internalType: "address",
-          name: "_consensusMain",
-          type: "address",
-        },
-      ],
-      name: "setConsensusMain",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
-    },
-    {
-      inputs: [
-        {
-          internalType: "address",
-          name: "_queues",
-          type: "address",
-        },
-      ],
-      name: "setQueues",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
-    },
-    {
-      inputs: [
-        {
-          internalType: "address",
-          name: "_transactions",
-          type: "address",
-        },
-      ],
-      name: "setTransactions",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
-    },
-    {
-      inputs: [
-        {
-          internalType: "bytes4",
-          name: "interfaceId",
-          type: "bytes4",
-        },
-      ],
-      name: "supportsInterface",
-      outputs: [
-        {
-          internalType: "bool",
-          name: "",
-          type: "bool",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
-    },
-    {
-      inputs: [],
-      name: "transactions",
-      outputs: [
-        {
-          internalType: "contract ITransactions",
-          name: "",
-          type: "address",
-        },
-      ],
-      stateMutability: "view",
-      type: "function",
-    },
-    {
-      inputs: [
-        {
-          internalType: "address",
-          name: "newOwner",
-          type: "address",
-        },
-      ],
-      name: "transferOwnership",
-      outputs: [],
-      stateMutability: "nonpayable",
-      type: "function",
-    },
+      "name": "transferOwnership",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
   ],
   bytecode: "",
 };

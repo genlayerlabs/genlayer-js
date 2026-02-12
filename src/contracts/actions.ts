@@ -413,17 +413,41 @@ const _encodeAddTransactionData = ({
   validUntil?: bigint;
 }): `0x${string}` => {
   const validatedSenderAccount = validateAccount(senderAccount);
+
+  // Detect if ABI has the WithFees variant (7 params including FeesDistribution tuple)
+  const abi = client.chain.consensusMainContract?.abi as any[];
+  const addTxEntry = abi?.find(
+    (e: any) => e.type === "function" && e.name === "addTransaction",
+  );
+  const hasFees = addTxEntry?.inputs?.length === 7;
+
+  const args: unknown[] = [
+    validatedSenderAccount.address,
+    recipient,
+    client.chain.defaultNumberOfInitialValidators,
+    consensusMaxRotations,
+    data,
+  ];
+
+  if (hasFees) {
+    // Insert default FeesDistribution struct with zero values
+    args.push({
+      leaderTimeoutFee: 0n,
+      validatorsTimeoutFee: 0n,
+      appealRounds: 0n,
+      rollupStorageFee: 0n,
+      rollupGenVMFee: 0n,
+      totalMessageFees: 0n,
+      rotations: [],
+    });
+  }
+
+  args.push(validUntil);
+
   return encodeFunctionData({
     abi: client.chain.consensusMainContract?.abi as any,
     functionName: "addTransaction",
-    args: [
-      validatedSenderAccount.address,
-      recipient,
-      client.chain.defaultNumberOfInitialValidators,
-      consensusMaxRotations,
-      data,
-      validUntil,
-    ],
+    args,
   });
 };
 

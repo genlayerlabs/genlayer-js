@@ -3,6 +3,7 @@ import {Address} from "./accounts";
 
 export type GenLayerChain = Chain & {
   isStudio: boolean;
+  addressManagerAddress?: Address;
   consensusMainContract: {
     address: Address;
     abi: readonly unknown[];
