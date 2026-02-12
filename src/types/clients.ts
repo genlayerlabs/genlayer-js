@@ -12,6 +12,8 @@ import {StakingActions} from "./staking";
 export type GenLayerMethod =
   | {method: "sim_fundAccount"; params: [address: Address, amount: number]}
   | {method: "eth_getTransactionByHash"; params: [hash: TransactionHash]}
+  | {method: "sim_getTransactionByHash"; params: [hash: TransactionHash, full?: boolean]}
+  | {method: "gen_getTransactionStatus"; params: [hash: TransactionHash]}
   | {method: "eth_call"; params: [requestParams: any, blockNumberOrHash: string]}
   | {method: "eth_sendRawTransaction"; params: [signedTransaction: string]}
   | {method: "gen_getContractSchema"; params: [address: Address]}
@@ -80,6 +82,8 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       consensusMaxRotations?: number;
     }) => Promise<`0x${string}`>;
     getTransaction: (args: {hash: TransactionHash}) => Promise<GenLayerTransaction>;
+    getStudioTransactionByHash: (args: {hash: TransactionHash; full?: boolean}) => Promise<GenLayerTransaction>;
+    getTransactionStatus: (args: {hash: TransactionHash}) => Promise<TransactionStatus>;
     getCurrentNonce: (args: {address: Address}) => Promise<number>;
     estimateTransactionGas: (transactionParams: {
       from?: Address;

@@ -12,6 +12,7 @@ import {sleep} from "../utils/async";
 import {GenLayerChain} from "@/types";
 import {Abi, PublicClient, Address} from "viem";
 import {localnet} from "@/chains/localnet";
+import {studionet} from "@/chains/studionet";
 import {decodeLocalnetTransaction, decodeTransaction, simplifyTransactionReceipt} from "./decoders";
 
 export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => ({
@@ -87,6 +88,26 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
       ],
     })) as unknown as GenLayerRawTransaction;
     return decodeTransaction(transaction);
+  },
+  getStudioTransactionByHash: async ({hash, full}: {hash: TransactionHash; full?: boolean}): Promise<GenLayerTransaction> => {
+    const transaction = await client.request(
+      full !== undefined
+        ? { method: "sim_getTransactionByHash", params: [hash, full] }
+        : { method: "sim_getTransactionByHash", params: [hash] }
+    ) as unknown as GenLayerTransaction;
+
+    if (client.chain.id === localnet.id || client.chain.id === studionet.id) {
+      return decodeLocalnetTransaction(transaction);
+    }
+    return transaction;
+  },
+  getTransactionStatus: async ({hash}: {hash: TransactionHash}): Promise<TransactionStatus> => {
+    const status = await client.request({
+      method: "gen_getTransactionStatus",
+      params: [hash],
+    }) as unknown as TransactionStatus;
+
+    return status;
   },
   estimateTransactionGas: async (transactionParams: {
     from?: Address;
