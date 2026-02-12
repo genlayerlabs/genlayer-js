@@ -15,6 +15,7 @@ import {
   TransactionActivatedEvent,
   TransactionUndeterminedEvent,
   TransactionLeaderTimeoutEvent,
+  TransactionFinalizedEvent,
   AppealStartedEvent,
 } from "@/types/subscriptions";
 
@@ -194,5 +195,6 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     subscribeToTransactionActivated: () => ConsensusEventStream<TransactionActivatedEvent>;
     subscribeToTransactionUndetermined: () => ConsensusEventStream<TransactionUndeterminedEvent>;
     subscribeToTransactionLeaderTimeout: () => ConsensusEventStream<TransactionLeaderTimeoutEvent>;
+    subscribeToTransactionFinalized: () => ConsensusEventStream<TransactionFinalizedEvent>;
     subscribeToAppealStarted: () => ConsensusEventStream<AppealStartedEvent>;
   } & StakingActions;
