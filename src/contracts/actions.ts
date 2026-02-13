@@ -607,6 +607,8 @@ const _sendTransaction = async ({
       console.error("Gas estimation failed, using default 200_000:", err);
       estimatedGas = 200_000n;
     }
+    // Add 50% buffer to gas estimate to account for estimation inaccuracies
+    estimatedGas = (estimatedGas * 150n) / 100n;
 
     // For local accounts, build transaction request directly to avoid viem's
     // prepareTransactionRequest which calls eth_fillTransaction (unsupported by GenLayer RPC)
