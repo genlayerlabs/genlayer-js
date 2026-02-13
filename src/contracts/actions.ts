@@ -382,10 +382,14 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       const dataStr = resp.data ?? "";
       const prefixedData = dataStr.startsWith("0x") ? dataStr as `0x${string}` : `0x${dataStr}` as `0x${string}`;
 
+      if (!resp.status) {
+        console.warn("[genlayer-js] genCall response missing status field, defaulting to INTERNAL_ERROR");
+      }
+
       return {
         data: prefixedData,
         eqOutputs: resp.eqOutputs ?? [],
-        status: resp.status ?? {code: GenCallStatusCode.SUCCESS, message: "success"},
+        status: resp.status ?? {code: GenCallStatusCode.INTERNAL_ERROR, message: "missing status from RPC response"},
         stdout: resp.stdout ?? "",
         stderr: resp.stderr ?? "",
         logs: resp.logs ?? [],

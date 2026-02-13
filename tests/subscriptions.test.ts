@@ -77,6 +77,21 @@ function createMockClient(options: {
         type: "event",
         inputs: [{indexed: true, name: "tx_id", type: "bytes32"}],
       },
+      {
+        name: "TransactionFinalized",
+        type: "event",
+        inputs: [{indexed: true, name: "txId", type: "bytes32"}],
+      },
+      {
+        name: "AppealStarted",
+        type: "event",
+        inputs: [
+          {indexed: true, name: "txId", type: "bytes32"},
+          {indexed: true, name: "appellant", type: "address"},
+          {indexed: false, name: "bond", type: "uint256"},
+          {indexed: false, name: "validators", type: "address[]"},
+        ],
+      },
     ],
     bytecode: "",
   };
@@ -131,6 +146,8 @@ describe("Subscription Actions", () => {
       expect(() => actions.subscribeToTransactionActivated()).toThrow(WebSocketNotConfiguredError);
       expect(() => actions.subscribeToTransactionUndetermined()).toThrow(WebSocketNotConfiguredError);
       expect(() => actions.subscribeToTransactionLeaderTimeout()).toThrow(WebSocketNotConfiguredError);
+      expect(() => actions.subscribeToTransactionFinalized()).toThrow(WebSocketNotConfiguredError);
+      expect(() => actions.subscribeToAppealStarted()).toThrow(WebSocketNotConfiguredError);
     });
 
     it("should not throw WebSocketNotConfiguredError when webSocket URL is provided", () => {
@@ -205,6 +222,8 @@ describe("ConsensusEventStream interface", () => {
     expect(typeof actions.subscribeToTransactionActivated).toBe("function");
     expect(typeof actions.subscribeToTransactionUndetermined).toBe("function");
     expect(typeof actions.subscribeToTransactionLeaderTimeout).toBe("function");
+    expect(typeof actions.subscribeToTransactionFinalized).toBe("function");
+    expect(typeof actions.subscribeToAppealStarted).toBe("function");
   });
 });
 
