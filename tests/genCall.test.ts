@@ -222,7 +222,7 @@ describe("genCall", () => {
     });
 
     expect(result.data).toBe("0x");
-    expect(result.status).toEqual({code: GenCallStatusCode.SUCCESS, message: "success"});
+    expect(result.status).toEqual({code: GenCallStatusCode.INTERNAL_ERROR, message: "missing status from RPC response"});
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe("");
     expect(result.logs).toEqual([]);
