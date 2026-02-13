@@ -41,11 +41,26 @@ async function resolveFromAddressManager(
     throw new Error(`AddressManager.getAddress("${name}") failed: ${json.error.message}`);
   }
 
+  if (!json.result || json.result === "0x" || json.result === "0x0") {
+    throw new Error(
+      `AddressManager at ${addressManagerAddress} returned empty data for "${name}". ` +
+        `The AddressManager contract may not be deployed at this address.`,
+    );
+  }
+
   const result = decodeFunctionResult({
     abi: ADDRESS_MANAGER_ABI,
     functionName: "getAddress",
     data: json.result as `0x${string}`,
   });
+
+  const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+  if (result === ZERO_ADDRESS) {
+    throw new Error(
+      `AddressManager at ${addressManagerAddress} returned zero address for "${name}". ` +
+        `The contract name may not be registered.`,
+    );
+  }
 
   return result as Address;
 }
