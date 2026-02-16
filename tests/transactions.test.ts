@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TransactionStatus, DECIDED_STATES, isDecidedState } from "../src/types/transactions";
 import { receiptActions } from "../src/transactions/actions";
+import { simplifyTransactionReceipt } from "../src/transactions/decoders";
 import { localnet } from "../src/chains/localnet";
 
 const mockFetch = vi.fn();
@@ -138,5 +139,59 @@ describe("waitForTransactionReceipt with DECIDED_STATES", () => {
     });
 
     expect(result).toEqual(mockTransaction);
+  });
+});
+
+describe("simplifyTransactionReceipt", () => {
+  it("should preserve string result in leader_receipt (base64 result bytes)", () => {
+    const base64Result = "AVtUUkFOU0lFTlRdIHRlc3Q="; // \x01[TRANSIENT] test
+    const tx = {
+      consensus_data: {
+        leader_receipt: [{
+          execution_result: "ERROR",
+          genvm_result: { stderr: "warnings.warn(...)" },
+          result: base64Result,
+        }],
+      },
+    } as any;
+
+    const simplified = simplifyTransactionReceipt(tx);
+    const leader = simplified.consensus_data?.leader_receipt?.[0] as any;
+
+    expect(leader.result).toBe(base64Result);
+    expect(typeof leader.result).toBe("string");
+  });
+
+  it("should preserve object result in leader_receipt", () => {
+    const tx = {
+      consensus_data: {
+        leader_receipt: [{
+          execution_result: "ERROR",
+          result: { stderr: "ValueError: some error", exit_code: 1 },
+        }],
+      },
+    } as any;
+
+    const simplified = simplifyTransactionReceipt(tx);
+    const leader = simplified.consensus_data?.leader_receipt?.[0] as any;
+
+    expect(leader.result).toEqual({ stderr: "ValueError: some error", exit_code: 1 });
+  });
+
+  it("should not drop primitive values in nested objects", () => {
+    const tx = {
+      consensus_data: {
+        leader_receipt: [{
+          execution_result: "ERROR",
+          genvm_result: { stderr: "some error", exit_code: 1 },
+        }],
+      },
+    } as any;
+
+    const simplified = simplifyTransactionReceipt(tx);
+    const genvm = (simplified.consensus_data?.leader_receipt?.[0] as any)?.genvm_result;
+
+    expect(genvm.stderr).toBe("some error");
+    expect(genvm.exit_code).toBe(1);
   });
 });

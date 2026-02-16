@@ -126,11 +126,14 @@ export const simplifyTransactionReceipt = (tx: GenLayerTransaction): GenLayerTra
    */
   const simplifyObject = (obj: any, path = ""): any => {
     if (obj === null || obj === undefined) return obj;
-    
+
+    // Primitives (strings, numbers, booleans) pass through unchanged
+    if (typeof obj !== "object") return obj;
+
     if (Array.isArray(obj)) {
       return obj.map(item => simplifyObject(item, path)).filter(item => item !== undefined);
     }
-    
+
     if (typeof obj === "object") {
       const result: any = {};
       
@@ -177,7 +180,7 @@ export const simplifyTransactionReceipt = (tx: GenLayerTransaction): GenLayerTra
               if (receipt.eq_outputs) {
                 simplifiedReceipt.eq_outputs = simplifyObject(receipt.eq_outputs, currentPath);
               }
-              if (receipt.result) {
+              if (receipt.result !== undefined) {
                 simplifiedReceipt.result = simplifyObject(receipt.result, currentPath);
               }
               
