@@ -83,6 +83,11 @@ jobs:
         with:
           token: ${{ steps.ci_bot_token.outputs.token }}
 
+      - name: Initialize Git User
+        run: |
+          git config --global user.email "github-actions[bot]@genlayer.com"
+          git config --global user.name "github-actions[bot]"
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
