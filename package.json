@@ -1,11 +1,15 @@
 {
   "name": "genlayer-js",
   "type": "module",
-  "version": "0.18.12",
+  "version": "0.18.13",
   "description": "GenLayer JavaScript SDK",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsup src/index.ts src/chains/index.ts src/types/index.ts --format cjs,esm --dts --splitting --out-dir dist --no-treeshake",
     "build:watch": "tsup src/index.ts src/chains/index.ts src/types/index.ts --format cjs,esm --dts --splitting --out-dir dist --no-treeshake --watch",
