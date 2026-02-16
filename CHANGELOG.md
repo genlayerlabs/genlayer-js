@@ -1,5 +1,12 @@
 
 
+## 0.18.14 (2026-02-16)
+
+
+### Bug Fixes
+
+* preserve primitive values in simplifyTransactionReceipt ([ce6fdd7](https://github.com/genlayerlabs/genlayer-js/commit/ce6fdd734395d1402a4f20b897a481cb046e75f6))
+
 ## 0.18.13 (2026-02-16)
 
 ## 0.18.10 (2026-02-07)
