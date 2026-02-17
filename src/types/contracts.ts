@@ -28,5 +28,5 @@ export interface ContractMethod extends ContractMethodBase {
 
 export type ContractSchema = {
   ctor: ContractMethodBase;
-  methods: ContractMethod[];
+  methods: Record<string, ContractMethod>;
 };
