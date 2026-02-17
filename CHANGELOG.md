@@ -1,5 +1,12 @@
 
 
+## 0.19.0 (2026-02-17)
+
+
+### Features
+
+* export buildGenVmPositionalArgs from package ([475f063](https://github.com/genlayerlabs/genlayer-js/commit/475f0636c050353dd8830e64c24f247845d89a14))
+
 ## 0.18.14 (2026-02-16)
 
 
