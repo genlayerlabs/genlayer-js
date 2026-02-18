@@ -7,3 +7,4 @@ export * from "./transactions";
 export * from "./network";
 export * from "./snapSource";
 export * from "./staking";
+export * from "./subscriptions";

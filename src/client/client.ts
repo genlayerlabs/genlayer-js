@@ -15,6 +15,7 @@ import {contractActions} from "../contracts/actions";
 import {receiptActions, transactionActions} from "../transactions/actions";
 import {walletActions as genlayerWalletActions} from "../wallet/actions";
 import {stakingActions} from "../staking/actions";
+import {subscriptionActions} from "@/subscriptions/actions";
 import {GenLayerClient, GenLayerChain} from "@/types";
 import {chainActions} from "@/chains/actions";
 import {localnet} from "@/chains";
@@ -24,11 +25,12 @@ interface ClientConfig {
   chain?: {
     id: number;
     name: string;
-    rpcUrls: {default: {http: readonly string[]}};
+    rpcUrls: {default: {http: readonly string[]; webSocket?: readonly string[]}};
     nativeCurrency: {name: string; symbol: string; decimals: number};
     blockExplorers?: {default: {name: string; url: string}};
   };
-  endpoint?: string; // Custom RPC endpoint
+  endpoint?: string; // Custom HTTP RPC endpoint
+  webSocketEndpoint?: string; // Custom WebSocket RPC endpoint for event subscriptions
   account?: Account | Address;
   provider?: EthereumProvider; // Custom provider for wallet framework integration
 }
@@ -82,10 +84,19 @@ const getCustomTransportConfig = (config: ClientConfig, chainConfig: GenLayerCha
 };
 
 export const createClient = (config: ClientConfig = {chain: localnet}): GenLayerClient<GenLayerChain> => {
-  const chainConfig = config.chain || localnet;
-  if (config.endpoint) {
-    chainConfig.rpcUrls.default.http = [config.endpoint];
-  }
+  const baseChain = config.chain || localnet;
+  // Clone to avoid mutating the shared chain config singleton
+  const chainConfig = {
+    ...baseChain,
+    rpcUrls: {
+      ...baseChain.rpcUrls,
+      default: {
+        ...baseChain.rpcUrls.default,
+        ...(config.endpoint ? {http: [config.endpoint]} : {}),
+        ...(config.webSocketEndpoint ? {webSocket: [config.webSocketEndpoint]} : {}),
+      },
+    },
+  };
 
   const customTransport = custom(getCustomTransportConfig(config, chainConfig as GenLayerChain), {retryCount: 0, retryDelay: 0});
   const publicClient = createPublicClient(chainConfig as GenLayerChain, customTransport).extend(
@@ -120,9 +131,14 @@ export const createClient = (config: ClientConfig = {chain: localnet}): GenLayer
     ...receiptActions(clientWithAllActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
   } as unknown as GenLayerClient<GenLayerChain>;
 
-  const finalClient = {
+  const clientWithStakingActions = {
     ...clientWithReceiptActions,
     ...stakingActions(clientWithReceiptActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
+  } as unknown as GenLayerClient<GenLayerChain>;
+
+  const finalClient = {
+    ...clientWithStakingActions,
+    ...subscriptionActions(clientWithStakingActions),
   } as unknown as GenLayerClient<GenLayerChain>;
 
   finalClient.initializeConsensusSmartContract().catch(error => {
