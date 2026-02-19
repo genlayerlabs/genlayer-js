@@ -1,5 +1,12 @@
 
 
+## 0.19.1 (2026-02-19)
+
+
+### Bug Fixes
+
+* support addTransaction ABI v5/v6 on local and studio ([ba7d524](https://github.com/genlayerlabs/genlayer-js/commit/ba7d524b09035e689e3b1264153eabad0a283698))
+
 ## 0.19.0 (2026-02-17)
 
 
