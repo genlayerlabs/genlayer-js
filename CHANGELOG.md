@@ -1,5 +1,12 @@
 
 
+## 0.19.3 (2026-02-19)
+
+
+### Bug Fixes
+
+* detect viem InternalRpcError details for ABI fallback ([8b6e33a](https://github.com/genlayerlabs/genlayer-js/commit/8b6e33a175a717200b5853b429f406bbe6a7b015))
+
 ## 0.19.2 (2026-02-19)
 
 
