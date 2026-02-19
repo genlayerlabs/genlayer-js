@@ -295,4 +295,67 @@ describe("contractActions addTransaction ABI compatibility", () => {
       gasPrice: "0x1",
     });
   });
+
+  it("retries alternate ABI for injected-wallet errors with nested invalid pointer details", async () => {
+    const sentPayloads: `0x${string}`[] = [];
+    const request = vi.fn().mockImplementation(async ({method, params}: {method: string; params?: any[]}) => {
+      if (method === "eth_gasPrice") {
+        return "0x1";
+      }
+
+      if (method === "eth_sendTransaction") {
+        const payload = params?.[0];
+        sentPayloads.push(payload?.data);
+
+        if (sentPayloads.length === 1) {
+          throw {
+            code: -32603,
+            message: "Internal JSON-RPC error.",
+            data: {
+              originalError: {
+                message: "Invalid pointer in tuple at location 128 in payload",
+              },
+            },
+          };
+        }
+
+        return "0x1234";
+      }
+
+      throw new Error(`Unexpected RPC method: ${method}`);
+    });
+
+    const client = {
+      chain: {
+        id: 61_127,
+        defaultNumberOfInitialValidators: 5,
+        defaultConsensusMaxRotations: 3,
+        consensusMainContract: {
+          address: MAIN_CONTRACT_ADDRESS,
+          abi: [...ADD_TRANSACTION_ABI_V5],
+          bytecode: "0x",
+        },
+      },
+      account: {
+        address: SENDER_ADDRESS,
+        type: "json-rpc",
+      },
+      initializeConsensusSmartContract: vi.fn().mockResolvedValue(undefined),
+      getCurrentNonce: vi.fn().mockResolvedValue(0n),
+      estimateTransactionGas: vi.fn().mockResolvedValue(21_000n),
+      request,
+    };
+
+    const actions = contractActions(client as any, {} as any);
+    const txHash = await actions.writeContract({
+      address: RECIPIENT_ADDRESS,
+      functionName: "ping",
+      value: 0n,
+    });
+
+    expect(txHash).toBe("0x1234");
+    expect(sentPayloads).toHaveLength(2);
+    expect(sentPayloads[0].slice(0, 10)).toBe(selectorForV5);
+    expect(sentPayloads[1].slice(0, 10)).toBe(selectorForV6);
+  });
 });
