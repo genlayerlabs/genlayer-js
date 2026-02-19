@@ -141,10 +141,30 @@ describe("Testnet Asimov - Staking over WebSocket", () => {
     const nonZero = validators.filter(v => v !== "0x0000000000000000000000000000000000000000");
     if (nonZero.length === 0) return;
 
-    const view = await contract.read.validatorView([nonZero[0]]) as unknown as readonly unknown[];
-    expect(Array.isArray(view)).toBe(true);
-    // view is [left, right, parent, eBanned, ePrimed, vStake, vShares, dStake, dShares, vDeposit, vWithdrawal, live]
-    expect(view.length).toBe(12);
+    const view = await contract.read.validatorView([nonZero[0]]) as unknown;
+    // Depending on ABI/runtime decoding, viem may return either:
+    // - positional tuple array (length 12), or
+    // - named tuple object ({ left, right, ..., live })
+    if (Array.isArray(view)) {
+      expect(view.length).toBe(12);
+      return;
+    }
+
+    expect(typeof view).toBe("object");
+    expect(view).not.toBeNull();
+    const viewObject = view as Record<string, unknown>;
+    expect(viewObject).toHaveProperty("left");
+    expect(viewObject).toHaveProperty("right");
+    expect(viewObject).toHaveProperty("parent");
+    expect(viewObject).toHaveProperty("eBanned");
+    expect(viewObject).toHaveProperty("ePrimed");
+    expect(viewObject).toHaveProperty("vStake");
+    expect(viewObject).toHaveProperty("vShares");
+    expect(viewObject).toHaveProperty("dStake");
+    expect(viewObject).toHaveProperty("dShares");
+    expect(viewObject).toHaveProperty("vDeposit");
+    expect(viewObject).toHaveProperty("vWithdrawal");
+    expect(viewObject).toHaveProperty("live");
   }, TIMEOUT);
 
   it("getValidatorQuarantineList() via WS", async () => {
