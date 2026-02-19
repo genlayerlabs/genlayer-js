@@ -161,6 +161,9 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         leaderOnly = false,
         consensusMaxRotations = client.chain.defaultConsensusMaxRotations,
       } = args;
+
+      await client.initializeConsensusSmartContract();
+
       const data = [calldata.encode(calldata.makeCalldataObject(functionName, callArgs, kwargs)), leaderOnly];
       const serializedData = serialize(data);
       const senderAccount = account || client.account;
@@ -195,6 +198,9 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         leaderOnly = false,
         consensusMaxRotations = client.chain.defaultConsensusMaxRotations,
       } = args;
+
+      await client.initializeConsensusSmartContract();
+
       const data = [
         code,
         calldata.encode(calldata.makeCalldataObject(undefined, constructorArgs, kwargs)),
@@ -242,6 +248,56 @@ const validateAccount = (Account?: Account): Account => {
   return Account;
 };
 
+const ADD_TRANSACTION_ABI_V5 = [
+  {
+    type: "function",
+    name: "addTransaction",
+    stateMutability: "nonpayable",
+    inputs: [
+      {name: "_sender", type: "address"},
+      {name: "_recipient", type: "address"},
+      {name: "_numOfInitialValidators", type: "uint256"},
+      {name: "_maxRotations", type: "uint256"},
+      {name: "_txData", type: "bytes"},
+    ],
+    outputs: [],
+  },
+] as const;
+
+const ADD_TRANSACTION_ABI_V6 = [
+  {
+    type: "function",
+    name: "addTransaction",
+    stateMutability: "nonpayable",
+    inputs: [
+      {name: "_sender", type: "address"},
+      {name: "_recipient", type: "address"},
+      {name: "_numOfInitialValidators", type: "uint256"},
+      {name: "_maxRotations", type: "uint256"},
+      {name: "_txData", type: "bytes"},
+      {name: "_validUntil", type: "uint256"},
+    ],
+    outputs: [],
+  },
+] as const;
+
+const getAddTransactionInputCount = (abi: readonly unknown[] | undefined): number => {
+  if (!abi || !Array.isArray(abi)) {
+    return 0;
+  }
+
+  const addTransactionFunction = abi.find(item => {
+    if (!item || typeof item !== "object") {
+      return false;
+    }
+
+    const candidate = item as {type?: string; name?: string};
+    return candidate.type === "function" && candidate.name === "addTransaction";
+  }) as {inputs?: readonly unknown[]} | undefined;
+
+  return Array.isArray(addTransactionFunction?.inputs) ? addTransactionFunction.inputs.length : 0;
+};
+
 const _encodeAddTransactionData = ({
   client,
   senderAccount,
@@ -256,16 +312,33 @@ const _encodeAddTransactionData = ({
   consensusMaxRotations?: number;
 }): `0x${string}` => {
   const validatedSenderAccount = validateAccount(senderAccount);
+
+  const addTransactionArgs: [
+    Address,
+    `0x${string}` | undefined,
+    number,
+    number | undefined,
+    `0x${string}` | undefined,
+  ] = [
+    validatedSenderAccount.address,
+    recipient,
+    client.chain.defaultNumberOfInitialValidators,
+    consensusMaxRotations,
+    data,
+  ];
+
+  if (getAddTransactionInputCount(client.chain.consensusMainContract?.abi) >= 6) {
+    return encodeFunctionData({
+      abi: ADD_TRANSACTION_ABI_V6 as any,
+      functionName: "addTransaction",
+      args: [...addTransactionArgs, 0n],
+    });
+  }
+
   return encodeFunctionData({
-    abi: client.chain.consensusMainContract?.abi as any,
+    abi: ADD_TRANSACTION_ABI_V5 as any,
     functionName: "addTransaction",
-    args: [
-      validatedSenderAccount.address,
-      recipient,
-      client.chain.defaultNumberOfInitialValidators,
-      consensusMaxRotations,
-      data,
-    ],
+    args: addTransactionArgs,
   });
 };
 
