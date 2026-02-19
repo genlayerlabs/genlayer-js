@@ -167,7 +167,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       const data = [calldata.encode(calldata.makeCalldataObject(functionName, callArgs, kwargs)), leaderOnly];
       const serializedData = serialize(data);
       const senderAccount = account || client.account;
-      const encodedData = _encodeAddTransactionData({
+      const {primaryEncodedData, fallbackEncodedData} = _encodeAddTransactionData({
         client,
         senderAccount,
         recipient: address,
@@ -177,7 +177,8 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       return _sendTransaction({
         client,
         publicClient,
-        encodedData,
+        encodedData: primaryEncodedData,
+        fallbackEncodedData,
         senderAccount,
         value,
       });
@@ -208,7 +209,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       ];
       const serializedData = serialize(data);
       const senderAccount = account || client.account;
-      const encodedData = _encodeAddTransactionData({
+      const {primaryEncodedData, fallbackEncodedData} = _encodeAddTransactionData({
         client,
         senderAccount,
         recipient: zeroAddress,
@@ -218,7 +219,8 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       return _sendTransaction({
         client,
         publicClient,
-        encodedData,
+        encodedData: primaryEncodedData,
+        fallbackEncodedData,
         senderAccount,
       });
     },
@@ -310,7 +312,7 @@ const _encodeAddTransactionData = ({
   recipient?: `0x${string}`;
   data?: `0x${string}`;
   consensusMaxRotations?: number;
-}): `0x${string}` => {
+}): {primaryEncodedData: `0x${string}`; fallbackEncodedData: `0x${string}`} => {
   const validatedSenderAccount = validateAccount(senderAccount);
 
   const addTransactionArgs: [
@@ -327,19 +329,29 @@ const _encodeAddTransactionData = ({
     data,
   ];
 
-  if (getAddTransactionInputCount(client.chain.consensusMainContract?.abi) >= 6) {
-    return encodeFunctionData({
-      abi: ADD_TRANSACTION_ABI_V6 as any,
-      functionName: "addTransaction",
-      args: [...addTransactionArgs, 0n],
-    });
-  }
-
-  return encodeFunctionData({
+  const encodedDataV5 = encodeFunctionData({
     abi: ADD_TRANSACTION_ABI_V5 as any,
     functionName: "addTransaction",
     args: addTransactionArgs,
   });
+
+  const encodedDataV6 = encodeFunctionData({
+    abi: ADD_TRANSACTION_ABI_V6 as any,
+    functionName: "addTransaction",
+    args: [...addTransactionArgs, 0n],
+  });
+
+  if (getAddTransactionInputCount(client.chain.consensusMainContract?.abi) >= 6) {
+    return {
+      primaryEncodedData: encodedDataV6,
+      fallbackEncodedData: encodedDataV5,
+    };
+  }
+
+  return {
+    primaryEncodedData: encodedDataV5,
+    fallbackEncodedData: encodedDataV6,
+  };
 };
 
 const _encodeSubmitAppealData = ({
@@ -356,16 +368,35 @@ const _encodeSubmitAppealData = ({
   });
 };
 
+const isAddTransactionAbiMismatchError = (error: unknown): boolean => {
+  const errorMessage = String(
+    (error as {shortMessage?: string; details?: string; message?: string})?.shortMessage ||
+      (error as {shortMessage?: string; details?: string; message?: string})?.details ||
+      (error as {shortMessage?: string; details?: string; message?: string})?.message ||
+      error ||
+      "",
+  ).toLowerCase();
+
+  return (
+    errorMessage.includes("invalid pointer in tuple") ||
+    errorMessage.includes("could not decode") ||
+    errorMessage.includes("invalid arrayify value") ||
+    errorMessage.includes("types/value length mismatch")
+  );
+};
+
 const _sendTransaction = async ({
   client,
   publicClient,
   encodedData,
+  fallbackEncodedData,
   senderAccount,
   value = 0n,
 }: {
   client: GenLayerClient<GenLayerChain>;
   publicClient: PublicClient;
   encodedData: `0x${string}`;
+  fallbackEncodedData?: `0x${string}`;
   senderAccount?: Account;
   value?: bigint;
 }) => {
@@ -376,85 +407,96 @@ const _sendTransaction = async ({
   const validatedSenderAccount = validateAccount(senderAccount);
   const nonce = await client.getCurrentNonce({address: validatedSenderAccount.address});
 
-  let estimatedGas: bigint;
-  try {
-    estimatedGas = await client.estimateTransactionGas({
-      from: validatedSenderAccount.address,
-      to: client.chain.consensusMainContract?.address as Address,
-      data: encodedData,
-      value: value,
-    });
-  } catch (err) {
-    console.error("Gas estimation failed, using default 200_000:", err);
-    estimatedGas = 200_000n;
-  }
-
-  // For local accounts, build transaction request directly to avoid viem's
-  // prepareTransactionRequest which calls eth_fillTransaction (unsupported by GenLayer RPC)
-  if (validatedSenderAccount?.type === "local") {
-    if (!validatedSenderAccount?.signTransaction) {
-      throw new Error("Account does not support signTransaction");
+  const sendWithEncodedData = async (encodedDataForSend: `0x${string}`) => {
+    let estimatedGas: bigint;
+    try {
+      estimatedGas = await client.estimateTransactionGas({
+        from: validatedSenderAccount.address,
+        to: client.chain.consensusMainContract?.address as Address,
+        data: encodedDataForSend,
+        value: value,
+      });
+    } catch (err) {
+      console.error("Gas estimation failed, using default 200_000:", err);
+      estimatedGas = 200_000n;
     }
 
-    const gasPriceHex = (await client.request({
-      method: "eth_gasPrice",
-    })) as string;
+    // For local accounts, build transaction request directly to avoid viem's
+    // prepareTransactionRequest which calls eth_fillTransaction (unsupported by GenLayer RPC)
+    if (validatedSenderAccount?.type === "local") {
+      if (!validatedSenderAccount?.signTransaction) {
+        throw new Error("Account does not support signTransaction");
+      }
 
-    const transactionRequest = {
+      const gasPriceHex = (await client.request({
+        method: "eth_gasPrice",
+      })) as string;
+
+      const transactionRequest = {
+        account: validatedSenderAccount,
+        to: client.chain.consensusMainContract?.address as Address,
+        data: encodedDataForSend,
+        type: "legacy" as const,
+        nonce: Number(nonce),
+        value: value,
+        gas: estimatedGas,
+        gasPrice: BigInt(gasPriceHex),
+        chainId: client.chain.id,
+      };
+
+      const serializedTransaction = await validatedSenderAccount.signTransaction(transactionRequest);
+      const txHash = await client.sendRawTransaction({serializedTransaction: serializedTransaction});
+      const receipt = await publicClient.waitForTransactionReceipt({hash: txHash});
+
+      if (receipt.status === "reverted") {
+        throw new Error("Transaction reverted");
+      }
+
+      const newTxEvents = parseEventLogs({
+        abi: client.chain.consensusMainContract?.abi as any,
+        eventName: "NewTransaction",
+        logs: receipt.logs,
+      }) as unknown as {args: {txId: `0x${string}`}}[];
+
+      if (newTxEvents.length === 0) {
+        throw new Error("Transaction not processed by consensus");
+      }
+
+      return newTxEvents[0].args["txId"];
+    }
+
+    // For external wallets (e.g., MetaMask via AppKit), use prepareTransactionRequest
+    // which will route eth_* calls through the provider
+    const transactionRequest = await client.prepareTransactionRequest({
       account: validatedSenderAccount,
       to: client.chain.consensusMainContract?.address as Address,
-      data: encodedData,
-      type: "legacy" as const,
+      data: encodedDataForSend,
+      type: "legacy",
       nonce: Number(nonce),
       value: value,
       gas: estimatedGas,
-      gasPrice: BigInt(gasPriceHex),
-      chainId: client.chain.id,
+    });
+
+    const formattedRequest = {
+      from: transactionRequest.from,
+      to: transactionRequest.to,
+      data: encodedDataForSend,
+      value: transactionRequest.value ? `0x${transactionRequest.value.toString(16)}` : "0x0",
+      gas: transactionRequest.gas ? `0x${transactionRequest.gas.toString(16)}` : "0x5208",
     };
 
-    const serializedTransaction = await validatedSenderAccount.signTransaction(transactionRequest);
-    const txHash = await client.sendRawTransaction({serializedTransaction: serializedTransaction});
-    const receipt = await publicClient.waitForTransactionReceipt({hash: txHash});
-
-    if (receipt.status === "reverted") {
-      throw new Error("Transaction reverted");
-    }
-
-    const newTxEvents = parseEventLogs({
-      abi: client.chain.consensusMainContract?.abi as any,
-      eventName: "NewTransaction",
-      logs: receipt.logs,
-    }) as unknown as {args: {txId: `0x${string}`}}[];
-
-    if (newTxEvents.length === 0) {
-      throw new Error("Transaction not processed by consensus");
-    }
-
-    return newTxEvents[0].args["txId"];
-  }
-
-  // For external wallets (e.g., MetaMask via AppKit), use prepareTransactionRequest
-  // which will route eth_* calls through the provider
-  const transactionRequest = await client.prepareTransactionRequest({
-    account: validatedSenderAccount,
-    to: client.chain.consensusMainContract?.address as Address,
-    data: encodedData,
-    type: "legacy",
-    nonce: Number(nonce),
-    value: value,
-    gas: estimatedGas,
-  });
-
-  const formattedRequest = {
-    from: transactionRequest.from,
-    to: transactionRequest.to,
-    data: encodedData,
-    value: transactionRequest.value ? `0x${transactionRequest.value.toString(16)}` : "0x0",
-    gas: transactionRequest.gas ? `0x${transactionRequest.gas.toString(16)}` : "0x5208",
+    return await client.request({
+      method: "eth_sendTransaction",
+      params: [formattedRequest as any],
+    });
   };
 
-  return await client.request({
-    method: "eth_sendTransaction",
-    params: [formattedRequest as any],
-  });
+  try {
+    return await sendWithEncodedData(encodedData);
+  } catch (error) {
+    if (!fallbackEncodedData || !isAddTransactionAbiMismatchError(error)) {
+      throw error;
+    }
+    return await sendWithEncodedData(fallbackEncodedData);
+  }
 };
