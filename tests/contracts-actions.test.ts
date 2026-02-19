@@ -181,6 +181,34 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(estimateTransactionGas).toHaveBeenCalledTimes(2);
   });
 
+  it("retries when ABI mismatch details are on error.details (viem InternalRpcError shape)", async () => {
+    const signTransaction = vi
+      .fn()
+      .mockRejectedValueOnce({
+        shortMessage: "An internal error was received.",
+        details: "Invalid pointer in tuple at location 128 in payload",
+      })
+      .mockRejectedValueOnce(new Error("stop_after_retry"));
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_V5,
+      signTransactionMock: signTransaction as any,
+    });
+
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        value: 0n,
+      }),
+    ).rejects.toThrow("stop_after_retry");
+
+    expect(signTransaction).toHaveBeenCalledTimes(2);
+    const firstEncodedData = signTransaction.mock.calls[0][0].data as `0x${string}`;
+    const secondEncodedData = signTransaction.mock.calls[1][0].data as `0x${string}`;
+    expect(firstEncodedData.slice(0, 10)).toBe(selectorForV5);
+    expect(secondEncodedData.slice(0, 10)).toBe(selectorForV6);
+  });
+
   it("retries with v5 signature when v6 signature fails with ABI mismatch", async () => {
     const signTransaction = vi
       .fn()

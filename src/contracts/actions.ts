@@ -369,13 +369,16 @@ const _encodeSubmitAppealData = ({
 };
 
 const isAddTransactionAbiMismatchError = (error: unknown): boolean => {
-  const errorMessage = String(
-    (error as {shortMessage?: string; details?: string; message?: string})?.shortMessage ||
-      (error as {shortMessage?: string; details?: string; message?: string})?.details ||
-      (error as {shortMessage?: string; details?: string; message?: string})?.message ||
-      error ||
-      "",
-  ).toLowerCase();
+  const errorObject = error as {shortMessage?: string; details?: string; message?: string};
+  const errorMessage = [
+    errorObject?.shortMessage,
+    errorObject?.details,
+    errorObject?.message,
+    String(error ?? ""),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 
   return (
     errorMessage.includes("invalid pointer in tuple") ||
