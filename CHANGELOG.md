@@ -1,5 +1,12 @@
 
 
+## 0.19.5 (2026-02-19)
+
+
+### Bug Fixes
+
+* **wallet:** detect nested provider ABI mismatch errors ([#137](https://github.com/genlayerlabs/genlayer-js/issues/137)) ([fafaf08](https://github.com/genlayerlabs/genlayer-js/commit/fafaf082a4221dda055f762b8cb96ad20db59f86))
+
 ## 0.19.4 (2026-02-19)
 
 
