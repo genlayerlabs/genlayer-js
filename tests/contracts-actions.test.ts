@@ -54,12 +54,14 @@ const selectorForV6 = encodeFunctionData({
 const setupWriteContractHarness = ({
   initialAbi,
   initializeConsensusSmartContract,
+  signTransactionMock,
 }: {
   initialAbi: readonly unknown[];
   initializeConsensusSmartContract?: (client: any) => Promise<void> | void;
+  signTransactionMock?: ReturnType<typeof vi.fn>;
 }) => {
   const estimateTransactionGas = vi.fn().mockResolvedValue(21_000n);
-  const signTransaction = vi.fn().mockRejectedValue(new Error("stop_after_encoding"));
+  const signTransaction = signTransactionMock ?? vi.fn().mockRejectedValue(new Error("stop_after_encoding"));
 
   const client = {
     chain: {
@@ -94,7 +96,7 @@ const setupWriteContractHarness = ({
 
   const actions = contractActions(client as any, {} as any);
 
-  return {actions, estimateTransactionGas, client};
+  return {actions, estimateTransactionGas, client, signTransaction};
 };
 
 describe("contractActions addTransaction ABI compatibility", () => {
@@ -151,5 +153,57 @@ describe("contractActions addTransaction ABI compatibility", () => {
     const encodedData = estimateTransactionGas.mock.calls[0][0].data as `0x${string}`;
     expect(encodedData.slice(0, 10)).toBe(selectorForV6);
     expect(client.initializeConsensusSmartContract).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries with v6 signature when v5 signature fails with ABI mismatch", async () => {
+    const signTransaction = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Invalid pointer in tuple at location 128 in payload"))
+      .mockRejectedValueOnce(new Error("stop_after_retry"));
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_V5,
+      signTransactionMock: signTransaction,
+    });
+
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        value: 0n,
+      }),
+    ).rejects.toThrow("stop_after_retry");
+
+    expect(signTransaction).toHaveBeenCalledTimes(2);
+    const firstEncodedData = signTransaction.mock.calls[0][0].data as `0x${string}`;
+    const secondEncodedData = signTransaction.mock.calls[1][0].data as `0x${string}`;
+    expect(firstEncodedData.slice(0, 10)).toBe(selectorForV5);
+    expect(secondEncodedData.slice(0, 10)).toBe(selectorForV6);
+    expect(estimateTransactionGas).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries with v5 signature when v6 signature fails with ABI mismatch", async () => {
+    const signTransaction = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Invalid pointer in tuple at location 128 in payload"))
+      .mockRejectedValueOnce(new Error("stop_after_retry"));
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_V6,
+      signTransactionMock: signTransaction,
+    });
+
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        value: 0n,
+      }),
+    ).rejects.toThrow("stop_after_retry");
+
+    expect(signTransaction).toHaveBeenCalledTimes(2);
+    const firstEncodedData = signTransaction.mock.calls[0][0].data as `0x${string}`;
+    const secondEncodedData = signTransaction.mock.calls[1][0].data as `0x${string}`;
+    expect(firstEncodedData.slice(0, 10)).toBe(selectorForV6);
+    expect(secondEncodedData.slice(0, 10)).toBe(selectorForV5);
+    expect(estimateTransactionGas).toHaveBeenCalledTimes(2);
   });
 });
