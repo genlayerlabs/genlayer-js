@@ -234,4 +234,65 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(secondEncodedData.slice(0, 10)).toBe(selectorForV5);
     expect(estimateTransactionGas).toHaveBeenCalledTimes(2);
   });
+
+  it("uses direct eth_sendTransaction for non-local accounts without prepareTransactionRequest", async () => {
+    const request = vi.fn().mockImplementation(async ({method, params}: {method: string; params?: any[]}) => {
+      if (method === "eth_gasPrice") {
+        return "0x1";
+      }
+      if (method === "eth_sendTransaction") {
+        expect(params).toBeDefined();
+        return "0x1234";
+      }
+      throw new Error(`Unexpected RPC method: ${method}`);
+    });
+
+    const client = {
+      chain: {
+        id: 61_127,
+        defaultNumberOfInitialValidators: 5,
+        defaultConsensusMaxRotations: 3,
+        consensusMainContract: {
+          address: MAIN_CONTRACT_ADDRESS,
+          abi: [...ADD_TRANSACTION_ABI_V6],
+          bytecode: "0x",
+        },
+      },
+      account: {
+        address: SENDER_ADDRESS,
+        type: "json-rpc",
+      },
+      initializeConsensusSmartContract: vi.fn().mockResolvedValue(undefined),
+      getCurrentNonce: vi.fn().mockResolvedValue(0n),
+      estimateTransactionGas: vi.fn().mockResolvedValue(21_000n),
+      request,
+    };
+
+    const actions = contractActions(client as any, {} as any);
+    const txHash = await actions.writeContract({
+      address: RECIPIENT_ADDRESS,
+      functionName: "ping",
+      value: 0n,
+    });
+
+    expect(txHash).toBe("0x1234");
+    expect(request).toHaveBeenCalledWith({method: "eth_gasPrice"});
+
+    const sendTxCall = request.mock.calls.find(
+      call => call[0]?.method === "eth_sendTransaction",
+    );
+    expect(sendTxCall).toBeDefined();
+
+    const sendTxParams = sendTxCall?.[0]?.params?.[0];
+    expect(sendTxParams).toMatchObject({
+      from: SENDER_ADDRESS,
+      to: MAIN_CONTRACT_ADDRESS,
+      value: "0x0",
+      gas: "0x5208",
+      nonce: "0x0",
+      type: "0x0",
+      chainId: "0xeec7",
+      gasPrice: "0x1",
+    });
+  });
 });
