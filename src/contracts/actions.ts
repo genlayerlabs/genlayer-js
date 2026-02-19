@@ -468,24 +468,38 @@ const _sendTransaction = async ({
       return newTxEvents[0].args["txId"];
     }
 
-    // For external wallets (e.g., MetaMask via AppKit), use prepareTransactionRequest
-    // which will route eth_* calls through the provider
-    const transactionRequest = await client.prepareTransactionRequest({
-      account: validatedSenderAccount,
-      to: client.chain.consensusMainContract?.address as Address,
-      data: encodedDataForSend,
-      type: "legacy",
-      nonce: Number(nonce),
-      value: value,
-      gas: estimatedGas,
-    });
+    // For injected/external wallets (e.g. MetaMask), avoid viem's
+    // prepareTransactionRequest() because it may call eth_fillTransaction and
+    // eth_getBlockByNumber, which are not available on all GenLayer-compatible RPCs.
+    let gasPriceHex: `0x${string}` | undefined;
+    try {
+      const gasPriceResult = await client.request({
+        method: "eth_gasPrice",
+      });
+      if (typeof gasPriceResult === "string") {
+        gasPriceHex = gasPriceResult as `0x${string}`;
+      }
+    } catch (error) {
+      console.warn("Failed to fetch gas price, delegating gas price selection to wallet:", error);
+    }
+
+    const nonceBigInt =
+      typeof nonce === "bigint"
+        ? nonce
+        : typeof nonce === "string"
+          ? BigInt(nonce)
+          : BigInt(Number(nonce));
 
     const formattedRequest = {
-      from: transactionRequest.from,
-      to: transactionRequest.to,
+      from: validatedSenderAccount.address,
+      to: client.chain.consensusMainContract?.address as Address,
       data: encodedDataForSend,
-      value: transactionRequest.value ? `0x${transactionRequest.value.toString(16)}` : "0x0",
-      gas: transactionRequest.gas ? `0x${transactionRequest.gas.toString(16)}` : "0x5208",
+      value: `0x${value.toString(16)}`,
+      gas: `0x${estimatedGas.toString(16)}`,
+      nonce: `0x${nonceBigInt.toString(16)}`,
+      type: "0x0", // legacy tx
+      chainId: `0x${client.chain.id.toString(16)}`,
+      ...(gasPriceHex ? {gasPrice: gasPriceHex} : {}),
     };
 
     return await client.request({
