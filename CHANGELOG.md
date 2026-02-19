@@ -1,5 +1,12 @@
 
 
+## 0.19.2 (2026-02-19)
+
+
+### Bug Fixes
+
+* retry addTransaction with alternate ABI on mismatch ([cdd5932](https://github.com/genlayerlabs/genlayer-js/commit/cdd5932f2a1a2476967b3c8d541fd50f3818b413))
+
 ## 0.19.1 (2026-02-19)
 
 
