@@ -1,5 +1,12 @@
 
 
+## 0.19.4 (2026-02-19)
+
+
+### Bug Fixes
+
+* **wallet:** avoid prepareTransactionRequest for injected providers ([#136](https://github.com/genlayerlabs/genlayer-js/issues/136)) ([89a12ed](https://github.com/genlayerlabs/genlayer-js/commit/89a12ed09e726a9f0cc20973a5a9bd804d9b603b))
+
 ## 0.19.3 (2026-02-19)
 
 
