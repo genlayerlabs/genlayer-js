@@ -369,11 +369,30 @@ const _encodeSubmitAppealData = ({
 };
 
 const isAddTransactionAbiMismatchError = (error: unknown): boolean => {
+  const seen = new WeakSet<object>();
+  const serializedError =
+    typeof error === "object" && error !== null
+      ? JSON.stringify(error, (_key, value) => {
+        if (typeof value === "bigint") {
+          return value.toString();
+        }
+
+        if (typeof value === "object" && value !== null) {
+          if (seen.has(value as object)) {
+            return "[Circular]";
+          }
+          seen.add(value as object);
+        }
+
+        return value;
+      })
+      : "";
   const errorObject = error as {shortMessage?: string; details?: string; message?: string};
   const errorMessage = [
     errorObject?.shortMessage,
     errorObject?.details,
     errorObject?.message,
+    serializedError,
     String(error ?? ""),
   ]
     .filter(Boolean)
@@ -382,6 +401,7 @@ const isAddTransactionAbiMismatchError = (error: unknown): boolean => {
 
   return (
     errorMessage.includes("invalid pointer in tuple") ||
+    errorMessage.includes("invalid pointer") ||
     errorMessage.includes("could not decode") ||
     errorMessage.includes("invalid arrayify value") ||
     errorMessage.includes("types/value length mismatch")
