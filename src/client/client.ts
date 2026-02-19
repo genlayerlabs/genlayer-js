@@ -35,10 +35,32 @@ interface ClientConfig {
 
 const getCustomTransportConfig = (config: ClientConfig, chainConfig: GenLayerChain) => {
   const isAddress = typeof config.account !== "object";
+  const providerMethods = new Set<string>([
+    "eth_chainId",
+    "eth_accounts",
+    "eth_requestAccounts",
+    "eth_sendTransaction",
+    "eth_sign",
+    "eth_signTypedData",
+    "eth_signTypedData_v4",
+    "personal_sign",
+    "wallet_addEthereumChain",
+    "wallet_getPermissions",
+    "wallet_requestPermissions",
+    "wallet_switchEthereumChain",
+  ]);
 
   return {
     async request({method, params = []}: {method: string; params: any[]}) {
-      if (method.startsWith("eth_") && isAddress) {
+      const shouldUseProvider =
+        isAddress &&
+        (
+          providerMethods.has(method) ||
+          method.startsWith("wallet_") ||
+          method.endsWith("_signTypedData") ||
+          method.endsWith("_signTypedData_v4")
+        );
+      if (shouldUseProvider) {
         const provider = config.provider || (typeof window !== "undefined" ? window.ethereum : undefined);
         if (provider) {
           try {

@@ -195,3 +195,125 @@ describe("Client Overrides", () => {
     ]);
   });
 });
+
+describe("Provider routing", () => {
+  beforeEach(() => {
+    mockFetch.mockReset();
+
+    mockFetch.mockImplementation(async (_url, options) => {
+      const bodyString = typeof options?.body === "string" ? options.body : "{}";
+      const body = JSON.parse(bodyString) as {method?: string};
+
+      if (body.method === "sim_getConsensusContract") {
+        return {
+          ok: true,
+          json: async () => ({
+            result: {
+              address: "0x0000000000000000000000000000000000000001",
+              abi: [],
+            },
+          }),
+        };
+      }
+
+      if (body.method === "eth_getTransactionByHash") {
+        return {
+          ok: true,
+          json: async () => ({
+            result: {
+              hash: "0x" + "11".repeat(32),
+              status: "FINALIZED",
+              from_address: "0x" + "22".repeat(20),
+              to_address: "0x" + "33".repeat(20),
+              type: 2,
+              nonce: 0,
+              value: 0,
+              gaslimit: 0,
+              r: 0,
+              s: 0,
+              v: 0,
+              created_at: new Date(0).toISOString(),
+              data: {calldata: ""},
+              consensus_data: {
+                leader_receipt: [{execution_result: "SUCCESS"}],
+                validators: [],
+                votes: {},
+              },
+            },
+          }),
+        };
+      }
+
+      return {
+        ok: true,
+        json: async () => ({result: null}),
+      };
+    });
+  });
+
+  it("routes eth_sendTransaction via provider for injected accounts", async () => {
+    const providerRequest = vi.fn().mockResolvedValue("0x" + "aa".repeat(32));
+
+    const client = createClient({
+      chain: localnet,
+      account: "0x65e03a3e916CF1dC92d3C8E8186a89CfAB0D2bc2",
+      provider: {request: providerRequest} as any,
+    });
+
+    const txHash = await client.request({
+      method: "eth_sendTransaction",
+      params: [{from: "0x65e03a3e916CF1dC92d3C8E8186a89CfAB0D2bc2"}],
+    });
+
+    expect(txHash).toBe("0x" + "aa".repeat(32));
+    expect(providerRequest).toHaveBeenCalledWith({
+      method: "eth_sendTransaction",
+      params: [{from: "0x65e03a3e916CF1dC92d3C8E8186a89CfAB0D2bc2"}],
+    });
+  });
+
+  it("routes eth_getTransactionByHash to RPC fetch (not provider)", async () => {
+    const providerRequest = vi.fn().mockResolvedValue(null);
+
+    const client = createClient({
+      chain: localnet,
+      account: "0x65e03a3e916CF1dC92d3C8E8186a89CfAB0D2bc2",
+      provider: {request: providerRequest} as any,
+    });
+
+    const transaction = await client.request({
+      method: "eth_getTransactionByHash",
+      params: ["0x" + "11".repeat(32)],
+    });
+
+    expect(transaction).toMatchObject({
+      hash: "0x" + "11".repeat(32),
+      status: "FINALIZED",
+    });
+    expect(providerRequest).not.toHaveBeenCalled();
+    expect(
+      mockFetch.mock.calls.some(call => {
+        const body = JSON.parse(call[1]?.body as string) as {method?: string};
+        return body.method === "eth_getTransactionByHash";
+      }),
+    ).toBe(true);
+  });
+
+  it("routes eth_chainId via provider for injected accounts", async () => {
+    const providerRequest = vi.fn().mockResolvedValue("0xf22f");
+
+    const client = createClient({
+      chain: localnet,
+      account: "0x65e03a3e916CF1dC92d3C8E8186a89CfAB0D2bc2",
+      provider: {request: providerRequest} as any,
+    });
+
+    const chainId = await client.request({method: "eth_chainId"});
+
+    expect(chainId).toBe("0xf22f");
+    expect(providerRequest).toHaveBeenCalledWith({
+      method: "eth_chainId",
+      params: [],
+    });
+  });
+});
