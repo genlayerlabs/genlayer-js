@@ -6,22 +6,6 @@ const MAIN_CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000001";
 const SENDER_ADDRESS = "0x0000000000000000000000000000000000000002";
 const RECIPIENT_ADDRESS = "0x0000000000000000000000000000000000000003";
 
-const ADD_TRANSACTION_ABI_V5 = [
-  {
-    type: "function",
-    name: "addTransaction",
-    stateMutability: "nonpayable",
-    inputs: [
-      {name: "_sender", type: "address"},
-      {name: "_recipient", type: "address"},
-      {name: "_numOfInitialValidators", type: "uint256"},
-      {name: "_maxRotations", type: "uint256"},
-      {name: "_txData", type: "bytes"},
-    ],
-    outputs: [],
-  },
-] as const;
-
 const ADD_TRANSACTION_ABI_V6 = [
   {
     type: "function",
@@ -39,16 +23,62 @@ const ADD_TRANSACTION_ABI_V6 = [
   },
 ] as const;
 
-const selectorForV5 = encodeFunctionData({
-  abi: ADD_TRANSACTION_ABI_V5 as any,
-  functionName: "addTransaction",
-  args: [SENDER_ADDRESS, RECIPIENT_ADDRESS, 5, 3, "0x"],
-}).slice(0, 10);
+const ADD_TRANSACTION_ABI_V7 = [
+  {
+    type: "function",
+    name: "addTransaction",
+    stateMutability: "nonpayable",
+    inputs: [
+      {name: "_sender", type: "address"},
+      {name: "_recipient", type: "address"},
+      {name: "_numOfInitialValidators", type: "uint256"},
+      {name: "_maxRotations", type: "uint256"},
+      {name: "_txData", type: "bytes"},
+      {
+        name: "_feesDistribution",
+        type: "tuple",
+        components: [
+          {name: "leaderTimeoutFee", type: "uint256"},
+          {name: "validatorsTimeoutFee", type: "uint256"},
+          {name: "appealRounds", type: "uint256"},
+          {name: "rollupStorageFee", type: "uint256"},
+          {name: "rollupGenVMFee", type: "uint256"},
+          {name: "totalMessageFees", type: "uint256"},
+          {name: "rotations", type: "uint256[]"},
+        ],
+      },
+      {name: "_validUntil", type: "uint256"},
+    ],
+    outputs: [],
+  },
+] as const;
 
 const selectorForV6 = encodeFunctionData({
   abi: ADD_TRANSACTION_ABI_V6 as any,
   functionName: "addTransaction",
   args: [SENDER_ADDRESS, RECIPIENT_ADDRESS, 5, 3, "0x", 0n],
+}).slice(0, 10);
+
+const selectorForV7 = encodeFunctionData({
+  abi: ADD_TRANSACTION_ABI_V7 as any,
+  functionName: "addTransaction",
+  args: [
+    SENDER_ADDRESS,
+    RECIPIENT_ADDRESS,
+    5,
+    3,
+    "0x",
+    {
+      leaderTimeoutFee: 0n,
+      validatorsTimeoutFee: 0n,
+      appealRounds: 0n,
+      rollupStorageFee: 0n,
+      rollupGenVMFee: 0n,
+      totalMessageFees: 0n,
+      rotations: [],
+    },
+    0n,
+  ],
 }).slice(0, 10);
 
 const setupWriteContractHarness = ({
@@ -100,23 +130,6 @@ const setupWriteContractHarness = ({
 };
 
 describe("contractActions addTransaction ABI compatibility", () => {
-  it("encodes addTransaction with 5 args when ABI has 5 inputs", async () => {
-    const {actions, estimateTransactionGas} = setupWriteContractHarness({
-      initialAbi: ADD_TRANSACTION_ABI_V5,
-    });
-
-    await expect(
-      actions.writeContract({
-        address: RECIPIENT_ADDRESS,
-        functionName: "ping",
-        value: 0n,
-      }),
-    ).rejects.toThrow("stop_after_encoding");
-
-    const encodedData = estimateTransactionGas.mock.calls[0][0].data as `0x${string}`;
-    expect(encodedData.slice(0, 10)).toBe(selectorForV5);
-  });
-
   it("encodes addTransaction with 6 args when ABI has 6 inputs", async () => {
     const {actions, estimateTransactionGas} = setupWriteContractHarness({
       initialAbi: ADD_TRANSACTION_ABI_V6,
@@ -134,11 +147,28 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(encodedData.slice(0, 10)).toBe(selectorForV6);
   });
 
+  it("encodes addTransaction with 7 args when ABI has WithFees variant", async () => {
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_V7,
+    });
+
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        value: 0n,
+      }),
+    ).rejects.toThrow("stop_after_encoding");
+
+    const encodedData = estimateTransactionGas.mock.calls[0][0].data as `0x${string}`;
+    expect(encodedData.slice(0, 10)).toBe(selectorForV7);
+  });
+
   it("uses refreshed ABI from initializeConsensusSmartContract before write encoding", async () => {
     const {actions, estimateTransactionGas, client} = setupWriteContractHarness({
-      initialAbi: ADD_TRANSACTION_ABI_V5,
+      initialAbi: ADD_TRANSACTION_ABI_V6,
       initializeConsensusSmartContract: currentClient => {
-        currentClient.chain.consensusMainContract.abi = [...ADD_TRANSACTION_ABI_V6];
+        currentClient.chain.consensusMainContract.abi = [...ADD_TRANSACTION_ABI_V7];
       },
     });
 
@@ -151,88 +181,8 @@ describe("contractActions addTransaction ABI compatibility", () => {
     ).rejects.toThrow("stop_after_encoding");
 
     const encodedData = estimateTransactionGas.mock.calls[0][0].data as `0x${string}`;
-    expect(encodedData.slice(0, 10)).toBe(selectorForV6);
+    expect(encodedData.slice(0, 10)).toBe(selectorForV7);
     expect(client.initializeConsensusSmartContract).toHaveBeenCalledTimes(1);
-  });
-
-  it("retries with v6 signature when v5 signature fails with ABI mismatch", async () => {
-    const signTransaction = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("Invalid pointer in tuple at location 128 in payload"))
-      .mockRejectedValueOnce(new Error("stop_after_retry"));
-    const {actions, estimateTransactionGas} = setupWriteContractHarness({
-      initialAbi: ADD_TRANSACTION_ABI_V5,
-      signTransactionMock: signTransaction,
-    });
-
-    await expect(
-      actions.writeContract({
-        address: RECIPIENT_ADDRESS,
-        functionName: "ping",
-        value: 0n,
-      }),
-    ).rejects.toThrow("stop_after_retry");
-
-    expect(signTransaction).toHaveBeenCalledTimes(2);
-    const firstEncodedData = signTransaction.mock.calls[0][0].data as `0x${string}`;
-    const secondEncodedData = signTransaction.mock.calls[1][0].data as `0x${string}`;
-    expect(firstEncodedData.slice(0, 10)).toBe(selectorForV5);
-    expect(secondEncodedData.slice(0, 10)).toBe(selectorForV6);
-    expect(estimateTransactionGas).toHaveBeenCalledTimes(2);
-  });
-
-  it("retries when ABI mismatch details are on error.details (viem InternalRpcError shape)", async () => {
-    const signTransaction = vi
-      .fn()
-      .mockRejectedValueOnce({
-        shortMessage: "An internal error was received.",
-        details: "Invalid pointer in tuple at location 128 in payload",
-      })
-      .mockRejectedValueOnce(new Error("stop_after_retry"));
-    const {actions} = setupWriteContractHarness({
-      initialAbi: ADD_TRANSACTION_ABI_V5,
-      signTransactionMock: signTransaction as any,
-    });
-
-    await expect(
-      actions.writeContract({
-        address: RECIPIENT_ADDRESS,
-        functionName: "ping",
-        value: 0n,
-      }),
-    ).rejects.toThrow("stop_after_retry");
-
-    expect(signTransaction).toHaveBeenCalledTimes(2);
-    const firstEncodedData = signTransaction.mock.calls[0][0].data as `0x${string}`;
-    const secondEncodedData = signTransaction.mock.calls[1][0].data as `0x${string}`;
-    expect(firstEncodedData.slice(0, 10)).toBe(selectorForV5);
-    expect(secondEncodedData.slice(0, 10)).toBe(selectorForV6);
-  });
-
-  it("retries with v5 signature when v6 signature fails with ABI mismatch", async () => {
-    const signTransaction = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("Invalid pointer in tuple at location 128 in payload"))
-      .mockRejectedValueOnce(new Error("stop_after_retry"));
-    const {actions, estimateTransactionGas} = setupWriteContractHarness({
-      initialAbi: ADD_TRANSACTION_ABI_V6,
-      signTransactionMock: signTransaction,
-    });
-
-    await expect(
-      actions.writeContract({
-        address: RECIPIENT_ADDRESS,
-        functionName: "ping",
-        value: 0n,
-      }),
-    ).rejects.toThrow("stop_after_retry");
-
-    expect(signTransaction).toHaveBeenCalledTimes(2);
-    const firstEncodedData = signTransaction.mock.calls[0][0].data as `0x${string}`;
-    const secondEncodedData = signTransaction.mock.calls[1][0].data as `0x${string}`;
-    expect(firstEncodedData.slice(0, 10)).toBe(selectorForV6);
-    expect(secondEncodedData.slice(0, 10)).toBe(selectorForV5);
-    expect(estimateTransactionGas).toHaveBeenCalledTimes(2);
   });
 
   it("uses direct eth_sendTransaction for non-local accounts without prepareTransactionRequest", async () => {
@@ -284,11 +234,12 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(sendTxCall).toBeDefined();
 
     const sendTxParams = sendTxCall?.[0]?.params?.[0];
+    // Gas is 21000 * 1.5 (50% buffer) = 31500 = 0x7b0c
     expect(sendTxParams).toMatchObject({
       from: SENDER_ADDRESS,
       to: MAIN_CONTRACT_ADDRESS,
       value: "0x0",
-      gas: "0x5208",
+      gas: "0x7b0c",
       nonce: "0x0",
       type: "0x0",
       chainId: "0xeec7",
@@ -296,66 +247,24 @@ describe("contractActions addTransaction ABI compatibility", () => {
     });
   });
 
-  it("retries alternate ABI for injected-wallet errors with nested invalid pointer details", async () => {
-    const sentPayloads: `0x${string}`[] = [];
-    const request = vi.fn().mockImplementation(async ({method, params}: {method: string; params?: any[]}) => {
-      if (method === "eth_gasPrice") {
-        return "0x1";
-      }
-
-      if (method === "eth_sendTransaction") {
-        const payload = params?.[0];
-        sentPayloads.push(payload?.data);
-
-        if (sentPayloads.length === 1) {
-          throw {
-            code: -32603,
-            message: "Internal JSON-RPC error.",
-            data: {
-              originalError: {
-                message: "Invalid pointer in tuple at location 128 in payload",
-              },
-            },
-          };
-        }
-
-        return "0x1234";
-      }
-
-      throw new Error(`Unexpected RPC method: ${method}`);
+  it("applies 50% gas buffer to estimated gas", async () => {
+    const signTransaction = vi.fn().mockRejectedValue(new Error("stop_after_gas"));
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_V6,
+      signTransactionMock: signTransaction,
     });
 
-    const client = {
-      chain: {
-        id: 61_127,
-        defaultNumberOfInitialValidators: 5,
-        defaultConsensusMaxRotations: 3,
-        consensusMainContract: {
-          address: MAIN_CONTRACT_ADDRESS,
-          abi: [...ADD_TRANSACTION_ABI_V5],
-          bytecode: "0x",
-        },
-      },
-      account: {
-        address: SENDER_ADDRESS,
-        type: "json-rpc",
-      },
-      initializeConsensusSmartContract: vi.fn().mockResolvedValue(undefined),
-      getCurrentNonce: vi.fn().mockResolvedValue(0n),
-      estimateTransactionGas: vi.fn().mockResolvedValue(21_000n),
-      request,
-    };
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        value: 0n,
+      }),
+    ).rejects.toThrow("stop_after_gas");
 
-    const actions = contractActions(client as any, {} as any);
-    const txHash = await actions.writeContract({
-      address: RECIPIENT_ADDRESS,
-      functionName: "ping",
-      value: 0n,
-    });
-
-    expect(txHash).toBe("0x1234");
-    expect(sentPayloads).toHaveLength(2);
-    expect(sentPayloads[0].slice(0, 10)).toBe(selectorForV5);
-    expect(sentPayloads[1].slice(0, 10)).toBe(selectorForV6);
+    expect(estimateTransactionGas).toHaveBeenCalledTimes(1);
+    // The gas value passed to signTransaction should be 21000 * 1.5 = 31500
+    const txRequest = signTransaction.mock.calls[0][0];
+    expect(txRequest.gas).toBe(31_500n);
   });
 });

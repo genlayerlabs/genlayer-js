@@ -409,56 +409,6 @@ const validateAccount = (Account?: Account): Account => {
   return Account;
 };
 
-const ADD_TRANSACTION_ABI_V5 = [
-  {
-    type: "function",
-    name: "addTransaction",
-    stateMutability: "nonpayable",
-    inputs: [
-      {name: "_sender", type: "address"},
-      {name: "_recipient", type: "address"},
-      {name: "_numOfInitialValidators", type: "uint256"},
-      {name: "_maxRotations", type: "uint256"},
-      {name: "_txData", type: "bytes"},
-    ],
-    outputs: [],
-  },
-] as const;
-
-const ADD_TRANSACTION_ABI_V6 = [
-  {
-    type: "function",
-    name: "addTransaction",
-    stateMutability: "nonpayable",
-    inputs: [
-      {name: "_sender", type: "address"},
-      {name: "_recipient", type: "address"},
-      {name: "_numOfInitialValidators", type: "uint256"},
-      {name: "_maxRotations", type: "uint256"},
-      {name: "_txData", type: "bytes"},
-      {name: "_validUntil", type: "uint256"},
-    ],
-    outputs: [],
-  },
-] as const;
-
-const getAddTransactionInputCount = (abi: readonly unknown[] | undefined): number => {
-  if (!abi || !Array.isArray(abi)) {
-    return 0;
-  }
-
-  const addTransactionFunction = abi.find(item => {
-    if (!item || typeof item !== "object") {
-      return false;
-    }
-
-    const candidate = item as {type?: string; name?: string};
-    return candidate.type === "function" && candidate.name === "addTransaction";
-  }) as {inputs?: readonly unknown[]} | undefined;
-
-  return Array.isArray(addTransactionFunction?.inputs) ? addTransactionFunction.inputs.length : 0;
-};
-
 const _encodeAddTransactionData = ({
   client,
   senderAccount,
