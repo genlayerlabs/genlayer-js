@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TransactionStatus, DECIDED_STATES, isDecidedState } from "../src/types/transactions";
-import { receiptActions } from "../src/transactions/actions";
+import { receiptActions, transactionActions } from "../src/transactions/actions";
 import { simplifyTransactionReceipt } from "../src/transactions/decoders";
 import { localnet } from "../src/chains/localnet";
 
@@ -139,6 +139,84 @@ describe("waitForTransactionReceipt with DECIDED_STATES", () => {
     });
 
     expect(result).toEqual(mockTransaction);
+  });
+});
+
+describe("cancelTransaction", () => {
+  const exampleHash = "0x4b8037744adab7ea8335b4f839979d20031d83a8ccdf706e0ae61312930335f6" as any;
+
+  it("should cancel a transaction with a private key account", async () => {
+    const mockSignMessage = vi.fn().mockResolvedValue("0xmocksignature");
+    const mockRequest = vi.fn().mockResolvedValue({ transaction_hash: exampleHash, status: "CANCELED" });
+
+    const mockClient = {
+      chain: { ...localnet, isStudio: true },
+      account: { signMessage: mockSignMessage, address: "0x1234567890123456789012345678901234567890" },
+      request: mockRequest,
+    };
+
+    const actions = transactionActions(mockClient as any, {} as any);
+    const result = await actions.cancelTransaction({ hash: exampleHash });
+
+    expect(result).toEqual({ transaction_hash: exampleHash, status: "CANCELED" });
+    expect(mockSignMessage).toHaveBeenCalledOnce();
+    expect(mockRequest).toHaveBeenCalledWith({
+      method: "sim_cancelTransaction",
+      params: [exampleHash, "0xmocksignature"],
+    });
+  });
+
+  it("should throw on non-studio chains", async () => {
+    const mockClient = {
+      chain: { isStudio: false },
+      account: { signMessage: vi.fn() },
+    };
+
+    const actions = transactionActions(mockClient as any, {} as any);
+    await expect(actions.cancelTransaction({ hash: exampleHash })).rejects.toThrow(
+      "cancelTransaction is only available on studio-based chains"
+    );
+  });
+
+  it("should throw when no account is configured", async () => {
+    const mockClient = {
+      chain: { ...localnet, isStudio: true },
+      account: undefined,
+    };
+
+    const actions = transactionActions(mockClient as any, {} as any);
+    await expect(actions.cancelTransaction({ hash: exampleHash })).rejects.toThrow(
+      "No account set"
+    );
+  });
+
+  it("should use personal_sign for address-only accounts", async () => {
+    const mockProviderRequest = vi.fn().mockResolvedValue("0xprovidersignature");
+    vi.stubGlobal("window", { ethereum: { request: mockProviderRequest } });
+
+    const mockRequest = vi.fn().mockResolvedValue({ transaction_hash: exampleHash, status: "CANCELED" });
+
+    const mockClient = {
+      chain: { ...localnet, isStudio: true },
+      account: "0x1234567890123456789012345678901234567890",
+      request: mockRequest,
+    };
+
+    const actions = transactionActions(mockClient as any, {} as any);
+    const result = await actions.cancelTransaction({ hash: exampleHash });
+
+    expect(result).toEqual({ transaction_hash: exampleHash, status: "CANCELED" });
+    expect(mockProviderRequest).toHaveBeenCalledWith({
+      method: "personal_sign",
+      params: [expect.any(String), "0x1234567890123456789012345678901234567890"],
+    });
+    expect(mockRequest).toHaveBeenCalledWith({
+      method: "sim_cancelTransaction",
+      params: [exampleHash, "0xprovidersignature"],
+    });
+
+    vi.unstubAllGlobals();
+    vi.stubGlobal("fetch", mockFetch);
   });
 });
 
