@@ -1,5 +1,12 @@
 
 
+## 0.20.0 (2026-02-25)
+
+
+### Features
+
+* **transactions:** add cancelTransaction method ([#139](https://github.com/genlayerlabs/genlayer-js/issues/139)) ([d1d3bf4](https://github.com/genlayerlabs/genlayer-js/commit/d1d3bf4084e4d38e2f31e78419315ce332f7a690)), closes [#1444](https://github.com/genlayerlabs/genlayer-js/issues/1444)
+
 ## 0.19.5 (2026-02-19)
 
 
