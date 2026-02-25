@@ -20,7 +20,8 @@ export type GenLayerMethod =
   | {method: "sim_getTransactionsForAddress"; params: [address: Address, filter?: "all" | "from" | "to"]}
   | {method: "eth_getTransactionCount"; params: [address: Address, block: string]}
   | {method: "eth_estimateGas"; params: [transactionParams: any]}
-  | {method: "gen_call"; params: [requestParams: any]};
+  | {method: "gen_call"; params: [requestParams: any]}
+  | {method: "sim_cancelTransaction"; params: [hash: TransactionHash, signature?: string, adminKey?: string]};
 
 /*
   Take all the properties from Client<Transport, TGenLayerChain>
@@ -99,6 +100,7 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     initializeConsensusSmartContract: (forceReset?: boolean) => Promise<void>;
     connect: (network?: Network, snapSource?: SnapSource) => Promise<void>;
     metamaskClient: (snapSource?: SnapSource) => Promise<MetaMaskClientResult>;
+    cancelTransaction: (args: {hash: TransactionHash}) => Promise<{transaction_hash: string; status: string}>;
     appealTransaction: (args: {
       account?: Account;
       txId: `0x${string}`;

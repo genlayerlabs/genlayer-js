@@ -10,7 +10,7 @@ import {
 import {transactionsConfig} from "../config/transactions";
 import {sleep} from "../utils/async";
 import {GenLayerChain} from "@/types";
-import {Abi, PublicClient, Address} from "viem";
+import {Abi, PublicClient, Address, keccak256, concat, stringToBytes, toBytes} from "viem";
 import {localnet} from "@/chains/localnet";
 import {decodeLocalnetTransaction, decodeTransaction, simplifyTransactionReceipt} from "./decoders";
 
@@ -87,6 +87,38 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
       ],
     })) as unknown as GenLayerRawTransaction;
     return decodeTransaction(transaction);
+  },
+  cancelTransaction: async ({hash}: {hash: TransactionHash}): Promise<{transaction_hash: string; status: string}> => {
+    if (!client.chain.isStudio) {
+      throw new Error("cancelTransaction is only available on studio-based chains (localnet/studionet)");
+    }
+
+    if (!client.account) {
+      throw new Error("No account set. Configure the client with an account to cancel transactions.");
+    }
+
+    const messageHash = keccak256(concat([stringToBytes("cancel_transaction"), toBytes(hash)]));
+
+    let signature: string;
+
+    if (typeof client.account === "object" && "signMessage" in client.account) {
+      signature = await (client.account as any).signMessage({message: {raw: messageHash}});
+    } else {
+      const provider = typeof window !== "undefined" ? window.ethereum : undefined;
+      if (!provider) {
+        throw new Error("No provider available for signing. Use a private key account or ensure a wallet is connected.");
+      }
+      const address = typeof client.account === "string" ? client.account : (client.account as any).address;
+      signature = await provider.request({
+        method: "personal_sign",
+        params: [messageHash, address],
+      });
+    }
+
+    return client.request({
+      method: "sim_cancelTransaction",
+      params: [hash, signature],
+    }) as Promise<{transaction_hash: string; status: string}>;
   },
   estimateTransactionGas: async (transactionParams: {
     from?: Address;

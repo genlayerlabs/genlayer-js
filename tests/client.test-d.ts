@@ -64,4 +64,14 @@ test("type checks", () => {
   void client.waitForTransactionReceipt({
     status: TransactionStatus.FINALIZED,
   });
+
+  // cancelTransaction type checks
+  void client.cancelTransaction({
+    hash: "0x1234567890123456789012345678901234567890123456789012345678901234" as TransactionHash,
+  });
+
+  void client.request({
+    method: "sim_cancelTransaction",
+    params: ["0x1234567890123456789012345678901234567890123456789012345678901234" as TransactionHash],
+  });
 });

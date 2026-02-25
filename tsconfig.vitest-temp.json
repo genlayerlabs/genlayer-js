@@ -28,7 +28,7 @@
     "skipLibCheck": true,
     "emitDeclarationOnly": false,
     "incremental": true,
-    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.vitest.tsbuildinfo"
+    "tsBuildInfoFile": "/Users/cristiamdasilva/conductor/workspaces/js/curitiba/node_modules/vitest/dist/chunks/tsconfig.tmp.tsbuildinfo"
   },
   "include": [
     "src/**/*",
