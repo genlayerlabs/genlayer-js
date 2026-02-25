@@ -2,8 +2,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/license/mit/)
 [![Discord](https://dcbadge.vercel.app/api/server/8Jm4v89VAu?compact=true&style=flat)](https://discord.gg/VpfmXEMN66)
-[![Twitter](https://img.shields.io/twitter/url/https/twitter.com/yeagerai.svg?style=social&label=Follow%20%40GenLayer)](https://x.com/GenLayer)
-[![GitHub star chart](https://img.shields.io/github/stars/yeagerai/genlayer-js?style=social)](https://star-history.com/#yeagerai/genlayer-js)
+[![Twitter](https://img.shields.io/twitter/url/https/twitter.com/genlaboratory.svg?style=social&label=Follow%20%40GenLayer)](https://x.com/GenLayer)
+[![GitHub star chart](https://img.shields.io/github/stars/genlayerlabs/genlayer-js?style=social)](https://star-history.com/#genlayerlabs/genlayer-js)
 
 ## 👀 About
 
@@ -174,7 +174,7 @@ For detailed information on how to use GenLayerJS SDK, please refer to our [docu
 
 ## Contributing
 
-We welcome contributions to GenLayerJS SDK! Whether it's new features, improved infrastructure, or better documentation, your input is valuable. Please read our [CONTRIBUTING](https://github.com/yeagerai/genlayer-js/blob/main/CONTRIBUTING.md) guide for guidelines on how to submit your contributions.
+We welcome contributions to GenLayerJS SDK! Whether it's new features, improved infrastructure, or better documentation, your input is valuable. Please read our [CONTRIBUTING](https://github.com/genlayerlabs/genlayer-js/blob/main/CONTRIBUTING.md) guide for guidelines on how to submit your contributions.
 
 ## License
 
