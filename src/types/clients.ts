@@ -8,6 +8,80 @@ import {Network} from "./network";
 import {SnapSource} from "@/types/snapSource";
 import {MetaMaskClientResult} from "@/types/metamaskClientResult";
 import {StakingActions} from "./staking";
+import {
+  ConsensusEventStream,
+  NewTransactionEvent,
+  TransactionAcceptedEvent,
+  TransactionActivatedEvent,
+  TransactionUndeterminedEvent,
+  TransactionLeaderTimeoutEvent,
+  TransactionFinalizedEvent,
+  AppealStartedEvent,
+} from "@/types/subscriptions";
+
+/**
+ * Status codes from genCall execution
+ */
+export enum GenCallStatusCode {
+  SUCCESS = 0,
+  USER_ERROR = 1,
+  VM_ERROR = 2,
+  INTERNAL_ERROR = 3,
+}
+
+/**
+ * Status from genCall execution
+ */
+export interface GenCallStatus {
+  /** Status code indicating execution result */
+  code: GenCallStatusCode;
+  /** Human-readable status message */
+  message: string;
+}
+
+/**
+ * Event emitted during contract execution
+ */
+export interface GenCallEvent {
+  /** Event topics as hex strings */
+  topics: string[];
+  /** Event data as hex string */
+  data: string;
+}
+
+/**
+ * Message submitted during contract execution
+ */
+export interface GenCallMessage {
+  messageType: number;
+  recipient: string;
+  value: string;
+  data: string;
+  onAcceptance: boolean;
+  saltNonce: string;
+}
+
+/**
+ * Result from genCall method
+ */
+export interface GenCallResult {
+  /** Execution result as hex string (without 0x prefix from RPC, prefixed by client) */
+  data: `0x${string}`;
+  /** Execution status */
+  status: GenCallStatus;
+  /** Equivalence outputs from non-deterministic operations (hex strings) */
+  eqOutputs: string[];
+  /** Standard output from contract execution */
+  stdout: string;
+  /** Standard error from contract execution */
+  stderr: string;
+  /** Logs from GenVM execution */
+  logs: unknown[];
+  /** Events emitted during execution */
+  events: GenCallEvent[];
+  /** Messages submitted during execution */
+  messages: GenCallMessage[];
+}
 
 export type GenLayerMethod =
   | {method: "sim_fundAccount"; params: [address: Address, amount: number]}
@@ -105,4 +179,22 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       account?: Account;
       txId: `0x${string}`;
     }) => Promise<any>;
+    genCall: (args: {
+      type: "read" | "write" | "deploy";
+      to: Address;
+      from?: Address;
+      data: `0x${string}`;
+      leaderResults?: string[] | null;
+      value?: bigint;
+      gas?: bigint;
+      blockNumber?: string;
+      status?: "accepted" | "finalized";
+    }) => Promise<GenCallResult>;
+    subscribeToNewTransaction: () => ConsensusEventStream<NewTransactionEvent>;
+    subscribeToTransactionAccepted: () => ConsensusEventStream<TransactionAcceptedEvent>;
+    subscribeToTransactionActivated: () => ConsensusEventStream<TransactionActivatedEvent>;
+    subscribeToTransactionUndetermined: () => ConsensusEventStream<TransactionUndeterminedEvent>;
+    subscribeToTransactionLeaderTimeout: () => ConsensusEventStream<TransactionLeaderTimeoutEvent>;
+    subscribeToTransactionFinalized: () => ConsensusEventStream<TransactionFinalizedEvent>;
+    subscribeToAppealStarted: () => ConsensusEventStream<AppealStartedEvent>;
   } & StakingActions;

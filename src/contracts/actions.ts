@@ -9,8 +9,10 @@ import {
   CalldataEncodable,
   Address,
   TransactionHashVariant,
+  GenCallResult,
+  GenCallStatusCode,
 } from "@/types";
-import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs} from "viem";
+import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs, TransactionReceipt} from "viem";
 import {toJsonSafeDeep, b64ToArray} from "@/utils/jsonifier";
 
 export const contractActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => {
@@ -174,7 +176,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         data: serializedData,
         consensusMaxRotations,
       });
-      return _sendTransaction({
+      const result = await _sendTransaction({
         client,
         publicClient,
         encodedData: primaryEncodedData,
@@ -182,6 +184,22 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         senderAccount,
         value,
       });
+
+      if ("hash" in result) {
+        return result.hash;
+      }
+
+      const newTxEvents = parseEventLogs({
+        abi: client.chain.consensusMainContract?.abi as any,
+        eventName: "NewTransaction",
+        logs: result.receipt.logs,
+      }) as unknown as {args: {txId: `0x${string}`}}[];
+
+      if (newTxEvents.length === 0) {
+        throw new Error("Transaction not processed by consensus");
+      }
+
+      return newTxEvents[0].args["txId"];
     },
     deployContract: async (args: {
       account?: Account;
@@ -216,13 +234,29 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         data: serializedData,
         consensusMaxRotations,
       });
-      return _sendTransaction({
+      const result = await _sendTransaction({
         client,
         publicClient,
         encodedData: primaryEncodedData,
         fallbackEncodedData,
         senderAccount,
       });
+
+      if ("hash" in result) {
+        return result.hash;
+      }
+
+      const newTxEvents = parseEventLogs({
+        abi: client.chain.consensusMainContract?.abi as any,
+        eventName: "NewTransaction",
+        logs: result.receipt.logs,
+      }) as unknown as {args: {txId: `0x${string}`}}[];
+
+      if (newTxEvents.length === 0) {
+        throw new Error("Transaction not processed by consensus");
+      }
+
+      return newTxEvents[0].args["txId"];
     },
     appealTransaction: async (args: {
       account?: Account;
@@ -231,12 +265,137 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       const {account, txId} = args;
       const senderAccount = account || client.account;
       const encodedData = _encodeSubmitAppealData({client, txId});
-      return _sendTransaction({
+      const result = await _sendTransaction({
         client,
         publicClient,
         encodedData,
         senderAccount,
       });
+
+      if ("hash" in result) {
+        return result.hash;
+      }
+
+      return result.receipt.transactionHash;
+    },
+
+    /**
+     * Low-level gen_call RPC method for transaction simulation.
+     *
+     * Use this for direct control over simulation parameters, including:
+     * - Transaction type (read, write, deploy)
+     * - Leader/validator mode via leader_results parameter
+     * - Raw transaction data (already RLP-encoded)
+     *
+     * For higher-level contract interactions, use readContract, writeContract,
+     * or simulateWriteContract instead.
+     *
+     * @param args.type - Transaction type: "read", "write", or "deploy"
+     * @param args.to - Target contract address
+     * @param args.from - Sender address (optional, uses client account if not provided)
+     * @param args.data - RLP-encoded transaction data
+     * @param args.leaderResults - Array of hex-encoded eq_outputs from leader for validator simulation.
+     *                             Each entry is a hex string (e.g. "00d102"). If provided, simulates as validator;
+     *                             if null/undefined, simulates as leader.
+     * @param args.value - Value to send with the transaction (optional)
+     * @param args.gas - Gas limit for the transaction (optional)
+     * @param args.blockNumber - Block number to simulate at (optional, defaults to latest)
+     * @param args.status - State status: "accepted" or "finalized" (optional, defaults to "accepted")
+     * @returns GenCallResult with execution data, status, stdout, stderr, logs, events, and messages
+     */
+    genCall: async (args: {
+      type: "read" | "write" | "deploy";
+      to: Address;
+      from?: Address;
+      data: `0x${string}`;
+      leaderResults?: string[] | null;
+      value?: bigint;
+      gas?: bigint;
+      blockNumber?: string;
+      status?: "accepted" | "finalized";
+    }): Promise<GenCallResult> => {
+      const {
+        type,
+        to,
+        from,
+        data,
+        leaderResults,
+        value,
+        gas,
+        blockNumber,
+        status,
+      } = args;
+
+      const senderAddress = from ?? client.account?.address ?? zeroAddress;
+
+      const requestParams: Record<string, unknown> = {
+        type,
+        to,
+        from: senderAddress,
+        data,
+      };
+
+      // Optional parameters
+      if (blockNumber !== undefined) {
+        requestParams.blockNumber = blockNumber;
+      }
+      if (status !== undefined) {
+        requestParams.status = status;
+      }
+      if (value !== undefined) {
+        requestParams.value = `0x${value.toString(16)}`;
+      }
+      if (gas !== undefined) {
+        requestParams.gas = `0x${gas.toString(16)}`;
+      }
+
+      // If leaderResults provided, pass as leader_results for validator simulation (snake_case)
+      if (leaderResults !== undefined && leaderResults !== null) {
+        requestParams.leader_results = leaderResults;
+      }
+
+      const response = await client.request({
+        method: "gen_call",
+        params: [requestParams],
+      });
+
+      // Response format: { data, eqOutputs, status: { code, message }, stdout, stderr, logs, events, messages }
+      const resp = response as {
+        data?: string;
+        eqOutputs?: string[];
+        status?: {code: number; message: string};
+        stdout?: string;
+        stderr?: string;
+        logs?: unknown[];
+        events?: Array<{topics: string[]; data: string}>;
+        messages?: Array<{
+          messageType: number;
+          recipient: string;
+          value: string;
+          data: string;
+          onAcceptance: boolean;
+          saltNonce: string;
+        }>;
+      };
+
+      // Add 0x prefix to data if not present
+      const dataStr = resp.data ?? "";
+      const prefixedData = dataStr.startsWith("0x") ? dataStr as `0x${string}` : `0x${dataStr}` as `0x${string}`;
+
+      if (!resp.status) {
+        console.warn("[genlayer-js] genCall response missing status field, defaulting to INTERNAL_ERROR");
+      }
+
+      return {
+        data: prefixedData,
+        eqOutputs: resp.eqOutputs ?? [],
+        status: resp.status ?? {code: GenCallStatusCode.INTERNAL_ERROR, message: "missing status from RPC response"},
+        stdout: resp.stdout ?? "",
+        stderr: resp.stderr ?? "",
+        logs: resp.logs ?? [],
+        events: resp.events ?? [],
+        messages: resp.messages ?? [],
+      };
     },
   };
 };
@@ -250,78 +409,31 @@ const validateAccount = (Account?: Account): Account => {
   return Account;
 };
 
-const ADD_TRANSACTION_ABI_V5 = [
-  {
-    type: "function",
-    name: "addTransaction",
-    stateMutability: "nonpayable",
-    inputs: [
-      {name: "_sender", type: "address"},
-      {name: "_recipient", type: "address"},
-      {name: "_numOfInitialValidators", type: "uint256"},
-      {name: "_maxRotations", type: "uint256"},
-      {name: "_txData", type: "bytes"},
-    ],
-    outputs: [],
-  },
-] as const;
-
-const ADD_TRANSACTION_ABI_V6 = [
-  {
-    type: "function",
-    name: "addTransaction",
-    stateMutability: "nonpayable",
-    inputs: [
-      {name: "_sender", type: "address"},
-      {name: "_recipient", type: "address"},
-      {name: "_numOfInitialValidators", type: "uint256"},
-      {name: "_maxRotations", type: "uint256"},
-      {name: "_txData", type: "bytes"},
-      {name: "_validUntil", type: "uint256"},
-    ],
-    outputs: [],
-  },
-] as const;
-
-const getAddTransactionInputCount = (abi: readonly unknown[] | undefined): number => {
-  if (!abi || !Array.isArray(abi)) {
-    return 0;
-  }
-
-  const addTransactionFunction = abi.find(item => {
-    if (!item || typeof item !== "object") {
-      return false;
-    }
-
-    const candidate = item as {type?: string; name?: string};
-    return candidate.type === "function" && candidate.name === "addTransaction";
-  }) as {inputs?: readonly unknown[]} | undefined;
-
-  return Array.isArray(addTransactionFunction?.inputs) ? addTransactionFunction.inputs.length : 0;
-};
-
 const _encodeAddTransactionData = ({
   client,
   senderAccount,
   recipient,
   data,
   consensusMaxRotations = client.chain.defaultConsensusMaxRotations,
+  validUntil = 0n, // 0 means no expiration
 }: {
   client: GenLayerClient<GenLayerChain>;
   senderAccount?: Account;
   recipient?: `0x${string}`;
   data?: `0x${string}`;
   consensusMaxRotations?: number;
+  validUntil?: bigint;
 }): {primaryEncodedData: `0x${string}`; fallbackEncodedData: `0x${string}`} => {
   const validatedSenderAccount = validateAccount(senderAccount);
 
-  const addTransactionArgs: [
-    Address,
-    `0x${string}` | undefined,
-    number,
-    number | undefined,
-    `0x${string}` | undefined,
-  ] = [
+  // Detect if ABI has the WithFees variant (7 params including FeesDistribution tuple)
+  const abi = client.chain.consensusMainContract?.abi as any[];
+  const addTxEntry = abi?.find(
+    (e: any) => e.type === "function" && e.name === "addTransaction",
+  );
+  const hasFees = addTxEntry?.inputs?.length === 7;
+
+  const args: unknown[] = [
     validatedSenderAccount.address,
     recipient,
     client.chain.defaultNumberOfInitialValidators,
@@ -329,28 +441,30 @@ const _encodeAddTransactionData = ({
     data,
   ];
 
-  const encodedDataV5 = encodeFunctionData({
-    abi: ADD_TRANSACTION_ABI_V5 as any,
-    functionName: "addTransaction",
-    args: addTransactionArgs,
-  });
-
-  const encodedDataV6 = encodeFunctionData({
-    abi: ADD_TRANSACTION_ABI_V6 as any,
-    functionName: "addTransaction",
-    args: [...addTransactionArgs, 0n],
-  });
-
-  if (getAddTransactionInputCount(client.chain.consensusMainContract?.abi) >= 6) {
-    return {
-      primaryEncodedData: encodedDataV6,
-      fallbackEncodedData: encodedDataV5,
-    };
+  if (hasFees) {
+    // Insert default FeesDistribution struct with zero values
+    args.push({
+      leaderTimeoutFee: 0n,
+      validatorsTimeoutFee: 0n,
+      appealRounds: 0n,
+      rollupStorageFee: 0n,
+      rollupGenVMFee: 0n,
+      totalMessageFees: 0n,
+      rotations: [],
+    });
   }
 
+  args.push(validUntil);
+
+  const encoded = encodeFunctionData({
+    abi: client.chain.consensusMainContract?.abi as any,
+    functionName: "addTransaction",
+    args,
+  });
+
   return {
-    primaryEncodedData: encodedDataV5,
-    fallbackEncodedData: encodedDataV6,
+    primaryEncodedData: encoded,
+    fallbackEncodedData: encoded,
   };
 };
 
@@ -422,7 +536,7 @@ const _sendTransaction = async ({
   fallbackEncodedData?: `0x${string}`;
   senderAccount?: Account;
   value?: bigint;
-}) => {
+}): Promise<{receipt: TransactionReceipt} | {hash: `0x${string}`}> => {
   if (!client.chain.consensusMainContract?.address) {
     throw new Error("Consensus main contract not initialized. Please ensure client is properly initialized.");
   }
@@ -443,6 +557,8 @@ const _sendTransaction = async ({
       console.error("Gas estimation failed, using default 200_000:", err);
       estimatedGas = 200_000n;
     }
+    // Add 50% buffer to gas estimate to account for estimation inaccuracies
+    estimatedGas = (estimatedGas * 150n) / 100n;
 
     // For local accounts, build transaction request directly to avoid viem's
     // prepareTransactionRequest which calls eth_fillTransaction (unsupported by GenLayer RPC)
@@ -475,17 +591,7 @@ const _sendTransaction = async ({
         throw new Error("Transaction reverted");
       }
 
-      const newTxEvents = parseEventLogs({
-        abi: client.chain.consensusMainContract?.abi as any,
-        eventName: "NewTransaction",
-        logs: receipt.logs,
-      }) as unknown as {args: {txId: `0x${string}`}}[];
-
-      if (newTxEvents.length === 0) {
-        throw new Error("Transaction not processed by consensus");
-      }
-
-      return newTxEvents[0].args["txId"];
+      return {receipt};
     }
 
     // For injected/external wallets (e.g. MetaMask), avoid viem's
@@ -522,10 +628,12 @@ const _sendTransaction = async ({
       ...(gasPriceHex ? {gasPrice: gasPriceHex} : {}),
     };
 
-    return await client.request({
-      method: "eth_sendTransaction",
-      params: [formattedRequest as any],
-    });
+    return {
+      hash: (await client.request({
+        method: "eth_sendTransaction",
+        params: [formattedRequest as any],
+      })) as `0x${string}`,
+    };
   };
 
   try {
@@ -537,3 +645,4 @@ const _sendTransaction = async ({
     return await sendWithEncodedData(fallbackEncodedData);
   }
 };
+
