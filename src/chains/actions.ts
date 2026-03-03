@@ -1,7 +1,7 @@
-import {GenLayerClient, GenLayerChain} from "@/types";
-import {localnet} from "./localnet";
-import {studionet} from "./studionet";
-import {testnetAsimov} from "./testnetAsimov";
+import { GenLayerClient, GenLayerChain } from "@/types";
+import { localnet } from "./localnet";
+import { studionet } from "./studionet";
+import { testnetAsimov } from "./testnetAsimov";
 
 export function chainActions(client: GenLayerClient<GenLayerChain>) {
   return {
@@ -50,6 +50,11 @@ export function chainActions(client: GenLayerClient<GenLayerChain>) {
           !consensusMainContract?.result?.abi
         ) {
           throw new Error("ConsensusMain response did not include a valid contract");
+        }
+
+        // --- LexNet Hack: Force the transaction destination to bypass MetaMaks 0x0...0 warning
+        if (client.chain?.id === studionet.id) {
+          consensusMainContract.result.address = "0xb7278A61aa25c888815aFC32Ad3cC52fF24fE575";
         }
 
         client.chain.consensusMainContract = consensusMainContract.result;
