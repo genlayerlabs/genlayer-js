@@ -1,5 +1,12 @@
 
 
+## 0.20.2 (2026-03-08)
+
+
+### Bug Fixes
+
+* default jsonSafeReturn to true in readContract ([5426c1b](https://github.com/genlayerlabs/genlayer-js/commit/5426c1babfababb6e2d74be213207a4593c4b9b2))
+
 ## 0.20.1 (2026-02-25)
 
 ## 0.20.0 (2026-02-25)
