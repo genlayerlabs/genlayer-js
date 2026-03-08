@@ -63,7 +63,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         functionName,
         args: callArgs,
         kwargs,
-        jsonSafeReturn = false,
+        jsonSafeReturn = true,
         leaderOnly = false,
         transactionHashVariant = TransactionHashVariant.LATEST_NONFINAL,
       } = args;
