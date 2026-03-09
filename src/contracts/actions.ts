@@ -162,8 +162,6 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         consensusMaxRotations = client.chain.defaultConsensusMaxRotations,
       } = args;
 
-      await client.initializeConsensusSmartContract();
-
       const data = [calldata.encode(calldata.makeCalldataObject(functionName, callArgs, kwargs)), leaderOnly];
       const serializedData = serialize(data);
       const senderAccount = account || client.account;
@@ -199,8 +197,6 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         leaderOnly = false,
         consensusMaxRotations = client.chain.defaultConsensusMaxRotations,
       } = args;
-
-      await client.initializeConsensusSmartContract();
 
       const data = [
         code,

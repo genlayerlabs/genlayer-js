@@ -48,18 +48,7 @@ describe("Client Overrides", () => {
       const method = (body as any).method;
       // console.log(`[TESTS] mockFetch called: URL=${url}, Method=${method}, Body=`, body); // Optional: keep for debugging
 
-      if (method === "sim_getConsensusContract") {
-        // console.log("[TESTS] mockFetch: Handling sim_getConsensusContract");
-        return {
-          ok: true,
-          json: async () => ({
-            result: {
-              address: "0x0000000000000000000000000000000000000001",
-              abi: [],
-            },
-          }),
-        };
-      } else if (method === "gen_call") {
+      if (method === "gen_call") {
         // console.log("[TESTS] mockFetch: Handling gen_call");
         lastGenCallParams = (body as any).params; // Store the params for gen_call
         return {

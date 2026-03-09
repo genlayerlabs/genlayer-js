@@ -53,11 +53,9 @@ const selectorForV6 = encodeFunctionData({
 
 const setupWriteContractHarness = ({
   initialAbi,
-  initializeConsensusSmartContract,
   signTransactionMock,
 }: {
   initialAbi: readonly unknown[];
-  initializeConsensusSmartContract?: (client: any) => Promise<void> | void;
   signTransactionMock?: ReturnType<typeof vi.fn>;
 }) => {
   const estimateTransactionGas = vi.fn().mockResolvedValue(21_000n);
@@ -79,11 +77,7 @@ const setupWriteContractHarness = ({
       type: "local",
       signTransaction,
     },
-    initializeConsensusSmartContract: vi.fn(async () => {
-      if (initializeConsensusSmartContract) {
-        await initializeConsensusSmartContract(client);
-      }
-    }),
+    initializeConsensusSmartContract: vi.fn().mockResolvedValue(undefined),
     getCurrentNonce: vi.fn().mockResolvedValue(0n),
     estimateTransactionGas,
     request: vi.fn().mockImplementation(async ({method}: {method: string}) => {
@@ -132,27 +126,6 @@ describe("contractActions addTransaction ABI compatibility", () => {
 
     const encodedData = estimateTransactionGas.mock.calls[0][0].data as `0x${string}`;
     expect(encodedData.slice(0, 10)).toBe(selectorForV6);
-  });
-
-  it("uses refreshed ABI from initializeConsensusSmartContract before write encoding", async () => {
-    const {actions, estimateTransactionGas, client} = setupWriteContractHarness({
-      initialAbi: ADD_TRANSACTION_ABI_V5,
-      initializeConsensusSmartContract: currentClient => {
-        currentClient.chain.consensusMainContract.abi = [...ADD_TRANSACTION_ABI_V6];
-      },
-    });
-
-    await expect(
-      actions.writeContract({
-        address: RECIPIENT_ADDRESS,
-        functionName: "ping",
-        value: 0n,
-      }),
-    ).rejects.toThrow("stop_after_encoding");
-
-    const encodedData = estimateTransactionGas.mock.calls[0][0].data as `0x${string}`;
-    expect(encodedData.slice(0, 10)).toBe(selectorForV6);
-    expect(client.initializeConsensusSmartContract).toHaveBeenCalledTimes(1);
   });
 
   it("retries with v6 signature when v5 signature fails with ABI mismatch", async () => {
