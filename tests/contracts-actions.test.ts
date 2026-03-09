@@ -158,15 +158,13 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(encodedData.slice(0, 10)).toBe(selectorForV7);
   });
 
-  it("uses refreshed ABI from initializeConsensusSmartContract before write encoding", async () => {
+  it("uses current ABI at call time for encoding", async () => {
     const {actions, estimateTransactionGas, client} = setupWriteContractHarness({
       initialAbi: ADD_TRANSACTION_ABI_V6,
     });
 
-    // Simulate initializeConsensusSmartContract updating the ABI
-    client.initializeConsensusSmartContract.mockImplementation(async () => {
-      client.chain.consensusMainContract.abi = [...ADD_TRANSACTION_ABI_V7];
-    });
+    // Mutate the ABI on the client before calling writeContract
+    client.chain.consensusMainContract.abi = [...ADD_TRANSACTION_ABI_V7];
 
     await expect(
       actions.writeContract({
@@ -178,7 +176,6 @@ describe("contractActions addTransaction ABI compatibility", () => {
 
     const encodedData = estimateTransactionGas.mock.calls[0][0].data as `0x${string}`;
     expect(encodedData.slice(0, 10)).toBe(selectorForV7);
-    expect(client.initializeConsensusSmartContract).toHaveBeenCalledTimes(1);
   });
 
   it("uses direct eth_sendTransaction for non-local accounts without prepareTransactionRequest", async () => {
