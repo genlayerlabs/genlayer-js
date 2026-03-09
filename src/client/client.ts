@@ -125,9 +125,6 @@ export const createClient = (config: ClientConfig = {chain: localnet}): GenLayer
     ...stakingActions(clientWithReceiptActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
   } as unknown as GenLayerClient<GenLayerChain>;
 
-  finalClient.initializeConsensusSmartContract().catch(error => {
-    console.error("Failed to initialize consensus smart contract:", error);
-  });
   return finalClient;
 };
 

@@ -97,6 +97,7 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     getContractSchema: (address: Address) => Promise<ContractSchema>;
     getContractSchemaForCode: (contractCode: string | Uint8Array) => Promise<ContractSchema>;
     getContractCode: (address: Address) => Promise<string>;
+    /** @deprecated This method is deprecated. The consensus contract is now resolved from the static chain definition. */
     initializeConsensusSmartContract: (forceReset?: boolean) => Promise<void>;
     connect: (network?: Network, snapSource?: SnapSource) => Promise<void>;
     metamaskClient: (snapSource?: SnapSource) => Promise<MetaMaskClientResult>;
