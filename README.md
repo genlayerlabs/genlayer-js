@@ -108,15 +108,15 @@ const receipt = await client.waitForTransactionReceipt({
 ```
 ### Staking Operations
 
-The SDK provides staking functionality for validators and delegators on testnet-asimov.
+The SDK provides staking functionality for validators and delegators on testnet-bradbury (and testnet-asimov).
 
 ```typescript
-import { testnetAsimov } from 'genlayer-js/chains';
+import { testnetBradbury } from 'genlayer-js/chains';
 import { createClient, createAccount } from "genlayer-js";
 
 const account = createAccount();
 const client = createClient({
-  chain: testnetAsimov,
+  chain: testnetBradbury,
   account,
 });
 
@@ -160,7 +160,7 @@ const delegateResult = await client.delegatorJoin({
 
 * **Client Creation**: Easily create and configure a client to connect to GenLayer's network.
 * **Transaction Handling**: Send and manage transactions on the GenLayer network.
-* **Staking**: Full staking support for validators and delegators on testnet-asimov.
+* **Staking**: Full staking support for validators and delegators on testnet-bradbury and testnet-asimov.
 * **Wallet Integration***: Seamless integration with MetaMask for managing user accounts.
 * **Gas Estimation***: Estimate gas fees for executing transactions on GenLayer.
 

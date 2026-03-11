@@ -25,7 +25,7 @@ npm run test:watch      # Watch mode
 
 The SDK exports three entry points (see `package.json` exports):
 - `genlayer-js` - Main: client, accounts, transaction decoders, staking utils
-- `genlayer-js/chains` - Chain configs: `localnet`, `studionet`, `testnetAsimov`
+- `genlayer-js/chains` - Chain configs: `localnet`, `studionet`, `testnetAsimov`, `testnetBradbury`
 - `genlayer-js/types` - TypeScript types for all SDK entities
 
 ### Client Factory Pattern
@@ -45,7 +45,7 @@ Each action module (`src/<domain>/actions.ts`) returns an object of methods that
 `GenLayerChain` extends viem's `Chain` with GenLayer-specific properties:
 - `isStudio` - Whether using studio-based localnet
 - `consensusMainContract` / `consensusDataContract` - On-chain consensus contracts
-- `stakingContract` - Staking contract (testnet-asimov only)
+- `stakingContract` - Staking contract (testnet-bradbury and testnet-asimov)
 - `defaultNumberOfInitialValidators` / `defaultConsensusMaxRotations`
 
 ### Calldata Encoding

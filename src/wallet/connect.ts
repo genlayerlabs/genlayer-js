@@ -1,6 +1,7 @@
 import {localnet} from "@/chains/localnet";
 import {studionet} from "@/chains/studionet";
 import {testnetAsimov} from "@/chains/testnetAsimov";
+import {testnetBradbury} from "@/chains/testnetBradbury";
 import {GenLayerClient, GenLayerChain} from "@/types";
 import {Network} from "@/types/network";
 import {SnapSource} from "@/types/snapSource";
@@ -10,6 +11,7 @@ const networks = {
   localnet,
   studionet,
   testnetAsimov,
+  testnetBradbury,
 };
 
 export const connect = async (
