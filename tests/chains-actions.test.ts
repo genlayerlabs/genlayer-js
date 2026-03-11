@@ -1,7 +1,7 @@
 import {describe, expect, it, vi} from "vitest";
 import {chainActions} from "../src/chains/actions";
 
-const makeClient = (chainId: number) =>
+const makeClient = (chainId: number, overrides: Record<string, any> = {}) =>
   ({
     chain: {
       id: chainId,
@@ -15,12 +15,12 @@ const makeClient = (chainId: number) =>
         abi: [{type: "function", name: "addTransaction", inputs: [], outputs: []}],
         bytecode: "0x",
       },
+      ...overrides,
     },
   }) as any;
 
 describe("chainActions.initializeConsensusSmartContract", () => {
-  it("emits a deprecation warning and makes no network calls", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("returns early without network calls when chain has static consensus contract", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
     const client = makeClient(1);
@@ -28,12 +28,8 @@ describe("chainActions.initializeConsensusSmartContract", () => {
 
     await actions.initializeConsensusSmartContract();
 
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("deprecated"),
-    );
     expect(fetchSpy).not.toHaveBeenCalled();
 
-    warnSpy.mockRestore();
     fetchSpy.mockRestore();
   });
 });
