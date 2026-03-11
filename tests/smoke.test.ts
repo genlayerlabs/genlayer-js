@@ -1,33 +1,42 @@
 // tests/smoke.test.ts
-// Smoke tests against live testnet-asimov to verify ABI compatibility and connectivity.
+// Smoke tests against live testnets to verify ABI compatibility and connectivity.
 // Run with: npm run test:smoke
 // These are excluded from regular `npm test` to avoid CI dependence on testnet availability.
 
 import {describe, it, expect, beforeAll} from "vitest";
 import {createPublicClient, http, webSocket, getContract, Address as ViemAddress} from "viem";
 import {testnetAsimov} from "@/chains/testnetAsimov";
+import {testnetBradbury} from "@/chains/testnetBradbury";
 import {createClient} from "@/client/client";
 import {STAKING_ABI} from "@/abi/staking";
 import {Address} from "@/types/accounts";
+import {GenLayerChain} from "@/types";
 
 const TIMEOUT = 30_000;
 
+const testnets: {name: string; chain: GenLayerChain}[] = [
+  {name: "Asimov", chain: testnetAsimov},
+  {name: "Bradbury", chain: testnetBradbury},
+];
+
+for (const {name, chain} of testnets) {
+
 // ─── HTTP RPC Connectivity ───────────────────────────────────────────────────
 
-describe("Testnet Asimov - HTTP RPC", () => {
+describe(`Testnet ${name} - HTTP RPC`, () => {
   it("should fetch chain ID", async () => {
     const client = createPublicClient({
-      chain: testnetAsimov,
-      transport: http(testnetAsimov.rpcUrls.default.http[0]),
+      chain,
+      transport: http(chain.rpcUrls.default.http[0]),
     });
     const chainId = await client.getChainId();
-    expect(chainId).toBe(testnetAsimov.id);
+    expect(chainId).toBe(chain.id);
   }, TIMEOUT);
 
   it("should fetch latest block number", async () => {
     const client = createPublicClient({
-      chain: testnetAsimov,
-      transport: http(testnetAsimov.rpcUrls.default.http[0]),
+      chain,
+      transport: http(chain.rpcUrls.default.http[0]),
     });
     const blockNumber = await client.getBlockNumber();
     expect(blockNumber).toBeGreaterThan(0n);
@@ -36,8 +45,8 @@ describe("Testnet Asimov - HTTP RPC", () => {
 
 // ─── WebSocket RPC Connectivity ──────────────────────────────────────────────
 
-describe("Testnet Asimov - WebSocket RPC", () => {
-  const wsUrl = testnetAsimov.rpcUrls.default.webSocket?.[0];
+describe(`Testnet ${name} - WebSocket RPC`, () => {
+  const wsUrl = chain.rpcUrls.default.webSocket?.[0];
 
   it("should have a WS URL configured", () => {
     expect(wsUrl).toBeDefined();
@@ -47,7 +56,7 @@ describe("Testnet Asimov - WebSocket RPC", () => {
   it("should connect and fetch chain ID over WebSocket", async () => {
     if (!wsUrl) return;
     const client = createPublicClient({
-      chain: testnetAsimov,
+      chain,
       transport: webSocket(wsUrl),
     });
     const chainId = await client.getChainId();
@@ -55,9 +64,9 @@ describe("Testnet Asimov - WebSocket RPC", () => {
     // The key assertion is that the connection works and returns a valid number
     expect(chainId).toBeTypeOf("number");
     expect(chainId).toBeGreaterThan(0);
-    if (chainId !== testnetAsimov.id) {
+    if (chainId !== chain.id) {
       console.warn(
-        `WS chain ID (${chainId}) differs from HTTP chain ID (${testnetAsimov.id}). ` +
+        `WS chain ID (${chainId}) differs from HTTP chain ID (${chain.id}). ` +
         `WS URL may point to the underlying L1/L2 chain.`
       );
     }
@@ -66,7 +75,7 @@ describe("Testnet Asimov - WebSocket RPC", () => {
   it("should fetch latest block number over WebSocket", async () => {
     if (!wsUrl) return;
     const client = createPublicClient({
-      chain: testnetAsimov,
+      chain,
       transport: webSocket(wsUrl),
     });
     const blockNumber = await client.getBlockNumber();
@@ -76,9 +85,9 @@ describe("Testnet Asimov - WebSocket RPC", () => {
 
 // ─── Staking Read-Only via WebSocket ─────────────────────────────────────────
 
-describe("Testnet Asimov - Staking over WebSocket", () => {
-  const wsUrl = testnetAsimov.rpcUrls.default.webSocket?.[0];
-  const stakingAddress = testnetAsimov.stakingContract?.address as ViemAddress;
+describe(`Testnet ${name} - Staking over WebSocket`, () => {
+  const wsUrl = chain.rpcUrls.default.webSocket?.[0];
+  const stakingAddress = chain.stakingContract?.address as ViemAddress;
 
   // First check if WS points to the same chain — if not, skip staking tests
   let wsMatchesChain = false;
@@ -86,13 +95,13 @@ describe("Testnet Asimov - Staking over WebSocket", () => {
 
   beforeAll(async () => {
     if (!wsUrl) return;
-    wsPub = createPublicClient({chain: testnetAsimov, transport: webSocket(wsUrl)});
+    wsPub = createPublicClient({chain, transport: webSocket(wsUrl)});
     try {
       const chainId = await wsPub.getChainId();
-      wsMatchesChain = chainId === testnetAsimov.id;
+      wsMatchesChain = chainId === chain.id;
       if (!wsMatchesChain) {
         console.warn(
-          `WS chain ID (${chainId}) differs from testnet (${testnetAsimov.id}). ` +
+          `WS chain ID (${chainId}) differs from testnet (${chain.id}). ` +
           `Staking contract calls will be skipped — WS endpoint serves a different chain.`
         );
       }
@@ -142,9 +151,6 @@ describe("Testnet Asimov - Staking over WebSocket", () => {
     if (nonZero.length === 0) return;
 
     const view = await contract.read.validatorView([nonZero[0]]) as unknown;
-    // Depending on ABI/runtime decoding, viem may return either:
-    // - positional tuple array (length 12), or
-    // - named tuple object ({ left, right, ..., live })
     if (Array.isArray(view)) {
       expect(view.length).toBe(12);
       return;
@@ -188,11 +194,11 @@ describe("Testnet Asimov - Staking over WebSocket", () => {
 
 // ─── Staking Read-Only Methods ───────────────────────────────────────────────
 
-describe("Testnet Asimov - Staking (read-only)", () => {
+describe(`Testnet ${name} - Staking (read-only)`, () => {
   let client: ReturnType<typeof createClient>;
 
   beforeAll(() => {
-    client = createClient({chain: testnetAsimov});
+    client = createClient({chain});
   });
 
   it("getEpochInfo", async () => {
@@ -309,3 +315,5 @@ describe("Testnet Asimov - Staking (read-only)", () => {
     expect(client.formatStakingAmount(weiAmount)).toBe("42 GEN");
   });
 });
+
+} // end for loop over testnets
