@@ -81,19 +81,20 @@ export const decodeTransaction = (tx: GenLayerRawTransaction): GenLayerTransacti
     txData: tx.txData,
     txDataDecoded: txDataDecoded,
 
-    currentTimestamp: tx.currentTimestamp.toString(),
-    numOfInitialValidators: tx.numOfInitialValidators.toString(),
-    txSlot: tx.txSlot.toString(),
-    createdTimestamp: tx.createdTimestamp.toString(),
-    lastVoteTimestamp: tx.lastVoteTimestamp.toString(),
-    queuePosition: tx.queuePosition.toString(),
-    numOfRounds: tx.numOfRounds.toString(),
+    currentTimestamp: tx.currentTimestamp?.toString() ?? "0",
+    // Bradbury uses `initialRotations`; older chains use `numOfInitialValidators`
+    numOfInitialValidators: (tx.numOfInitialValidators ?? (tx as any).initialRotations)?.toString() ?? "0",
+    txSlot: tx.txSlot?.toString() ?? "0",
+    createdTimestamp: tx.createdTimestamp?.toString() ?? "0",
+    lastVoteTimestamp: tx.lastVoteTimestamp?.toString() ?? "0",
+    queuePosition: tx.queuePosition?.toString() ?? "0",
+    numOfRounds: tx.numOfRounds?.toString() ?? "0",
 
     readStateBlockRange: {
       ...tx.readStateBlockRange,
-      activationBlock: tx.readStateBlockRange.activationBlock.toString(),
-      processingBlock: tx.readStateBlockRange.processingBlock.toString(),
-      proposalBlock: tx.readStateBlockRange.proposalBlock.toString(),
+      activationBlock: tx.readStateBlockRange?.activationBlock?.toString() ?? "0",
+      processingBlock: tx.readStateBlockRange?.processingBlock?.toString() ?? "0",
+      proposalBlock: tx.readStateBlockRange?.proposalBlock?.toString() ?? "0",
     },
 
     statusName:
@@ -103,13 +104,13 @@ export const decodeTransaction = (tx: GenLayerRawTransaction): GenLayerTransacti
 
     lastRound: {
       ...tx.lastRound,
-      round: tx.lastRound.round.toString(),
-      leaderIndex: tx.lastRound.leaderIndex.toString(),
-      votesCommitted: tx.lastRound.votesCommitted.toString(),
-      votesRevealed: tx.lastRound.votesRevealed.toString(),
-      appealBond: tx.lastRound.appealBond.toString(),
-      rotationsLeft: tx.lastRound.rotationsLeft.toString(),
-      validatorVotesName: tx.lastRound.validatorVotes.map(
+      round: tx.lastRound?.round?.toString() ?? "0",
+      leaderIndex: tx.lastRound?.leaderIndex?.toString() ?? "0",
+      votesCommitted: tx.lastRound?.votesCommitted?.toString() ?? "0",
+      votesRevealed: tx.lastRound?.votesRevealed?.toString() ?? "0",
+      appealBond: tx.lastRound?.appealBond?.toString() ?? "0",
+      rotationsLeft: tx.lastRound?.rotationsLeft?.toString() ?? "0",
+      validatorVotesName: (tx.lastRound?.validatorVotes ?? []).map(
         vote => voteTypeNumberToName[String(vote) as keyof typeof voteTypeNumberToName],
       ) as VoteType[],
     },
