@@ -74,21 +74,24 @@ export const decodeInputData = (
 };
 
 export const decodeTransaction = (tx: GenLayerRawTransaction): GenLayerTransaction => {
-  const txDataDecoded = decodeInputData(tx.txData, tx.recipient);
+  // Normalize field names across chain ABIs (Bradbury uses different names)
+  const txData = tx.txData ?? (tx as any).txCalldata;
+  const numOfInitialValidators = tx.numOfInitialValidators ?? (tx as any).initialRotations;
+
+  const txDataDecoded = decodeInputData(txData, tx.recipient);
 
   const decodedTx = {
     ...tx,
-    txData: tx.txData,
+    txData: txData,
     txDataDecoded: txDataDecoded,
 
-    currentTimestamp: tx.currentTimestamp?.toString() ?? "0",
-    // Bradbury uses `initialRotations`; older chains use `numOfInitialValidators`
-    numOfInitialValidators: (tx.numOfInitialValidators ?? (tx as any).initialRotations)?.toString() ?? "0",
-    txSlot: tx.txSlot?.toString() ?? "0",
-    createdTimestamp: tx.createdTimestamp?.toString() ?? "0",
-    lastVoteTimestamp: tx.lastVoteTimestamp?.toString() ?? "0",
-    queuePosition: tx.queuePosition?.toString() ?? "0",
-    numOfRounds: tx.numOfRounds?.toString() ?? "0",
+    currentTimestamp: tx.currentTimestamp.toString(),
+    numOfInitialValidators: numOfInitialValidators?.toString() ?? "0",
+    txSlot: tx.txSlot.toString(),
+    createdTimestamp: tx.createdTimestamp.toString(),
+    lastVoteTimestamp: tx.lastVoteTimestamp.toString(),
+    queuePosition: tx.queuePosition.toString(),
+    numOfRounds: tx.numOfRounds.toString(),
 
     readStateBlockRange: {
       ...tx.readStateBlockRange,

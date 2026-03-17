@@ -2,8 +2,8 @@ import {Address, defineChain} from "viem";
 import {GenLayerChain} from "@/types";
 import {STAKING_ABI} from "@/abi/staking";
 
-const TESTNET_JSON_RPC_URL = "https://zksync-os-testnet-genlayer.zksync.dev";
-const TESTNET_WS_URL = "wss://zksync-os-testnet-genlayer.zksync.dev/ws";
+const TESTNET_JSON_RPC_URL = "http://34.91.102.53:9151";
+// WebSocket not available on testnet GenLayer RPC nodes
 
 const STAKING_CONTRACT = {
   address: "0x4A4449E617F8D10FDeD0b461CadEf83939E821A5" as Address,
@@ -3335,7 +3335,6 @@ export const testnetBradbury: GenLayerChain = defineChain({
   rpcUrls: {
     default: {
       http: [TESTNET_JSON_RPC_URL],
-      webSocket: [TESTNET_WS_URL],
     },
   },
   nativeCurrency: {
