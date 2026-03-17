@@ -1,5 +1,19 @@
 
 
+## 0.21.1 (2026-03-16)
+
+
+### Bug Fixes
+
+* **decoders:** guard against undefined fields on Bradbury testnet ([#144](https://github.com/genlayerlabs/genlayer-js/issues/144)) ([328ed5c](https://github.com/genlayerlabs/genlayer-js/commit/328ed5cb8045f3bdedbb2212d1e26ee7a73f7550))
+
+## 0.21.0 (2026-03-11)
+
+
+### Features
+
+* add testnet-bradbury chain configuration ([#143](https://github.com/genlayerlabs/genlayer-js/issues/143)) ([d590318](https://github.com/genlayerlabs/genlayer-js/commit/d5903180ec1b9cd9d2cf7bb083a63d00d7db4c13))
+
 ## 0.20.3 (2026-03-09)
 
 ## 0.20.2 (2026-03-08)

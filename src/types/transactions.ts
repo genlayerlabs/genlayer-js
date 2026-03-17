@@ -276,7 +276,8 @@ export type GenLayerRawTransaction = {
   currentTimestamp: bigint;
   sender: Address;
   recipient: Address;
-  numOfInitialValidators: bigint;
+  numOfInitialValidators?: bigint; // undefined on Bradbury — use `initialRotations` instead
+  initialRotations?: bigint;       // Bradbury equivalent of `numOfInitialValidators`
   txSlot: bigint;
   createdTimestamp: bigint;
   lastVoteTimestamp: bigint;

@@ -95,9 +95,9 @@ export const decodeTransaction = (tx: GenLayerRawTransaction): GenLayerTransacti
 
     readStateBlockRange: {
       ...tx.readStateBlockRange,
-      activationBlock: tx.readStateBlockRange.activationBlock.toString(),
-      processingBlock: tx.readStateBlockRange.processingBlock.toString(),
-      proposalBlock: tx.readStateBlockRange.proposalBlock.toString(),
+      activationBlock: tx.readStateBlockRange?.activationBlock?.toString() ?? "0",
+      processingBlock: tx.readStateBlockRange?.processingBlock?.toString() ?? "0",
+      proposalBlock: tx.readStateBlockRange?.proposalBlock?.toString() ?? "0",
     },
 
     statusName:
@@ -107,13 +107,13 @@ export const decodeTransaction = (tx: GenLayerRawTransaction): GenLayerTransacti
 
     lastRound: {
       ...tx.lastRound,
-      round: tx.lastRound.round.toString(),
-      leaderIndex: tx.lastRound.leaderIndex.toString(),
-      votesCommitted: tx.lastRound.votesCommitted.toString(),
-      votesRevealed: tx.lastRound.votesRevealed.toString(),
-      appealBond: tx.lastRound.appealBond.toString(),
-      rotationsLeft: tx.lastRound.rotationsLeft.toString(),
-      validatorVotesName: tx.lastRound.validatorVotes.map(
+      round: tx.lastRound?.round?.toString() ?? "0",
+      leaderIndex: tx.lastRound?.leaderIndex?.toString() ?? "0",
+      votesCommitted: tx.lastRound?.votesCommitted?.toString() ?? "0",
+      votesRevealed: tx.lastRound?.votesRevealed?.toString() ?? "0",
+      appealBond: tx.lastRound?.appealBond?.toString() ?? "0",
+      rotationsLeft: tx.lastRound?.rotationsLeft?.toString() ?? "0",
+      validatorVotesName: (tx.lastRound?.validatorVotes ?? []).map(
         vote => voteTypeNumberToName[String(vote) as keyof typeof voteTypeNumberToName],
       ) as VoteType[],
     },

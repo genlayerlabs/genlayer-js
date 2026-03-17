@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "node",
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@@/tests/*": [
+        "./tests/*"
+      ]
+    },
+    "rootDirs": [
+      "./src",
+      "./tests"
+    ],
+    "types": [
+      "node",
+      "jest"
+    ],
+    "resolveJsonModule": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "emitDeclarationOnly": false,
+    "incremental": true,
+    "tsBuildInfoFile": "/Users/edgars/Dev/genlayer-js/node_modules/vitest/dist/chunks/tsconfig.tmp.tsbuildinfo"
+  },
+  "include": [
+    "src/**/*",
+    "tests/**/*",
+    "src/global.d.ts"
+  ],
+  "exclude": [
+    "./dist"
+  ]
+}
