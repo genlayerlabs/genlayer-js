@@ -1,5 +1,12 @@
 
 
+## 0.21.2 (2026-03-17)
+
+
+### Bug Fixes
+
+* Bradbury ABI compatibility and testnet RPC ([#145](https://github.com/genlayerlabs/genlayer-js/issues/145)) ([34de39f](https://github.com/genlayerlabs/genlayer-js/commit/34de39fdb52b3029547a59770d82fda3057f2d6d))
+
 ## 0.21.1 (2026-03-16)
 
 
