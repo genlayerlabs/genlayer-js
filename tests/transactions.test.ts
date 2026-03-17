@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { TransactionStatus, DECIDED_STATES, isDecidedState } from "../src/types/transactions";
 import { receiptActions, transactionActions } from "../src/transactions/actions";
-import { simplifyTransactionReceipt } from "../src/transactions/decoders";
+import { decodeTransaction, simplifyTransactionReceipt } from "../src/transactions/decoders";
 import { localnet } from "../src/chains/localnet";
+import type { GenLayerRawTransaction } from "../src/types/transactions";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -217,6 +218,109 @@ describe("cancelTransaction", () => {
 
     vi.unstubAllGlobals();
     vi.stubGlobal("fetch", mockFetch);
+  });
+});
+
+// ─── decodeTransaction field normalization ──────────────────────────────────
+
+const makeRawTx = (overrides: Record<string, unknown> = {}): GenLayerRawTransaction => ({
+  currentTimestamp: 1000n,
+  sender: "0x0000000000000000000000000000000000000001" as any,
+  recipient: "0x0000000000000000000000000000000000000002" as any,
+  numOfInitialValidators: 3n,
+  txSlot: 5n,
+  createdTimestamp: 900n,
+  lastVoteTimestamp: 950n,
+  randomSeed: "0x" + "ab".repeat(32) as any,
+  result: 1,
+  txData: "0x" as any,
+  txReceipt: "0x" + "00".repeat(32) as any,
+  messages: [],
+  queueType: 0,
+  queuePosition: 0n,
+  activator: "0x0000000000000000000000000000000000000003" as any,
+  lastLeader: "0x0000000000000000000000000000000000000004" as any,
+  status: 5,
+  txId: "0x" + "ff".repeat(32) as any,
+  readStateBlockRange: {
+    activationBlock: 100n,
+    processingBlock: 101n,
+    proposalBlock: 102n,
+  },
+  numOfRounds: 1n,
+  lastRound: {
+    round: 0n,
+    leaderIndex: 0n,
+    votesCommitted: 3n,
+    votesRevealed: 3n,
+    appealBond: 0n,
+    rotationsLeft: 2n,
+    result: 1,
+    roundValidators: [],
+    validatorVotesHash: [],
+    validatorVotes: [1, 1, 1],
+  },
+  ...overrides,
+});
+
+describe("decodeTransaction", () => {
+  it("should decode standard field names (localnet/asimov)", () => {
+    const tx = makeRawTx();
+    const decoded = decodeTransaction(tx);
+    expect(decoded.numOfInitialValidators).toBe("3");
+    expect(decoded.txSlot).toBe("5");
+    expect(decoded.statusName).toBe("ACCEPTED");
+    expect(decoded.resultName).toBe("AGREE");
+  });
+
+  it("should handle Bradbury field: initialRotations instead of numOfInitialValidators", () => {
+    const tx = makeRawTx({ numOfInitialValidators: undefined });
+    (tx as any).initialRotations = 5n;
+    const decoded = decodeTransaction(tx);
+    expect(decoded.numOfInitialValidators).toBe("5");
+  });
+
+  it("should handle Bradbury field: txCalldata instead of txData", () => {
+    const tx = makeRawTx({ txData: undefined });
+    (tx as any).txCalldata = "0xdeadbeef";
+    const decoded = decodeTransaction(tx);
+    expect(decoded.txData).toBe("0xdeadbeef");
+  });
+
+  it("should handle both Bradbury fields missing (defaults gracefully)", () => {
+    const tx = makeRawTx({ numOfInitialValidators: undefined, txData: undefined });
+    const decoded = decodeTransaction(tx);
+    expect(decoded.numOfInitialValidators).toBe("0");
+    expect(decoded.txData).toBeUndefined();
+  });
+
+  it("should prefer standard fields over Bradbury aliases when both present", () => {
+    const tx = makeRawTx({ numOfInitialValidators: 3n, txData: "0xaa" as any });
+    (tx as any).initialRotations = 99n;
+    (tx as any).txCalldata = "0xbb";
+    const decoded = decodeTransaction(tx);
+    expect(decoded.numOfInitialValidators).toBe("3");
+    expect(decoded.txData).toBe("0xaa");
+  });
+
+  it("should decode readStateBlockRange fields to strings", () => {
+    const decoded = decodeTransaction(makeRawTx());
+    expect(decoded.readStateBlockRange?.activationBlock).toBe("100");
+    expect(decoded.readStateBlockRange?.processingBlock).toBe("101");
+    expect(decoded.readStateBlockRange?.proposalBlock).toBe("102");
+  });
+
+  it("should decode lastRound fields to strings", () => {
+    const decoded = decodeTransaction(makeRawTx());
+    expect(decoded.lastRound?.votesCommitted).toBe("3");
+    expect(decoded.lastRound?.votesRevealed).toBe("3");
+    expect(decoded.lastRound?.rotationsLeft).toBe("2");
+  });
+
+  it("should map validator votes to vote type names", () => {
+    const decoded = decodeTransaction(makeRawTx());
+    const names = (decoded.lastRound as any)?.validatorVotesName;
+    expect(names).toEqual(["AGREE", "AGREE", "AGREE"]);
   });
 });
 

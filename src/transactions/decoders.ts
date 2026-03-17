@@ -74,15 +74,19 @@ export const decodeInputData = (
 };
 
 export const decodeTransaction = (tx: GenLayerRawTransaction): GenLayerTransaction => {
-  const txDataDecoded = decodeInputData(tx.txData, tx.recipient);
+  // Normalize field names across chain ABIs (Bradbury uses different names)
+  const txData = tx.txData ?? (tx as any).txCalldata;
+  const numOfInitialValidators = tx.numOfInitialValidators ?? (tx as any).initialRotations;
+
+  const txDataDecoded = decodeInputData(txData, tx.recipient);
 
   const decodedTx = {
     ...tx,
-    txData: tx.txData,
+    txData: txData,
     txDataDecoded: txDataDecoded,
 
     currentTimestamp: tx.currentTimestamp.toString(),
-    numOfInitialValidators: tx.numOfInitialValidators.toString(),
+    numOfInitialValidators: numOfInitialValidators?.toString() ?? "0",
     txSlot: tx.txSlot.toString(),
     createdTimestamp: tx.createdTimestamp.toString(),
     lastVoteTimestamp: tx.lastVoteTimestamp.toString(),
