@@ -1,4 +1,4 @@
-import {getContract, decodeEventLog, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress, GetContractReturnType, toHex, encodeFunctionData, BaseError, ContractFunctionRevertedError, decodeErrorResult, RawContractError} from "viem";
+import {getContract, decodeEventLog, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress, GetContractReturnType, toHex, encodeFunctionData, BaseError, ContractFunctionRevertedError, decodeErrorResult, RawContractError, formatEther} from "viem";
 import {GenLayerClient, GenLayerChain, Address} from "@/types";
 import {STAKING_ABI, VALIDATOR_WALLET_ABI} from "@/abi/staking";
 import {parseStakingAmount, formatStakingAmount} from "./utils";
@@ -566,6 +566,7 @@ export const stakingActions = (
         epochZeroMinDuration,
         epochOdd,
         epochEven,
+        validatorMinStakeRaw,
       ] = await Promise.all([
         contract.read.epoch() as Promise<bigint>,
         contract.read.finalized() as Promise<bigint>,
@@ -574,6 +575,7 @@ export const stakingActions = (
         contract.read.epochZeroMinDuration() as Promise<bigint>,
         contract.read.epochOdd() as Promise<any>,
         contract.read.epochEven() as Promise<any>,
+        contract.read.validatorMinStake() as Promise<bigint>,
       ]);
 
       // epochOdd/epochEven return arrays: [start, end, inflation, weight, weightDeposit, weightWithdrawal, vcount, claimed, stakeDeposit, stakeWithdrawal, slashed]
@@ -607,6 +609,8 @@ export const stakingActions = (
         activeValidatorsCount: activeCount,
         epochMinDuration,
         nextEpochEstimate,
+        validatorMinStakeRaw,
+        validatorMinStake: formatEther(validatorMinStakeRaw) + " GEN",
       };
     },
 
