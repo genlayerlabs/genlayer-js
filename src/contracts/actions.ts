@@ -13,6 +13,25 @@ import {
 import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs} from "viem";
 import {toJsonSafeDeep, b64ToArray} from "@/utils/jsonifier";
 
+/**
+ * Extract hex data from a gen_call result.
+ * Studio returns a bare hex string; testnet node returns an object:
+ * { data: "hex...", status: { code, message }, eqOutputs, stdout, stderr, logs }
+ */
+function extractGenCallResult(result: unknown): `0x${string}` {
+  if (typeof result === "string") {
+    return `0x${result}` as `0x${string}`;
+  }
+  if (result && typeof result === "object" && "data" in result) {
+    const obj = result as {data: string; status?: {code: number; message: string}};
+    if (obj.status && obj.status.code !== 0) {
+      throw new Error(`gen_call failed: ${obj.status.message}`);
+    }
+    return `0x${obj.data}` as `0x${string}`;
+  }
+  throw new Error(`Unexpected gen_call response: ${JSON.stringify(result)}`);
+}
+
 export const contractActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => {
   return {
     getContractCode: async (address: Address): Promise<string> => {
@@ -84,7 +103,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         method: "gen_call",
         params: [requestParams],
       });
-      const prefixedResult = `0x${result}` as `0x${string}`;
+      const prefixedResult = extractGenCallResult(result);
 
       if (args.rawReturn) {
         return prefixedResult;
@@ -133,7 +152,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         method: "gen_call",
         params: [requestParams],
       });
-      const prefixedResult = `0x${result}` as `0x${string}`;
+      const prefixedResult = extractGenCallResult(result);
 
       if (args.rawReturn) {
         return prefixedResult;
