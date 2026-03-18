@@ -10,7 +10,8 @@ import {
   Address,
   TransactionHashVariant,
 } from "@/types";
-import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs} from "viem";
+import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs, type Abi} from "viem";
+import {TransactionHash} from "@/types/transactions";
 import {toJsonSafeDeep, b64ToArray} from "@/utils/jsonifier";
 
 /**
@@ -239,11 +240,63 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         senderAccount,
       });
     },
+    getMinAppealBond: async (args: {txId: `0x${string}`}): Promise<bigint> => {
+      const {txId} = args;
+
+      if (!client.chain.feeManagerContract?.address || !client.chain.roundsStorageContract?.address) {
+        throw new Error("Appeal bond calculation not supported on this chain (missing feeManagerContract/roundsStorageContract)");
+      }
+
+      const roundNumber = await publicClient.readContract({
+        address: client.chain.roundsStorageContract.address as `0x${string}`,
+        abi: client.chain.roundsStorageContract.abi as Abi,
+        functionName: "getRoundNumber",
+        args: [txId],
+      }) as bigint;
+
+      const transaction = await client.getTransaction({hash: txId as TransactionHash});
+      const txStatus = Number(transaction.status);
+
+      const minBond = await publicClient.readContract({
+        address: client.chain.feeManagerContract.address as `0x${string}`,
+        abi: client.chain.feeManagerContract.abi as Abi,
+        functionName: "calculateMinAppealBond",
+        args: [txId, roundNumber, txStatus],
+      }) as bigint;
+
+      return minBond;
+    },
     appealTransaction: async (args: {
       account?: Account;
       txId: `0x${string}`;
+      value?: bigint;
     }) => {
       const {account, txId} = args;
+      let {value} = args;
+
+      if (value === undefined) {
+        if (client.chain.feeManagerContract?.address && client.chain.roundsStorageContract?.address) {
+          const roundNumber = await publicClient.readContract({
+            address: client.chain.roundsStorageContract.address as `0x${string}`,
+            abi: client.chain.roundsStorageContract.abi as Abi,
+            functionName: "getRoundNumber",
+            args: [txId],
+          }) as bigint;
+
+          const transaction = await client.getTransaction({hash: txId as TransactionHash});
+          const txStatus = Number(transaction.status);
+
+          value = await publicClient.readContract({
+            address: client.chain.feeManagerContract.address as `0x${string}`,
+            abi: client.chain.feeManagerContract.abi as Abi,
+            functionName: "calculateMinAppealBond",
+            args: [txId, roundNumber, txStatus],
+          }) as bigint;
+        } else {
+          value = 0n;
+        }
+      }
+
       const senderAccount = account || client.account;
       const encodedData = _encodeSubmitAppealData({client, txId});
       return _sendTransaction({
@@ -251,6 +304,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         publicClient,
         encodedData,
         senderAccount,
+        value,
       });
     },
   };

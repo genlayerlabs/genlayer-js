@@ -105,5 +105,7 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     appealTransaction: (args: {
       account?: Account;
       txId: `0x${string}`;
+      value?: bigint;
     }) => Promise<any>;
+    getMinAppealBond: (args: {txId: `0x${string}`}) => Promise<bigint>;
   } & StakingActions;

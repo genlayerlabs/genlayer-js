@@ -4007,6 +4007,8 @@ export const testnetAsimov: GenLayerChain = defineChain({
   consensusMainContract: CONSENSUS_MAIN_CONTRACT,
   consensusDataContract: CONSENSUS_DATA_CONTRACT,
   stakingContract: STAKING_CONTRACT,
+  feeManagerContract: null,
+  roundsStorageContract: null,
   defaultNumberOfInitialValidators: 5,
   defaultConsensusMaxRotations: 3,
 });
