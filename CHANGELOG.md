@@ -1,5 +1,12 @@
 
 
+## 0.21.3 (2026-03-18)
+
+
+### Bug Fixes
+
+* handle object response from gen_call on testnet ([#147](https://github.com/genlayerlabs/genlayer-js/issues/147)) ([5eeaa7c](https://github.com/genlayerlabs/genlayer-js/commit/5eeaa7c789627eef29fb827dcdc05bf76f15ff4e))
+
 ## 0.21.2 (2026-03-17)
 
 
