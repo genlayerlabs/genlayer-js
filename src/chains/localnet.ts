@@ -4011,6 +4011,8 @@ export const localnet: GenLayerChain = defineChain({
   consensusMainContract: CONSENSUS_MAIN_CONTRACT,
   consensusDataContract: CONSENSUS_DATA_CONTRACT,
   stakingContract: null,
+  feeManagerContract: null,
+  roundsStorageContract: null,
   defaultNumberOfInitialValidators: 5,
   defaultConsensusMaxRotations: 3,
 });

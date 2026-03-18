@@ -9,6 +9,34 @@ const STAKING_CONTRACT = {
   address: "0x4A4449E617F8D10FDeD0b461CadEf83939E821A5" as Address,
   abi: STAKING_ABI,
 };
+const FEE_MANAGER_CONTRACT = {
+  address: "0xF205868bf5db79d2162843742D18D0900A9E462a" as Address,
+  abi: [
+    {
+      type: "function" as const,
+      name: "calculateMinAppealBond",
+      stateMutability: "view" as const,
+      inputs: [
+        { name: "_txId", type: "bytes32" },
+        { name: "_round", type: "uint256" },
+        { name: "_status", type: "uint8" },
+      ],
+      outputs: [{ name: "totalFeesToPay", type: "uint256" }],
+    },
+  ],
+};
+const ROUNDS_STORAGE_CONTRACT = {
+  address: "0x7134D05af13A14c0b66Fe129fb930b1d0C420e33" as Address,
+  abi: [
+    {
+      type: "function" as const,
+      name: "getRoundNumber",
+      stateMutability: "view" as const,
+      inputs: [{ name: "_txId", type: "bytes32" }],
+      outputs: [{ name: "", type: "uint256" }],
+    },
+  ],
+};
 const EXPLORER_URL = "https://explorer-bradbury.genlayer.com/";
 const CONSENSUS_MAIN_CONTRACT = {
   address: "0x0112Bf6e83497965A5fdD6Dad1E447a6E004271D" as Address,
@@ -3352,6 +3380,8 @@ export const testnetBradbury: GenLayerChain = defineChain({
   consensusMainContract: CONSENSUS_MAIN_CONTRACT,
   consensusDataContract: CONSENSUS_DATA_CONTRACT,
   stakingContract: STAKING_CONTRACT,
+  feeManagerContract: FEE_MANAGER_CONTRACT,
+  roundsStorageContract: ROUNDS_STORAGE_CONTRACT,
   defaultNumberOfInitialValidators: 5,
   defaultConsensusMaxRotations: 3,
 });
