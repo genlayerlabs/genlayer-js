@@ -3,7 +3,7 @@ import {GenLayerChain} from "@/types";
 import {STAKING_ABI} from "@/abi/staking";
 
 // chains/localnet.ts
-const TESTNET_JSON_RPC_URL = "http://34.12.136.220:9151";
+const TESTNET_JSON_RPC_URL = "https://rpc-asimov.genlayer.com";
 // WebSocket not available on testnet GenLayer RPC nodes
 
 const STAKING_CONTRACT = {

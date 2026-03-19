@@ -2,7 +2,7 @@ import {Address, defineChain} from "viem";
 import {GenLayerChain} from "@/types";
 import {STAKING_ABI} from "@/abi/staking";
 
-const TESTNET_JSON_RPC_URL = "http://34.91.102.53:9151";
+const TESTNET_JSON_RPC_URL = "https://rpc-bradbury.genlayer.com";
 // WebSocket not available on testnet GenLayer RPC nodes
 
 const STAKING_CONTRACT = {
