@@ -1,5 +1,12 @@
 
 
+## 0.22.0 (2026-03-19)
+
+
+### Features
+
+* add getMinAppealBond and auto-bond appeal support ([5304b82](https://github.com/genlayerlabs/genlayer-js/commit/5304b822d35de65f80d7570182eee3e011cfb3ca))
+
 ## 0.21.3 (2026-03-18)
 
 
