@@ -1,5 +1,12 @@
 
 
+## 0.22.1 (2026-03-19)
+
+
+### Bug Fixes
+
+* use HTTPS domain RPC URLs for testnets ([0992eba](https://github.com/genlayerlabs/genlayer-js/commit/0992eba574aac0ad0a6ce980d369b0ab2e8a59f2))
+
 ## 0.22.0 (2026-03-19)
 
 
