@@ -123,6 +123,10 @@ export interface EpochInfo {
   activeValidatorsCount: bigint;
   epochMinDuration: bigint;
   nextEpochEstimate: Date | null;
+  validatorMinStake: string;
+  validatorMinStakeRaw: bigint;
+  delegatorMinStake: string;
+  delegatorMinStakeRaw: bigint;
 }
 
 export interface StakingTransactionResult {

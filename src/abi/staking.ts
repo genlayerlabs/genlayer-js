@@ -1456,6 +1456,20 @@ export const STAKING_ABI = [
     outputs: [{name: "", type: "uint256"}],
   },
   {
+    name: "validatorMinStake",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{name: "", type: "uint256"}],
+  },
+  {
+    name: "delegatorMinStake",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{name: "", type: "uint256"}],
+  },
+  {
     name: "validatorsCount",
     type: "function",
     stateMutability: "view",

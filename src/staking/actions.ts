@@ -566,6 +566,8 @@ export const stakingActions = (
         epochZeroMinDuration,
         epochOdd,
         epochEven,
+        valMinStake,
+        delMinStake,
       ] = await Promise.all([
         contract.read.epoch() as Promise<bigint>,
         contract.read.finalized() as Promise<bigint>,
@@ -574,6 +576,8 @@ export const stakingActions = (
         contract.read.epochZeroMinDuration() as Promise<bigint>,
         contract.read.epochOdd() as Promise<any>,
         contract.read.epochEven() as Promise<any>,
+        contract.read.validatorMinStake() as Promise<bigint>,
+        contract.read.delegatorMinStake() as Promise<bigint>,
       ]);
 
       // epochOdd/epochEven return arrays: [start, end, inflation, weight, weightDeposit, weightWithdrawal, vcount, claimed, stakeDeposit, stakeWithdrawal, slashed]
@@ -607,6 +611,10 @@ export const stakingActions = (
         activeValidatorsCount: activeCount,
         epochMinDuration,
         nextEpochEstimate,
+        validatorMinStake: formatStakingAmount(valMinStake),
+        validatorMinStakeRaw: valMinStake,
+        delegatorMinStake: formatStakingAmount(delMinStake),
+        delegatorMinStakeRaw: delMinStake,
       };
     },
 
