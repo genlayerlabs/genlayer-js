@@ -1,5 +1,12 @@
 
 
+## 0.23.0 (2026-03-20)
+
+
+### Features
+
+* add validatorMinStake and delegatorMinStake to getEpochInfo ([5810e25](https://github.com/genlayerlabs/genlayer-js/commit/5810e25c72f9b5b1fbbaf9b63c4b3f81f9cf0f72))
+
 ## 0.22.1 (2026-03-19)
 
 
