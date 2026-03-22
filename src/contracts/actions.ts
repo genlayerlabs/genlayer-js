@@ -591,10 +591,31 @@ const _sendTransaction = async ({
       ...(gasPriceHex ? {gasPrice: gasPriceHex} : {}),
     };
 
-    return await client.request({
+    const evmTxHash = (await client.request({
       method: "eth_sendTransaction",
       params: [formattedRequest as any],
-    });
+    })) as `0x${string}`;
+
+    // Extract GenLayer txId from the NewTransaction event, same as local account path.
+    // On studio RPCs this may already be the GenLayer txId, but on testnets
+    // eth_sendTransaction returns the EVM tx hash which is not the GenLayer tx ID.
+    const externalReceipt = await publicClient.waitForTransactionReceipt({hash: evmTxHash});
+
+    if (externalReceipt.status === "reverted") {
+      throw new Error("Transaction reverted");
+    }
+
+    const externalNewTxEvents = parseEventLogs({
+      abi: client.chain.consensusMainContract?.abi as any,
+      eventName: "NewTransaction",
+      logs: externalReceipt.logs,
+    }) as unknown as {args: {txId: `0x${string}`}}[];
+
+    if (externalNewTxEvents.length === 0) {
+      throw new Error("Transaction not processed by consensus");
+    }
+
+    return externalNewTxEvents[0].args["txId"];
   };
 
   try {
