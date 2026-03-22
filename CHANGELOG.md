@@ -1,5 +1,12 @@
 
 
+## 0.23.1 (2026-03-22)
+
+
+### Bug Fixes
+
+* extract GenLayer txId from NewTransaction event for external wallet transactions ([5fbb411](https://github.com/genlayerlabs/genlayer-js/commit/5fbb4114453335b8991516d2e7514d9aaf8a7a8a))
+
 ## 0.23.0 (2026-03-20)
 
 
