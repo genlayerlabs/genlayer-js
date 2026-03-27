@@ -1,5 +1,12 @@
 
 
+## 0.26.1 (2026-03-27)
+
+
+### Bug Fixes
+
+* **ci:** use GitHub App token for docs sync ([d9b9869](https://github.com/genlayerlabs/genlayer-js/commit/d9b986983d7fa006e91dc8eeb41bab848debc31c))
+
 ## 0.26.0 (2026-03-27)
 
 
