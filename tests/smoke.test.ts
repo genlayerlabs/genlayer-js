@@ -8,6 +8,7 @@ import {testnetAsimov} from "@/chains/testnetAsimov";
 import {testnetBradbury} from "@/chains/testnetBradbury";
 import {createClient} from "@/client/client";
 import {Address} from "@/types/accounts";
+import {TransactionHash} from "@/types/transactions";
 import {GenLayerChain} from "@/types";
 
 const TIMEOUT = 30_000;
@@ -167,6 +168,20 @@ describe(`Testnet ${name} - Transaction Decoding`, () => {
     const client = createClient({chain});
     const blockNumber = await client.getBlockNumber();
     expect(blockNumber).toBeGreaterThan(0n);
+  }, TIMEOUT);
+
+  it("getTransaction should return txExecutionResult for a known tx", async () => {
+    if (name !== "Bradbury") return; // only Bradbury has the known tx
+    const client = createClient({chain});
+    const tx = await client.getTransaction({
+      hash: "0x563f046c187d711127c51213ca62e2e4fee52009a98f0989a73a0a0382d21890" as TransactionHash,
+    });
+    expect(tx.txExecutionResult).toBeDefined();
+    expect(typeof tx.txExecutionResult).toBe("number");
+    expect([0, 1, 2]).toContain(tx.txExecutionResult);
+    expect(tx.txExecutionResultName).toBeDefined();
+    expect(tx.statusName).toBeDefined();
+    expect(tx.resultName).toBeDefined();
   }, TIMEOUT);
 });
 
