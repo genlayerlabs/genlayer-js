@@ -134,6 +134,24 @@ if (receipt.txExecutionResultName === ExecutionResult.FINISHED_WITH_RETURN) {
   console.warn("Execution result not yet available");
 }
 ```
+
+### Fetching emitted messages and triggered transactions
+
+Transactions can emit messages to other contracts. These messages create new child transactions when processed:
+
+```typescript
+const tx = await client.getTransaction({ hash: txHash });
+
+// Messages emitted by the contract during execution
+console.log(tx.messages);
+// [{messageType, recipient, value, data, onAcceptance, saltNonce}, ...]
+
+// Child transaction IDs created from those messages (separate call)
+const childTxIds = await client.getTriggeredTransactionIds({ hash: txHash });
+console.log(childTxIds);
+// ["0xabc...", "0xdef..."]
+```
+
 ### Staking Operations
 
 The SDK provides staking functionality for validators and delegators on testnet-bradbury (and testnet-asimov).

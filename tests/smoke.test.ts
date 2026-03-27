@@ -183,6 +183,25 @@ describe(`Testnet ${name} - Transaction Decoding`, () => {
     expect(tx.statusName).toBeDefined();
     expect(tx.resultName).toBeDefined();
   }, TIMEOUT);
+
+  it("getTransaction should include messages array", async () => {
+    if (name !== "Bradbury") return;
+    const client = createClient({chain});
+    const tx = await client.getTransaction({
+      hash: "0x563f046c187d711127c51213ca62e2e4fee52009a98f0989a73a0a0382d21890" as TransactionHash,
+    });
+    expect(tx.messages).toBeDefined();
+    expect(Array.isArray(tx.messages)).toBe(true);
+  }, TIMEOUT);
+
+  it("getTriggeredTransactionIds should return an array", async () => {
+    if (name !== "Bradbury") return;
+    const client = createClient({chain});
+    const txIds = await client.getTriggeredTransactionIds({
+      hash: "0x563f046c187d711127c51213ca62e2e4fee52009a98f0989a73a0a0382d21890" as TransactionHash,
+    });
+    expect(Array.isArray(txIds)).toBe(true);
+  }, TIMEOUT);
 });
 
 // ─── GenLayer RPC Methods ───────────────────────────────────────────────────
