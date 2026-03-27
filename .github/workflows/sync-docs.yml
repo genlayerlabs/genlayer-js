@@ -52,41 +52,18 @@ jobs:
           path: docs-repo
           fetch-depth: 0
 
-      - name: Prepare branch
+      - name: Sync and push docs
         working-directory: docs-repo
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          BRANCH="docs/js/${{ github.ref_name }}-${{ github.run_id }}"
-          git switch -c "$BRANCH"
-          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
-
-      - name: Sync docs into docs repo
-        run: |
-          set -euo pipefail
-          mkdir -p docs-repo/pages/api-references/genlayer-js
-          rsync -a --delete docs/api-references/ docs-repo/pages/api-references/genlayer-js/
-
-      - name: Commit, push, and create PR
-        working-directory: docs-repo
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          set -euo pipefail
+          mkdir -p pages/api-references/genlayer-js
+          rsync -a --delete "${{ github.workspace }}/docs/api-references/" pages/api-references/genlayer-js/
           if [ -z "$(git status --porcelain)" ]; then
             echo "No changes to commit"
             exit 0
           fi
           git add pages/api-references/genlayer-js
           git commit -m "docs(js): sync API reference ${{ steps.version.outputs.value }}"
-          git push --set-upstream origin "$BRANCH"
-          gh pr create \
-            --repo genlayerlabs/genlayer-docs \
-            --base main \
-            --head "$BRANCH" \
-            --title "docs(js): sync JS SDK API reference ${{ steps.version.outputs.value }}" \
-            --body "Auto-generated API reference update from genlayer-js.
-
-          - Version: \`${{ steps.version.outputs.value }}\`
-          - Source commit: \`${{ github.sha }}\`"
+          git push
