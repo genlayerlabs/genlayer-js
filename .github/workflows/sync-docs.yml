@@ -36,11 +36,19 @@ jobs:
       - name: Generate API docs
         run: npx typedoc
 
+      - name: Generate docs repo token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.DOCS_SYNC_APP_ID }}
+          private-key: ${{ secrets.DOCS_SYNC_APP_KEY }}
+          repositories: genlayer-docs
+
       - name: Checkout docs repo
         uses: actions/checkout@v4
         with:
           repository: genlayerlabs/genlayer-docs
-          token: ${{ secrets.DOCS_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           path: docs-repo
           fetch-depth: 0
 
@@ -76,7 +84,7 @@ jobs:
         if: success()
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ secrets.DOCS_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           path: docs-repo
           commit-message: "docs(js): sync API reference ${{ steps.version.outputs.value }}"
           branch: ${{ env.BRANCH }}
