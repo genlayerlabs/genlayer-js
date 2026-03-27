@@ -1,5 +1,12 @@
 
 
+## 0.26.4 (2026-03-27)
+
+
+### Bug Fixes
+
+* **docs:** single-page API reference instead of TypeDoc module split ([edea2a5](https://github.com/genlayerlabs/genlayer-js/commit/edea2a5caeac58ec1910701691bd01e0cba13c2d))
+
 ## 0.26.3 (2026-03-27)
 
 
