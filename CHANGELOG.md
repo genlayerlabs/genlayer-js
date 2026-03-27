@@ -1,5 +1,12 @@
 
 
+## 0.27.0 (2026-03-27)
+
+
+### Features
+
+* **docs:** multi-page API reference with param tables, README as index ([6918c55](https://github.com/genlayerlabs/genlayer-js/commit/6918c5575e44d928349643604d15eed57af7ff6d))
+
 ## 0.26.5 (2026-03-27)
 
 
