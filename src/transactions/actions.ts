@@ -77,16 +77,59 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
       transaction.statusName = localnetStatus as TransactionStatus;
       return decodeLocalnetTransaction(transaction as unknown as GenLayerTransaction);
     }
-    const transaction = (await publicClient.readContract({
-      address: client.chain.consensusDataContract?.address as Address,
-      abi: client.chain.consensusDataContract?.abi as Abi,
-      functionName: "getTransactionData",
-      args: [
-        hash,
-        Math.round(new Date().getTime() / 1000), // unix seconds
-      ],
-    })) as unknown as GenLayerRawTransaction;
+    const contractAddress = client.chain.consensusDataContract?.address as Address;
+    const contractAbi = client.chain.consensusDataContract?.abi as Abi;
+
+    const [txDataRaw, allDataRaw] = await Promise.all([
+      publicClient.readContract({
+        address: contractAddress,
+        abi: contractAbi,
+        functionName: "getTransactionData",
+        args: [hash, Math.round(new Date().getTime() / 1000)],
+      }) as Promise<GenLayerRawTransaction>,
+      publicClient.readContract({
+        address: contractAddress,
+        abi: contractAbi,
+        functionName: "getTransactionAllData",
+        args: [hash],
+      }) as Promise<[any, any[]]>,
+    ]);
+
+    const txData = txDataRaw as unknown as GenLayerRawTransaction;
+    const [txAllData, roundsData] = allDataRaw as unknown as [any, any[]];
+
+    const transaction = {
+      ...txData,
+      txExecutionResult: Number(txAllData.txExecutionResult),
+    } as GenLayerRawTransaction;
     return decodeTransaction(transaction);
+  },
+  getTriggeredTransactionIds: async ({hash}: {hash: TransactionHash}): Promise<TransactionHash[]> => {
+    if (client.chain.isStudio) {
+      const tx = await client.getTransaction({hash});
+      return ((tx as any).triggered_transactions ?? []) as TransactionHash[];
+    }
+
+    const tx = await transactionActions(client, publicClient).getTransaction({hash});
+    const proposalBlock = BigInt(tx.readStateBlockRange?.proposalBlock ?? "0");
+    if (proposalBlock === BigInt(0)) return [];
+
+    const scanRange = BigInt(100);
+    const latestBlock = await publicClient.getBlockNumber();
+    const toBlock = proposalBlock + scanRange < latestBlock ? proposalBlock + scanRange : latestBlock;
+
+    const consensusAddress = client.chain.consensusMainContract?.address as Address;
+    const internalMessageProcessedTopic = keccak256(stringToBytes("InternalMessageProcessed(bytes32,address,address)"));
+
+    const logs = await publicClient.getLogs({
+      address: consensusAddress,
+      event: undefined,
+      fromBlock: proposalBlock,
+      toBlock,
+      topics: [internalMessageProcessedTopic, hash],
+    } as any);
+
+    return logs.map(log => log.topics[1] as TransactionHash).filter(Boolean);
   },
   cancelTransaction: async ({hash}: {hash: TransactionHash}): Promise<{transaction_hash: string; status: string}> => {
     if (!client.chain.isStudio) {
