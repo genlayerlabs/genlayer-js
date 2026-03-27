@@ -1,0 +1,89 @@
+name: Generate API Docs and PR to genlayer-docs
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  generate-and-sync:
+    if: github.event_name != 'release' || !contains(github.event.release.tag_name, '-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout SDK repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "value=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "value=$(node -p 'require("./package.json").version')" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate API docs
+        run: npx typedoc
+
+      - name: Checkout docs repo
+        uses: actions/checkout@v4
+        with:
+          repository: genlayerlabs/genlayer-docs
+          token: ${{ secrets.DOCS_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+          path: docs-repo
+          fetch-depth: 0
+
+      - name: Prepare branch
+        working-directory: docs-repo
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          BRANCH="docs/js/${{ github.ref_name }}-${{ github.run_id }}"
+          git switch -c "$BRANCH"
+          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
+
+      - name: Sync docs into docs repo
+        run: |
+          set -euo pipefail
+          mkdir -p docs-repo/pages/api-references/genlayer-js
+          rsync -a --delete docs/api-references/ docs-repo/pages/api-references/genlayer-js/
+
+      - name: Commit and create PR
+        working-directory: docs-repo
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain)" ]; then
+            git add pages/api-references/genlayer-js
+            git commit -m "docs(js): sync API reference ${{ steps.version.outputs.value }}"
+            git push --set-upstream origin "$BRANCH"
+          else
+            echo "No changes to commit"
+          fi
+
+      - name: Create PR in docs repo
+        if: success()
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.DOCS_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+          path: docs-repo
+          commit-message: "docs(js): sync API reference ${{ steps.version.outputs.value }}"
+          branch: ${{ env.BRANCH }}
+          title: "docs(js): sync JS SDK API reference ${{ steps.version.outputs.value }}"
+          body: |
+            Auto-generated API reference update from genlayer-js.
+
+            - Version: `${{ steps.version.outputs.value }}`
+            - Source commit: `${{ github.sha }}`
+          labels: documentation

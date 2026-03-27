@@ -17,7 +17,8 @@
     "test:smoke": "vitest run --config vitest.smoke.config.ts",
     "test:watch": "vitest --watch",
     "lint": "eslint . --fix --ext .ts",
-    "release": "release-it --ci"
+    "release": "release-it --ci",
+    "docs": "typedoc"
   },
   "exports": {
     ".": {
@@ -55,6 +56,8 @@
     "release-it": "^17.6.0",
     "ts-node": "^10.9.2",
     "tsup": "^8.2.4",
+    "typedoc": "^0.28.18",
+    "typedoc-plugin-markdown": "^4.11.0",
     "typescript": "^5.6.2",
     "vitest": "^2.1.1"
   },
