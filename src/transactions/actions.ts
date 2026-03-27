@@ -77,44 +77,59 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
       transaction.statusName = localnetStatus as TransactionStatus;
       return decodeLocalnetTransaction(transaction as unknown as GenLayerTransaction);
     }
-    const [txAllData, roundsData] = (await publicClient.readContract({
-      address: client.chain.consensusDataContract?.address as Address,
-      abi: client.chain.consensusDataContract?.abi as Abi,
-      functionName: "getTransactionAllData",
-      args: [hash],
-    })) as [any, any[]];
+    const contractAddress = client.chain.consensusDataContract?.address as Address;
+    const contractAbi = client.chain.consensusDataContract?.abi as Abi;
 
-    const lastRound = roundsData.length > 0 ? roundsData[roundsData.length - 1] : undefined;
-    const latestBlockRange = txAllData.readStateBlockRanges?.length > 0
-      ? txAllData.readStateBlockRanges[txAllData.readStateBlockRanges.length - 1]
-      : { activationBlock: BigInt(0), processingBlock: BigInt(0), proposalBlock: BigInt(0) };
+    const [txDataRaw, allDataRaw] = await Promise.all([
+      publicClient.readContract({
+        address: contractAddress,
+        abi: contractAbi,
+        functionName: "getTransactionData",
+        args: [hash, Math.round(new Date().getTime() / 1000)],
+      }) as Promise<GenLayerRawTransaction>,
+      publicClient.readContract({
+        address: contractAddress,
+        abi: contractAbi,
+        functionName: "getTransactionAllData",
+        args: [hash],
+      }) as Promise<[any, any[]]>,
+    ]);
+
+    const txData = txDataRaw as unknown as GenLayerRawTransaction;
+    const [txAllData, roundsData] = allDataRaw as unknown as [any, any[]];
 
     const transaction = {
-      currentTimestamp: BigInt(0),
-      sender: txAllData.sender,
-      recipient: txAllData.recipient,
-      initialRotations: txAllData.initialRotations,
-      numOfInitialValidators: txAllData.numOfInitialValidators,
-      txSlot: txAllData.txSlot,
-      createdTimestamp: BigInt(0),
-      lastVoteTimestamp: BigInt(0),
-      randomSeed: txAllData.randomSeed,
-      result: Number(txAllData.result),
+      ...txData,
       txExecutionResult: Number(txAllData.txExecutionResult),
-      txData: txAllData.txCalldata,
-      txReceipt: "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}` & {length: 66},
-      messages: [],
-      queueType: 0,
-      queuePosition: BigInt(0),
-      activator: txAllData.activator,
-      lastLeader: txAllData.activator,
-      status: Number(txAllData.status),
-      txId: txAllData.id,
-      readStateBlockRange: latestBlockRange,
-      numOfRounds: BigInt(roundsData.length),
-      lastRound,
     } as GenLayerRawTransaction;
     return decodeTransaction(transaction);
+  },
+  getTriggeredTransactionIds: async ({hash}: {hash: TransactionHash}): Promise<TransactionHash[]> => {
+    if (client.chain.isStudio) {
+      const tx = await client.getTransaction({hash});
+      return ((tx as any).triggered_transactions ?? []) as TransactionHash[];
+    }
+
+    const tx = await transactionActions(client, publicClient).getTransaction({hash});
+    const proposalBlock = BigInt(tx.readStateBlockRange?.proposalBlock ?? "0");
+    if (proposalBlock === BigInt(0)) return [];
+
+    const scanRange = BigInt(100);
+    const latestBlock = await publicClient.getBlockNumber();
+    const toBlock = proposalBlock + scanRange < latestBlock ? proposalBlock + scanRange : latestBlock;
+
+    const consensusAddress = client.chain.consensusMainContract?.address as Address;
+    const internalMessageProcessedTopic = keccak256(stringToBytes("InternalMessageProcessed(bytes32,address,address)"));
+
+    const logs = await publicClient.getLogs({
+      address: consensusAddress,
+      event: undefined,
+      fromBlock: proposalBlock,
+      toBlock,
+      topics: [internalMessageProcessedTopic, hash],
+    } as any);
+
+    return logs.map(log => log.topics[1] as TransactionHash).filter(Boolean);
   },
   cancelTransaction: async ({hash}: {hash: TransactionHash}): Promise<{transaction_hash: string; status: string}> => {
     if (!client.chain.isStudio) {
