@@ -68,30 +68,25 @@ jobs:
           mkdir -p docs-repo/pages/api-references/genlayer-js
           rsync -a --delete docs/api-references/ docs-repo/pages/api-references/genlayer-js/
 
-      - name: Commit and create PR
+      - name: Commit, push, and create PR
         working-directory: docs-repo
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           set -euo pipefail
-          if [ -n "$(git status --porcelain)" ]; then
-            git add pages/api-references/genlayer-js
-            git commit -m "docs(js): sync API reference ${{ steps.version.outputs.value }}"
-            git push --set-upstream origin "$BRANCH"
-          else
+          if [ -z "$(git status --porcelain)" ]; then
             echo "No changes to commit"
+            exit 0
           fi
+          git add pages/api-references/genlayer-js
+          git commit -m "docs(js): sync API reference ${{ steps.version.outputs.value }}"
+          git push --set-upstream origin "$BRANCH"
+          gh pr create \
+            --repo genlayerlabs/genlayer-docs \
+            --base main \
+            --head "$BRANCH" \
+            --title "docs(js): sync JS SDK API reference ${{ steps.version.outputs.value }}" \
+            --body "Auto-generated API reference update from genlayer-js.
 
-      - name: Create PR in docs repo
-        if: success()
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          path: docs-repo
-          commit-message: "docs(js): sync API reference ${{ steps.version.outputs.value }}"
-          branch: ${{ env.BRANCH }}
-          title: "docs(js): sync JS SDK API reference ${{ steps.version.outputs.value }}"
-          body: |
-            Auto-generated API reference update from genlayer-js.
-
-            - Version: `${{ steps.version.outputs.value }}`
-            - Source commit: `${{ github.sha }}`
-          labels: documentation
+          - Version: \`${{ steps.version.outputs.value }}\`
+          - Source commit: \`${{ github.sha }}\`"
