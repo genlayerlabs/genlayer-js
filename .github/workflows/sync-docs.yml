@@ -61,6 +61,10 @@ jobs:
           rm -rf pages/api-references/genlayer-js
           mkdir -p pages/api-references/genlayer-js
           cp "${{ github.workspace }}/docs/api-references/index.md" pages/api-references/genlayer-js/index.md
+          cp "${{ github.workspace }}/docs/api-references/contracts.md" pages/api-references/genlayer-js/contracts.md
+          cp "${{ github.workspace }}/docs/api-references/transactions.md" pages/api-references/genlayer-js/transactions.md
+          cp "${{ github.workspace }}/docs/api-references/staking.md" pages/api-references/genlayer-js/staking.md
+          printf '{\n  "contracts": "Contracts",\n  "transactions": "Transactions",\n  "staking": "Staking"\n}\n' > pages/api-references/genlayer-js/_meta.json
           if [ -z "$(git status --porcelain)" ]; then
             echo "No changes to commit"
             exit 0

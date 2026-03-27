@@ -1,246 +1,243 @@
-# GenLayerJS SDK API Reference
+# GenLayerJS
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/license/mit/)
+[![Discord](https://dcbadge.vercel.app/api/server/8Jm4v89VAu?compact=true&style=flat)](https://discord.gg/VpfmXEMN66)
+[![Twitter](https://img.shields.io/twitter/url/https/twitter.com/genlaboratory.svg?style=social&label=Follow%20%40GenLayer)](https://x.com/GenLayer)
+[![GitHub star chart](https://img.shields.io/github/stars/genlayerlabs/genlayer-js?style=social)](https://star-history.com/#genlayerlabs/genlayer-js)
+
+## 👀 About
+
+GenLayerJS SDK is a TypeScript library designed for developers building decentralized applications (Dapps) on the GenLayer protocol. This SDK provides a comprehensive set of tools to interact with the GenLayer network, including client creation, transaction handling, event subscriptions, and more, all while leveraging the power of Viem as the underlying blockchain client.
+
+## Prerequisites
+
+Before installing GenLayerJS SDK, ensure you have the following prerequisites installed:
+
+- Node.js (>= 16.x)
+- npm (>= 7.x)
+
+## 🛠️ Installation and Usage
+
+To install the GenLayerJS SDK, use the following command:
+```bash
+$ npm install genlayer-js
+```
+Here’s how to initialize the client and connect to the GenLayer Simulator:
+
+### Reading a Transaction
+```typescript
+import { localnet } from 'genlayer-js/chains';
+import { createClient } from "genlayer-js";
+
+const client = createClient({
+  chain: localnet,
+});
+
+const transactionHash = "0x...";
+
+const transaction = await client.getTransaction({ hash: transactionHash })
+```
+
+### Waiting for Transaction Receipt
+```typescript
+import { localnet } from 'genlayer-js/chains';
+import { createClient } from "genlayer-js";
+import { TransactionStatus } from "genlayer-js/types";
+
+const client = createClient({
+  chain: localnet,
+});
+
+// Get simplified receipt (default - removes binary data, keeps execution results)
+const receipt = await client.waitForTransactionReceipt({
+  hash: "0x...",
+  status: TransactionStatus.FINALIZED,
+  fullTransaction: false // Default - simplified for readability
+});
+
+// Get complete receipt with all fields
+const fullReceipt = await client.waitForTransactionReceipt({
+  hash: "0x...",
+  status: TransactionStatus.FINALIZED,
+  fullTransaction: true // Complete receipt with all internal data
+});
+```
+
+### Reading a contract
+```typescript
+import { localnet } from 'genlayer-js/chains';
+import { createClient } from "genlayer-js";
+
+const client = createClient({
+  chain: localnet,
+});
+
+const result = await client.readContract({
+  // account: account, Account is optional when reading from contracts
+  address: contractAddress,
+  functionName: 'get_complete_storage',
+  args: []
+  stateStatus: "accepted",
+})
+```
+
+### Writing a transaction
+```typescript
+import { localnet } from 'genlayer-js/chains';
+import { createClient, createAccount } from "genlayer-js";
+
+const client = createClient({
+  network: localnet,
+});
+
+const account = createAccount();
+const transactionHash = await client.writeContract({
+  account: account, // using this account for this transaction
+  address: contractAddress,
+  functionName: 'account',
+  args: ['new_storage'],
+  value: 0, // value is optional, if you want to send some native token to the contract
+});
+
+const receipt = await client.waitForTransactionReceipt({
+  hash: txHash,
+  status: TransactionStatus.FINALIZED, // or ACCEPTED
+  fullTransaction: false // False by default - returns simplified receipt for better readability
+})
+
+```
+
+### Checking execution results
+
+A transaction can be finalized by consensus but still have a failed execution. Always check `txExecutionResult` before reading contract state:
+
+```typescript
+import { ExecutionResult, TransactionStatus } from "genlayer-js/types";
+
+const receipt = await client.waitForTransactionReceipt({
+  hash: txHash,
+  status: TransactionStatus.FINALIZED,
+});
+
+if (receipt.txExecutionResultName === ExecutionResult.FINISHED_WITH_RETURN) {
+  // Execution succeeded — safe to read state
+  const result = await client.readContract({
+    address: contractAddress,
+    functionName: "get_storage",
+    args: [],
+  });
+} else if (receipt.txExecutionResultName === ExecutionResult.FINISHED_WITH_ERROR) {
+  // Execution failed — contract state was not modified
+  console.error("Contract execution failed");
+} else {
+  // NOT_VOTED — execution hasn't completed
+  console.warn("Execution result not yet available");
+}
+```
 
-Version: 0.26.2
+### Fetching emitted messages and triggered transactions
 
-## Contracts
+Transactions can emit messages to other contracts. These messages create new child transactions when processed:
 
-### `getContractCode`
+```typescript
+const tx = await client.getTransaction({ hash: txHash });
 
-Retrieves the source code of a deployed contract. Localnet only.
+// Messages emitted by the contract during execution
+console.log(tx.messages);
+// [{messageType, recipient, value, data, onAcceptance, saltNonce}, ...]
 
----
+// Child transaction IDs created from those messages (separate call)
+const childTxIds = await client.getTriggeredTransactionIds({ hash: txHash });
+console.log(childTxIds);
+// ["0xabc...", "0xdef..."]
+```
 
-### `getContractSchema`
+### Debugging transaction execution
 
-Gets the schema (methods and constructor) of a deployed contract. Localnet only.
+Use `debugTraceTransaction` to inspect the full execution trace of a transaction, including return data, errors, and GenVM logs:
 
----
+```typescript
+const trace = await client.debugTraceTransaction({
+  hash: txHash,
+  round: 0, // optional, defaults to 0
+});
 
-### `getContractSchemaForCode`
+console.log(trace.result_code);  // 0=success, 1=user error, 2=VM error
+console.log(trace.return_data);  // hex-encoded contract return data
+console.log(trace.stderr);       // standard error output
+console.log(trace.genvm_log);    // detailed GenVM execution logs
+```
 
-Generates a schema for contract code without deploying it. Localnet only.
+### Staking Operations
 
----
+The SDK provides staking functionality for validators and delegators on testnet-bradbury (and testnet-asimov).
 
-### `readContract`
+```typescript
+import { testnetBradbury } from 'genlayer-js/chains';
+import { createClient, createAccount } from "genlayer-js";
 
-Executes a read-only contract call without modifying state.
+const account = createAccount();
+const client = createClient({
+  chain: testnetBradbury,
+  account,
+});
 
----
+// Get epoch info (includes timing estimates and inflation data)
+const epochInfo = await client.getEpochInfo();
+// {
+//   currentEpoch: 2n,
+//   epochMinDuration: 86400n,        // 1 day in seconds
+//   currentEpochStart: Date,
+//   currentEpochEnd: Date | null,
+//   nextEpochEstimate: Date | null,
+//   validatorMinStake: "0.01 GEN",
+//   delegatorMinStake: "42 GEN",
+//   activeValidatorsCount: 6n,
+//   inflation: "1000 GEN",           // Total inflation for current epoch
+//   inflationRaw: 1000000000000000000000n,
+//   totalWeight: 500000000000000000000000n,  // Total stake weight
+//   totalClaimed: "500 GEN",         // Total claimed rewards
+// }
 
-### `simulateWriteContract`
+// Get active validators
+const validators = await client.getActiveValidators();
 
-Simulates a state-modifying contract call without executing on-chain.
+// Check if address is a validator
+const isValidator = await client.isValidator("0x...");
 
----
+// Get validator info
+const validatorInfo = await client.getValidatorInfo("0x...");
 
-### `writeContract`
+// Join as validator (requires account with funds)
+const result = await client.validatorJoin({ amount: "42000gen" });
 
-Executes a state-modifying function on a contract through consensus. Returns the transaction hash.
+// Join as delegator
+const delegateResult = await client.delegatorJoin({
+  validator: "0x...",
+  amount: "42gen",
+});
+```
 
----
+## 🚀 Key Features
 
-### `deployContract`
+* **Client Creation**: Easily create and configure a client to connect to GenLayer's network.
+* **Transaction Handling**: Send and manage transactions on the GenLayer network.
+* **Staking**: Full staking support for validators and delegators on testnet-bradbury and testnet-asimov.
+* **Wallet Integration***: Seamless integration with MetaMask for managing user accounts.
+* **Gas Estimation***: Estimate gas fees for executing transactions on GenLayer.
 
-Deploys a new intelligent contract to GenLayer. Returns the transaction hash.
+_* under development_
 
----
+## 📖 Documentation
 
-### `getMinAppealBond`
+For detailed information on how to use GenLayerJS SDK, please refer to our [documentation](https://docs.genlayer.com/).
 
-Calculates the minimum bond required to appeal a transaction.
 
----
 
-### `appealTransaction`
+## Contributing
 
-Appeals a consensus transaction to trigger a new round of validation.
+We welcome contributions to GenLayerJS SDK! Whether it's new features, improved infrastructure, or better documentation, your input is valuable. Please read our [CONTRIBUTING](https://github.com/genlayerlabs/genlayer-js/blob/main/CONTRIBUTING.md) guide for guidelines on how to submit your contributions.
 
----
+## License
 
-## Transactions
-
-### `waitForTransactionReceipt`
-
-Polls until a transaction reaches the specified status. Returns the transaction receipt.
-
----
-
-### `getTransaction`
-
-Fetches transaction data including status, execution result, and consensus details.
-
----
-
-### `getTriggeredTransactionIds`
-
-Returns transaction IDs of child transactions created from emitted messages.
-
----
-
-### `debugTraceTransaction`
-
-Fetches the full execution trace including return data, stdout, stderr, and GenVM logs.
-
----
-
-### `cancelTransaction`
-
-Cancels a pending transaction. Studio networks only.
-
----
-
-### `estimateTransactionGas`
-
-Estimates gas required for a transaction.
-
----
-
-## Staking
-
-### `validatorJoin`
-
-Joins as a validator with the specified stake amount.
-
----
-
-### `validatorDeposit`
-
-Adds additional self-stake to an active validator position.
-
----
-
-### `validatorExit`
-
-Exits a validator position by burning the specified shares.
-
----
-
-### `validatorClaim`
-
-Claims pending validator withdrawals.
-
----
-
-### `validatorPrime`
-
-Primes a validator for participation in the next epoch.
-
----
-
-### `setOperator`
-
-Sets the operator address for a validator wallet.
-
----
-
-### `setIdentity`
-
-Sets validator identity information (name, website, social links).
-
----
-
-### `delegatorJoin`
-
-Delegates stake to a validator.
-
----
-
-### `delegatorExit`
-
-Exits a delegation by burning the specified shares.
-
----
-
-### `delegatorClaim`
-
-Claims pending delegator withdrawals.
-
----
-
-### `isValidator`
-
-Checks if an address is an active validator.
-
----
-
-### `getValidatorInfo`
-
-Returns comprehensive information about a validator including stake, identity, and status.
-
----
-
-### `getStakeInfo`
-
-Returns delegation stake information for a delegator-validator pair.
-
----
-
-### `getEpochInfo`
-
-Returns current epoch information including timing, stake requirements, and inflation data.
-
----
-
-### `getEpochData`
-
-Returns detailed data for a specific epoch.
-
----
-
-### `getActiveValidators`
-
-Returns addresses of all currently active validators.
-
----
-
-### `getActiveValidatorsCount`
-
-Returns the count of active validators.
-
----
-
-### `getQuarantinedValidators`
-
-Returns addresses of validators currently in quarantine.
-
----
-
-### `getBannedValidators`
-
-Returns banned validators with ban duration and permanent ban status.
-
----
-
-### `getQuarantinedValidatorsDetailed`
-
-Returns detailed quarantine information with pagination.
-
----
-
-### `getStakingContract`
-
-Returns the underlying staking contract instance for direct interactions.
-
----
-
-## Enums
-
-### TransactionStatus
-
-`UNINITIALIZED` | `PENDING` | `PROPOSING` | `COMMITTING` | `REVEALING` | `ACCEPTED` | `UNDETERMINED` | `FINALIZED` | `CANCELED` | `APPEAL_REVEALING` | `APPEAL_COMMITTING` | `READY_TO_FINALIZE` | `VALIDATORS_TIMEOUT` | `LEADER_TIMEOUT`
-
----
-
-### ExecutionResult
-
-`NOT_VOTED` | `FINISHED_WITH_RETURN` | `FINISHED_WITH_ERROR`
-
----
-
-### TransactionResult
-
-`IDLE` | `AGREE` | `DISAGREE` | `TIMEOUT` | `DETERMINISTIC_VIOLATION` | `NO_MAJORITY` | `MAJORITY_AGREE` | `MAJORITY_DISAGREE`
-
----
-
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
