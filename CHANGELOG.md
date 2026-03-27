@@ -1,5 +1,12 @@
 
 
+## 0.25.0 (2026-03-27)
+
+
+### Features
+
+* Add debugTraceTransaction method ([b145b01](https://github.com/genlayerlabs/genlayer-js/commit/b145b0184e869e38d8f5b8f2f91ae2ca44e07877))
+
 ## 0.24.0 (2026-03-27)
 
 
