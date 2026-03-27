@@ -1,5 +1,12 @@
 
 
+## 0.26.0 (2026-03-27)
+
+
+### Features
+
+* Add TypeDoc API reference generation and docs sync ([653b949](https://github.com/genlayerlabs/genlayer-js/commit/653b949f6cc116be5d79418dc7004dc4ce795616))
+
 ## 0.25.0 (2026-03-27)
 
 
