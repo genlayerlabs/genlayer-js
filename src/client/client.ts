@@ -81,6 +81,16 @@ const getCustomTransportConfig = (config: ClientConfig, chainConfig: GenLayerCha
   };
 };
 
+/**
+ * Creates a GenLayer client instance for interacting with the network.
+ *
+ * @param config - Client configuration options
+ * @param config.chain - Chain to connect to (localnet, testnetBradbury, etc.)
+ * @param config.endpoint - Custom RPC endpoint URL
+ * @param config.account - Account or address for signing transactions
+ * @param config.provider - EthereumProvider for wallet integration
+ * @returns Configured client with contract, transaction, and staking methods
+ */
 export const createClient = (config: ClientConfig = {chain: localnet}): GenLayerClient<GenLayerChain> => {
   const chainConfig = config.chain || localnet;
   if (config.endpoint) {

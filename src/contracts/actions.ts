@@ -35,6 +35,7 @@ function extractGenCallResult(result: unknown): `0x${string}` {
 
 export const contractActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => {
   return {
+    /** Retrieves the source code of a deployed contract. Localnet only. */
     getContractCode: async (address: Address): Promise<string> => {
       if (client.chain.id !== localnet.id) {
         throw new Error("Getting contract code is not supported on this network");
@@ -46,6 +47,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       const codeBytes = b64ToArray(result);
       return new TextDecoder().decode(codeBytes);
     },
+    /** Gets the schema (methods and constructor) of a deployed contract. Localnet only. */
     getContractSchema: async (address: Address): Promise<ContractSchema> => {
       if (client.chain.id !== localnet.id) {
         throw new Error("Contract schema is not supported on this network");
@@ -56,6 +58,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       })) as string;
       return schema as unknown as ContractSchema;
     },
+    /** Generates a schema for contract code without deploying it. Localnet only. */
     getContractSchemaForCode: async (contractCode: string | Uint8Array): Promise<ContractSchema> => {
       if (client.chain.id !== localnet.id) {
         throw new Error("Contract schema is not supported on this network");
@@ -66,6 +69,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       })) as string;
       return schema as unknown as ContractSchema;
     },
+    /** Executes a read-only contract call without modifying state. */
     readContract: async <RawReturn extends boolean | undefined>(args: {
       account?: Account;
       address: Address;
@@ -117,6 +121,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       // If jsonSafeReturn is requested, convert to JSON-safe recursively
       return toJsonSafeDeep(decoded) as any;
     },
+    /** Simulates a state-modifying contract call without executing on-chain. */
     simulateWriteContract: async <RawReturn extends boolean | undefined>(args: {
       account?: Account;
       address: Address;
@@ -161,6 +166,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       const resultBinary = fromHex(prefixedResult, "bytes");
       return calldata.decode(resultBinary) as any;
     },
+    /** Executes a state-modifying function on a contract through consensus. Returns the transaction hash. */
     writeContract: async (args: {
       account?: Account;
       address: Address;
@@ -201,6 +207,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         value,
       });
     },
+    /** Deploys a new intelligent contract to GenLayer. Returns the transaction hash. */
     deployContract: async (args: {
       account?: Account;
       code: string | Uint8Array;
@@ -240,6 +247,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         senderAccount,
       });
     },
+    /** Calculates the minimum bond required to appeal a transaction. */
     getMinAppealBond: async (args: {txId: `0x${string}`}): Promise<bigint> => {
       const {txId} = args;
 
@@ -266,6 +274,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
 
       return minBond;
     },
+    /** Appeals a consensus transaction to trigger a new round of validation. */
     appealTransaction: async (args: {
       account?: Account;
       txId: `0x${string}`;

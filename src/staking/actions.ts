@@ -189,6 +189,7 @@ export const stakingActions = (
     return stakingConfig.address as ViemAddress;
   };
 
+  /** Returns the underlying staking contract instance for direct interactions. */
   const getStakingContract = (): StakingContract => {
     const address = getStakingAddress();
     return getContract({
@@ -208,6 +209,7 @@ export const stakingActions = (
   };
 
   return {
+    /** Joins as a validator with the specified stake amount. */
     validatorJoin: async (options: ValidatorJoinOptions): Promise<ValidatorJoinResult> => {
       const amount = parseStakingAmount(options.amount);
       const stakingAddress = getStakingAddress();
@@ -259,6 +261,7 @@ export const stakingActions = (
       };
     },
 
+    /** Adds additional self-stake to an active validator position. */
     validatorDeposit: async (options: ValidatorDepositOptions): Promise<StakingTransactionResult> => {
       const amount = parseStakingAmount(options.amount);
       const data = encodeFunctionData({
@@ -268,6 +271,7 @@ export const stakingActions = (
       return executeWrite({to: getStakingAddress(), data, value: amount});
     },
 
+    /** Exits a validator position by burning the specified shares. */
     validatorExit: async (options: ValidatorExitOptions): Promise<StakingTransactionResult> => {
       const shares = typeof options.shares === "string" ? BigInt(options.shares) : options.shares;
       const data = encodeFunctionData({
@@ -278,6 +282,7 @@ export const stakingActions = (
       return executeWrite({to: getStakingAddress(), data});
     },
 
+    /** Claims pending validator withdrawals. */
     validatorClaim: async (options?: ValidatorClaimOptions): Promise<StakingTransactionResult & {claimedAmount: bigint}> => {
       if (!options?.validator && !client.account) {
         throw new Error("Either provide validator address or initialize client with an account");
@@ -293,6 +298,7 @@ export const stakingActions = (
       return {...result, claimedAmount: 0n};
     },
 
+    /** Primes a validator for participation in the next epoch. */
     validatorPrime: async (options: ValidatorPrimeOptions): Promise<StakingTransactionResult> => {
       const data = encodeFunctionData({
         abi: STAKING_ABI,
@@ -302,6 +308,7 @@ export const stakingActions = (
       return executeWrite({to: getStakingAddress(), data});
     },
 
+    /** Sets the operator address for a validator wallet. */
     setOperator: async (options: SetOperatorOptions): Promise<StakingTransactionResult> => {
       const data = encodeFunctionData({
         abi: VALIDATOR_WALLET_ABI,
@@ -311,6 +318,7 @@ export const stakingActions = (
       return executeWrite({to: options.validator as ViemAddress, data});
     },
 
+    /** Sets validator identity information (name, website, social links). */
     setIdentity: async (options: SetIdentityOptions): Promise<StakingTransactionResult> => {
       let extraCidBytes: `0x${string}` = "0x";
       if (options.extraCid) {
@@ -338,6 +346,7 @@ export const stakingActions = (
       return executeWrite({to: options.validator as ViemAddress, data});
     },
 
+    /** Delegates stake to a validator. */
     delegatorJoin: async (options: DelegatorJoinOptions): Promise<DelegatorJoinResult> => {
       const amount = parseStakingAmount(options.amount);
       const data = encodeFunctionData({
@@ -356,6 +365,7 @@ export const stakingActions = (
       };
     },
 
+    /** Exits a delegation by burning the specified shares. */
     delegatorExit: async (options: DelegatorExitOptions): Promise<StakingTransactionResult> => {
       const shares = typeof options.shares === "string" ? BigInt(options.shares) : options.shares;
       const data = encodeFunctionData({
@@ -366,6 +376,7 @@ export const stakingActions = (
       return executeWrite({to: getStakingAddress(), data});
     },
 
+    /** Claims pending delegator withdrawals. */
     delegatorClaim: async (options: DelegatorClaimOptions): Promise<StakingTransactionResult> => {
       if (!options.delegator && !client.account) {
         throw new Error("Either provide delegator address or initialize client with an account");
@@ -379,11 +390,13 @@ export const stakingActions = (
       return executeWrite({to: getStakingAddress(), data});
     },
 
+    /** Checks if an address is an active validator. */
     isValidator: async (address: Address): Promise<boolean> => {
       const contract = getReadOnlyStakingContract();
       return contract.read.isValidator([address as ViemAddress]) as Promise<boolean>;
     },
 
+    /** Returns comprehensive information about a validator including stake, identity, and status. */
     getValidatorInfo: async (validator: Address): Promise<ValidatorInfo> => {
       const contract = getReadOnlyStakingContract();
 
@@ -486,6 +499,7 @@ export const stakingActions = (
       };
     },
 
+    /** Returns delegation stake information for a delegator-validator pair. */
     getStakeInfo: async (delegator: Address, validator: Address): Promise<StakeInfo> => {
       const contract = getReadOnlyStakingContract();
 
@@ -555,6 +569,7 @@ export const stakingActions = (
       };
     },
 
+    /** Returns current epoch information including timing, stake requirements, and inflation data. */
     getEpochInfo: async (): Promise<EpochInfo> => {
       const contract = getReadOnlyStakingContract();
 
@@ -618,6 +633,7 @@ export const stakingActions = (
       };
     },
 
+    /** Returns detailed data for a specific epoch. */
     getEpochData: async (epochNumber: bigint): Promise<EpochData> => {
       const contract = getReadOnlyStakingContract();
 
@@ -655,22 +671,26 @@ export const stakingActions = (
       };
     },
 
+    /** Returns addresses of all currently active validators. */
     getActiveValidators: async (): Promise<Address[]> => {
       const contract = getReadOnlyStakingContract();
       const validators = (await contract.read.activeValidators()) as Address[];
       return validators.filter(v => v !== "0x0000000000000000000000000000000000000000");
     },
 
+    /** Returns the count of active validators. */
     getActiveValidatorsCount: async (): Promise<bigint> => {
       const contract = getReadOnlyStakingContract();
       return contract.read.activeValidatorsCount() as Promise<bigint>;
     },
 
+    /** Returns addresses of validators currently in quarantine. */
     getQuarantinedValidators: async (): Promise<Address[]> => {
       const contract = getReadOnlyStakingContract();
       return contract.read.getValidatorQuarantineList() as Promise<Address[]>;
     },
 
+    /** Returns banned validators with ban duration and permanent ban status. */
     getBannedValidators: async (startIndex = 0n, size = 100n): Promise<BannedValidatorInfo[]> => {
       const contract = getReadOnlyStakingContract();
       const result = (await contract.read.getAllBannedValidators([startIndex, size])) as any[];
@@ -681,6 +701,7 @@ export const stakingActions = (
       }));
     },
 
+    /** Returns detailed quarantine information with pagination. */
     getQuarantinedValidatorsDetailed: async (startIndex = 0n, size = 100n): Promise<BannedValidatorInfo[]> => {
       const contract = getReadOnlyStakingContract();
       const result = (await contract.read.getAllQuarantinedValidators([startIndex, size])) as any[];

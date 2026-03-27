@@ -16,6 +16,7 @@ import {localnet} from "@/chains/localnet";
 import {decodeLocalnetTransaction, decodeTransaction, simplifyTransactionReceipt} from "./decoders";
 
 export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => ({
+  /** Polls until a transaction reaches the specified status. Returns the transaction receipt. */
   waitForTransactionReceipt: async ({
     hash,
     status = TransactionStatus.ACCEPTED,
@@ -68,6 +69,7 @@ export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClie
 });
 
 export const transactionActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => ({
+  /** Fetches transaction data including status, execution result, and consensus details. */
   getTransaction: async ({hash}: {hash: TransactionHash}): Promise<GenLayerTransaction> => {
     if (client.chain.isStudio) {
       const transaction = await client.getTransaction({hash});
@@ -105,6 +107,7 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
     } as GenLayerRawTransaction;
     return decodeTransaction(transaction);
   },
+  /** Returns transaction IDs of child transactions created from emitted messages. */
   getTriggeredTransactionIds: async ({hash}: {hash: TransactionHash}): Promise<TransactionHash[]> => {
     if (client.chain.isStudio) {
       const tx = await client.getTransaction({hash});
@@ -132,6 +135,7 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
 
     return logs.map(log => log.topics[1] as TransactionHash).filter(Boolean);
   },
+  /** Fetches the full execution trace including return data, stdout, stderr, and GenVM logs. */
   debugTraceTransaction: async ({hash, round = 0}: {hash: TransactionHash; round?: number}): Promise<DebugTraceResult> => {
     const result = await client.request({
       method: "gen_dbg_traceTransaction" as any,
@@ -139,6 +143,7 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
     });
     return result;
   },
+  /** Cancels a pending transaction. Studio networks only. */
   cancelTransaction: async ({hash}: {hash: TransactionHash}): Promise<{transaction_hash: string; status: string}> => {
     if (!client.chain.isStudio) {
       throw new Error("cancelTransaction is only available on studio-based chains (localnet/studionet)");
@@ -171,6 +176,7 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
       params: [hash, signature],
     }) as Promise<{transaction_hash: string; status: string}>;
   },
+  /** Estimates gas required for a transaction. */
   estimateTransactionGas: async (transactionParams: {
     from?: Address;
     to: Address;
