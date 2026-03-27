@@ -1,5 +1,12 @@
 
 
+## 0.24.0 (2026-03-27)
+
+
+### Features
+
+* Expose txExecutionResult, messages, and getTriggeredTransactionIds ([5577ee6](https://github.com/genlayerlabs/genlayer-js/commit/5577ee63e43c37ec24590639cc00e8b7eddc6f7b))
+
 ## 0.23.1 (2026-03-22)
 
 
