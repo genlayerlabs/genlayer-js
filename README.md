@@ -99,12 +99,40 @@ const transactionHash = await client.writeContract({
   value: 0, // value is optional, if you want to send some native token to the contract
 });
 
-const receipt = await client.waitForTransactionReceipt({ 
-  hash: txHash, 
+const receipt = await client.waitForTransactionReceipt({
+  hash: txHash,
   status: TransactionStatus.FINALIZED, // or ACCEPTED
   fullTransaction: false // False by default - returns simplified receipt for better readability
 })
 
+```
+
+### Checking execution results
+
+A transaction can be finalized by consensus but still have a failed execution. Always check `txExecutionResult` before reading contract state:
+
+```typescript
+import { ExecutionResult, TransactionStatus } from "genlayer-js/types";
+
+const receipt = await client.waitForTransactionReceipt({
+  hash: txHash,
+  status: TransactionStatus.FINALIZED,
+});
+
+if (receipt.txExecutionResultName === ExecutionResult.FINISHED_WITH_RETURN) {
+  // Execution succeeded — safe to read state
+  const result = await client.readContract({
+    address: contractAddress,
+    functionName: "get_storage",
+    args: [],
+  });
+} else if (receipt.txExecutionResultName === ExecutionResult.FINISHED_WITH_ERROR) {
+  // Execution failed — contract state was not modified
+  console.error("Contract execution failed");
+} else {
+  // NOT_VOTED — execution hasn't completed
+  console.warn("Execution result not yet available");
+}
 ```
 ### Staking Operations
 
