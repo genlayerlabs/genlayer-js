@@ -77,15 +77,43 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
       transaction.statusName = localnetStatus as TransactionStatus;
       return decodeLocalnetTransaction(transaction as unknown as GenLayerTransaction);
     }
-    const transaction = (await publicClient.readContract({
+    const [txAllData, roundsData] = (await publicClient.readContract({
       address: client.chain.consensusDataContract?.address as Address,
       abi: client.chain.consensusDataContract?.abi as Abi,
-      functionName: "getTransactionData",
-      args: [
-        hash,
-        Math.round(new Date().getTime() / 1000), // unix seconds
-      ],
-    })) as unknown as GenLayerRawTransaction;
+      functionName: "getTransactionAllData",
+      args: [hash],
+    })) as [any, any[]];
+
+    const lastRound = roundsData.length > 0 ? roundsData[roundsData.length - 1] : undefined;
+    const latestBlockRange = txAllData.readStateBlockRanges?.length > 0
+      ? txAllData.readStateBlockRanges[txAllData.readStateBlockRanges.length - 1]
+      : { activationBlock: BigInt(0), processingBlock: BigInt(0), proposalBlock: BigInt(0) };
+
+    const transaction = {
+      currentTimestamp: BigInt(0),
+      sender: txAllData.sender,
+      recipient: txAllData.recipient,
+      initialRotations: txAllData.initialRotations,
+      numOfInitialValidators: txAllData.numOfInitialValidators,
+      txSlot: txAllData.txSlot,
+      createdTimestamp: BigInt(0),
+      lastVoteTimestamp: BigInt(0),
+      randomSeed: txAllData.randomSeed,
+      result: Number(txAllData.result),
+      txExecutionResult: Number(txAllData.txExecutionResult),
+      txData: txAllData.txCalldata,
+      txReceipt: "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}` & {length: 66},
+      messages: [],
+      queueType: 0,
+      queuePosition: BigInt(0),
+      activator: txAllData.activator,
+      lastLeader: txAllData.activator,
+      status: Number(txAllData.status),
+      txId: txAllData.id,
+      readStateBlockRange: latestBlockRange,
+      numOfRounds: BigInt(roundsData.length),
+      lastRound,
+    } as GenLayerRawTransaction;
     return decodeTransaction(transaction);
   },
   cancelTransaction: async ({hash}: {hash: TransactionHash}): Promise<{transaction_hash: string; status: string}> => {

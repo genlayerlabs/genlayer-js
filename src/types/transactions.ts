@@ -108,6 +108,18 @@ export const TransactionResultNameToNumber = {
   [TransactionResult.MAJORITY_DISAGREE]: "7",
 };
 
+export enum ExecutionResult {
+  NOT_VOTED = "NOT_VOTED",
+  FINISHED_WITH_RETURN = "FINISHED_WITH_RETURN",
+  FINISHED_WITH_ERROR = "FINISHED_WITH_ERROR",
+}
+
+export const executionResultNumberToName = {
+  "0": ExecutionResult.NOT_VOTED,
+  "1": ExecutionResult.FINISHED_WITH_RETURN,
+  "2": ExecutionResult.FINISHED_WITH_ERROR,
+};
+
 export enum VoteType {
   NOT_VOTED = "NOT_VOTED",
   AGREE = "AGREE",
@@ -200,6 +212,10 @@ export type GenLayerTransaction = {
   result?: number;
   resultName?: TransactionResult;
 
+  // txExecutionResult: testnet (from getTransactionAllData)
+  txExecutionResult?: number;
+  txExecutionResultName?: ExecutionResult;
+
   // data: localnet // txData: testnet
   data?: Record<string, unknown>;
   txData?: Hex;
@@ -283,6 +299,7 @@ export type GenLayerRawTransaction = {
   lastVoteTimestamp: bigint;
   randomSeed: Hash;
   result: number;
+  txExecutionResult?: number;
   txData: Hex | undefined | null;
   txReceipt: Hash;
   messages: unknown[];

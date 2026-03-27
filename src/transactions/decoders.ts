@@ -1,4 +1,4 @@
-import {GenLayerTransaction, GenLayerRawTransaction, DecodedCallData, DecodedDeployData,transactionsStatusNumberToName, transactionResultNumberToName, voteTypeNumberToName, VoteType} from "../types/transactions";
+import {GenLayerTransaction, GenLayerRawTransaction, DecodedCallData, DecodedDeployData,transactionsStatusNumberToName, transactionResultNumberToName, executionResultNumberToName, voteTypeNumberToName, VoteType} from "../types/transactions";
 import {b64ToArray, calldataToUserFriendlyJson, resultToUserFriendlyJson} from "../utils/jsonifier";
 import {fromRlp, fromHex, Hex, Address} from "viem";
 import * as calldataAbi from "../abi/calldata";
@@ -104,6 +104,11 @@ export const decodeTransaction = (tx: GenLayerRawTransaction): GenLayerTransacti
       transactionsStatusNumberToName[String(tx.status) as keyof typeof transactionsStatusNumberToName],
     resultName:
       transactionResultNumberToName[String(tx.result) as keyof typeof transactionResultNumberToName],
+
+    txExecutionResult: tx.txExecutionResult !== undefined ? Number(tx.txExecutionResult) : undefined,
+    txExecutionResultName: tx.txExecutionResult !== undefined
+      ? executionResultNumberToName[String(tx.txExecutionResult) as keyof typeof executionResultNumberToName]
+      : undefined,
 
     lastRound: {
       ...tx.lastRound,
