@@ -1,5 +1,12 @@
 
 
+## 0.26.3 (2026-03-27)
+
+
+### Bug Fixes
+
+* **ci:** push docs directly to main instead of PR ([eaba6ad](https://github.com/genlayerlabs/genlayer-js/commit/eaba6adec6803bdd0b4968e3f0763cf22107acd1))
+
 ## 0.26.2 (2026-03-27)
 
 
