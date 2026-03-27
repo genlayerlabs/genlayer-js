@@ -58,6 +58,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          rm -rf pages/api-references/genlayer-js
           mkdir -p pages/api-references/genlayer-js
           cp "${{ github.workspace }}/docs/api-references/index.md" pages/api-references/genlayer-js/index.md
           if [ -z "$(git status --porcelain)" ]; then
