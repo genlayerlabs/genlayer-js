@@ -18,7 +18,7 @@
     "test:watch": "vitest --watch",
     "lint": "eslint . --fix --ext .ts",
     "release": "release-it --ci",
-    "docs": "typedoc"
+    "docs": "node scripts/generate-api-docs.mjs"
   },
   "exports": {
     ".": {

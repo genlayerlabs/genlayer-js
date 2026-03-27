@@ -34,7 +34,7 @@ jobs:
           fi
 
       - name: Generate API docs
-        run: npx typedoc
+        run: node scripts/generate-api-docs.mjs
 
       - name: Generate docs repo token
         id: app-token
@@ -59,7 +59,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           mkdir -p pages/api-references/genlayer-js
-          rsync -a --delete "${{ github.workspace }}/docs/api-references/" pages/api-references/genlayer-js/
+          cp "${{ github.workspace }}/docs/api-references/index.md" pages/api-references/genlayer-js/index.md
           if [ -z "$(git status --porcelain)" ]; then
             echo "No changes to commit"
             exit 0
