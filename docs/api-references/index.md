@@ -1,11 +1,7 @@
 # GenLayerJS
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/license/mit/)
-[![Discord](https://dcbadge.vercel.app/api/server/8Jm4v89VAu?compact=true&style=flat)](https://discord.gg/VpfmXEMN66)
-[![Twitter](https://img.shields.io/twitter/url/https/twitter.com/genlaboratory.svg?style=social&label=Follow%20%40GenLayer)](https://x.com/GenLayer)
-[![GitHub star chart](https://img.shields.io/github/stars/genlayerlabs/genlayer-js?style=social)](https://star-history.com/#genlayerlabs/genlayer-js)
 
-## 👀 About
+## About
 
 GenLayerJS SDK is a TypeScript library designed for developers building decentralized applications (Dapps) on the GenLayer protocol. This SDK provides a comprehensive set of tools to interact with the GenLayer network, including client creation, transaction handling, event subscriptions, and more, all while leveraging the power of Viem as the underlying blockchain client.
 
@@ -16,7 +12,7 @@ Before installing GenLayerJS SDK, ensure you have the following prerequisites in
 - Node.js (>= 16.x)
 - npm (>= 7.x)
 
-## 🛠️ Installation and Usage
+## ️ Installation and Usage
 
 To install the GenLayerJS SDK, use the following command:
 ```bash
@@ -218,7 +214,7 @@ const delegateResult = await client.delegatorJoin({
 });
 ```
 
-## 🚀 Key Features
+## Key Features
 
 * **Client Creation**: Easily create and configure a client to connect to GenLayer's network.
 * **Transaction Handling**: Send and manage transactions on the GenLayer network.
@@ -228,7 +224,7 @@ const delegateResult = await client.delegatorJoin({
 
 _* under development_
 
-## 📖 Documentation
+## Documentation
 
 For detailed information on how to use GenLayerJS SDK, please refer to our [documentation](https://docs.genlayer.com/).
 

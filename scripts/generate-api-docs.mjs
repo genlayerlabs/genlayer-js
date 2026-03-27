@@ -374,8 +374,14 @@ function generatePage(title, description, methods) {
 
 mkdirSync(outDir, { recursive: true });
 
-// 1. index.md = README
-const readme = readFileSync(join(root, "README.md"), "utf-8");
+// 1. index.md = README (cleaned for docs site)
+const readme = readFileSync(join(root, "README.md"), "utf-8")
+  .split("\n")
+  .filter(line => !line.match(/^\[!\[.*\]\(https:\/\/(img\.shields\.io|dcbadge|badge\.fury)/))
+  .join("\n")
+  .replace(/## [^\n]*?[\p{Emoji_Presentation}\p{Extended_Pictographic}]+[^\n]*/gu, (match) =>
+    match.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]\s*/gu, "")
+  );
 writeFileSync(join(outDir, "index.md"), readme);
 console.log("Generated: docs/api-references/index.md");
 
