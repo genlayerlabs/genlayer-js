@@ -1,5 +1,12 @@
 
 
+## 0.27.1 (2026-03-27)
+
+
+### Bug Fixes
+
+* **docs:** strip badges and emojis from README when syncing to docs ([4c9ff8a](https://github.com/genlayerlabs/genlayer-js/commit/4c9ff8a388d4ebb7e8ea477180c03fae722e5086))
+
 ## 0.27.0 (2026-03-27)
 
 
