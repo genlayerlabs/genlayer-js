@@ -1,5 +1,12 @@
 
 
+## 0.27.2 (2026-03-27)
+
+
+### Bug Fixes
+
+* **ci:** use sibling file pattern for docs sync ([4c6598d](https://github.com/genlayerlabs/genlayer-js/commit/4c6598d56aecb3648e71b475f7a5c948e42708a0))
+
 ## 0.27.1 (2026-03-27)
 
 
