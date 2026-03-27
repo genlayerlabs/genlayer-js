@@ -1,5 +1,12 @@
 
 
+## 0.27.3 (2026-03-27)
+
+
+### Bug Fixes
+
+* **ci:** git add sibling file in docs sync ([d54f9c3](https://github.com/genlayerlabs/genlayer-js/commit/d54f9c35b093c8c52d5e0275646db303111db03a))
+
 ## 0.27.2 (2026-03-27)
 
 
