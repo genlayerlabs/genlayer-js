@@ -165,6 +165,19 @@ export type DecodedCallData = {
   type: TransactionType;
 };
 
+export type DebugTraceResult = {
+  transaction_id: string;
+  result_code: number;
+  return_data: string;
+  stdout: string;
+  stderr: string;
+  genvm_log: Record<string, unknown>[];
+  storage_proof: string;
+  run_time: string;
+  eq_outputs: string[];
+  stored_at?: string;
+};
+
 export interface LeaderReceipt {
   calldata: string;
   class_name: string;

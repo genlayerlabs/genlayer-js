@@ -152,6 +152,22 @@ console.log(childTxIds);
 // ["0xabc...", "0xdef..."]
 ```
 
+### Debugging transaction execution
+
+Use `debugTraceTransaction` to inspect the full execution trace of a transaction, including return data, errors, and GenVM logs:
+
+```typescript
+const trace = await client.debugTraceTransaction({
+  hash: txHash,
+  round: 0, // optional, defaults to 0
+});
+
+console.log(trace.result_code);  // 0=success, 1=user error, 2=VM error
+console.log(trace.return_data);  // hex-encoded contract return data
+console.log(trace.stderr);       // standard error output
+console.log(trace.genvm_log);    // detailed GenVM execution logs
+```
+
 ### Staking Operations
 
 The SDK provides staking functionality for validators and delegators on testnet-bradbury (and testnet-asimov).

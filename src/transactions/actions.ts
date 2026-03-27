@@ -6,6 +6,7 @@ import {
   GenLayerRawTransaction,
   transactionsStatusNameToNumber,
   isDecidedState,
+  DebugTraceResult,
 } from "../types/transactions";
 import {transactionsConfig} from "../config/transactions";
 import {sleep} from "../utils/async";
@@ -130,6 +131,13 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
     } as any);
 
     return logs.map(log => log.topics[1] as TransactionHash).filter(Boolean);
+  },
+  debugTraceTransaction: async ({hash, round = 0}: {hash: TransactionHash; round?: number}): Promise<DebugTraceResult> => {
+    const result = await client.request({
+      method: "gen_dbg_traceTransaction" as any,
+      params: [{txID: hash, round}],
+    });
+    return result;
   },
   cancelTransaction: async ({hash}: {hash: TransactionHash}): Promise<{transaction_hash: string; status: string}> => {
     if (!client.chain.isStudio) {
