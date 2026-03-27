@@ -1,5 +1,12 @@
 
 
+## 0.26.5 (2026-03-27)
+
+
+### Bug Fixes
+
+* **ci:** clean old docs before syncing ([a3a8033](https://github.com/genlayerlabs/genlayer-js/commit/a3a80338be6148bddc48fd303ad551396b36d3a9))
+
 ## 0.26.4 (2026-03-27)
 
 
