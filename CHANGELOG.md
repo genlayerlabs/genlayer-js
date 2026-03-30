@@ -1,5 +1,12 @@
 
 
+## 0.27.5 (2026-03-30)
+
+
+### Bug Fixes
+
+* resolve pre-existing type errors in tests and source ([3deedbb](https://github.com/genlayerlabs/genlayer-js/commit/3deedbb795d5b8ca1edc6106f64c5c893e2befe9))
+
 ## 0.27.4 (2026-03-30)
 
 
