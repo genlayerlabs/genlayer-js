@@ -1,5 +1,12 @@
 
 
+## 0.27.6 (2026-03-30)
+
+
+### Bug Fixes
+
+* resolve pre-existing lint errors ([e018d1e](https://github.com/genlayerlabs/genlayer-js/commit/e018d1e579bfa90488cfcd705d68dc878bab1722))
+
 ## 0.27.5 (2026-03-30)
 
 
