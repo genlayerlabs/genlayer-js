@@ -1,5 +1,12 @@
 
 
+## 0.27.4 (2026-03-30)
+
+
+### Bug Fixes
+
+* type cast err as Error in RPC console.error ([e984091](https://github.com/genlayerlabs/genlayer-js/commit/e9840911b166631e4733ed4456d28f1528f56f9f))
+
 ## 0.27.3 (2026-03-27)
 
 
