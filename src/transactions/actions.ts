@@ -99,7 +99,7 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
     ]);
 
     const txData = txDataRaw as unknown as GenLayerRawTransaction;
-    const [txAllData, roundsData] = allDataRaw as unknown as [any, any[]];
+    const [txAllData, _roundsData] = allDataRaw as unknown as [any, any[]];
 
     const transaction = {
       ...txData,

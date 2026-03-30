@@ -1,5 +1,5 @@
 import {describe, it, expect, vi} from "vitest";
-import {encodeFunctionData, keccak256, toHex, encodeAbiParameters} from "viem";
+import {encodeFunctionData, keccak256, toHex} from "viem";
 import {contractActions} from "../src/contracts/actions";
 
 const MAIN_CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000001";
