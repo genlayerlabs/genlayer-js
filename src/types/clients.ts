@@ -1,5 +1,5 @@
 import {Transport, Client, PublicActions, WalletActions} from "viem";
-import {GenLayerTransaction, TransactionHash, TransactionStatus, TransactionHashVariant} from "./transactions";
+import {GenLayerTransaction, TransactionHash, TransactionStatus, TransactionHashVariant, DebugTraceResult} from "./transactions";
 import {GenLayerChain} from "./chains";
 import {Address, Account} from "./accounts";
 import {CalldataEncodable} from "./calldata";
@@ -101,6 +101,8 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     initializeConsensusSmartContract: (forceReset?: boolean) => Promise<void>;
     connect: (network?: Network, snapSource?: SnapSource) => Promise<void>;
     metamaskClient: (snapSource?: SnapSource) => Promise<MetaMaskClientResult>;
+    getTriggeredTransactionIds: (args: {hash: TransactionHash}) => Promise<TransactionHash[]>;
+    debugTraceTransaction: (args: {hash: TransactionHash; round?: number}) => Promise<DebugTraceResult>;
     cancelTransaction: (args: {hash: TransactionHash}) => Promise<{transaction_hash: string; status: string}>;
     appealTransaction: (args: {
       account?: Account;

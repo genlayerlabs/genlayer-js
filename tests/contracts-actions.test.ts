@@ -44,7 +44,7 @@ const makeMockReceiptWithNewTxEvent = (txId: string = MOCK_GENLAYER_TX_ID) => ({
   ],
 });
 
-const makeMockPublicClient = (receipt = makeMockReceiptWithNewTxEvent()) => ({
+const makeMockPublicClient = (receipt: {status: string; logs: any[]} = makeMockReceiptWithNewTxEvent()) => ({
   waitForTransactionReceipt: vi.fn().mockResolvedValue(receipt),
 });
 
@@ -389,7 +389,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     });
 
     const mockPublicClient = makeMockPublicClient({
-      status: "reverted" as const,
+      status: "reverted",
       logs: [],
     });
 

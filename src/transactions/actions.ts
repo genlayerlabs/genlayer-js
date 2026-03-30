@@ -141,7 +141,7 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
       method: "gen_dbg_traceTransaction" as any,
       params: [{txID: hash, round}],
     });
-    return result;
+    return result as DebugTraceResult;
   },
   /** Cancels a pending transaction. Studio networks only. */
   cancelTransaction: async ({hash}: {hash: TransactionHash}): Promise<{transaction_hash: string; status: string}> => {
