@@ -73,7 +73,7 @@ const getCustomTransportConfig = (config: ClientConfig, chainConfig: GenLayerCha
 
           return data.result;
         } catch (err) {
-          console.error(`Error fetching ${method} from GenLayer RPC`);
+          console.error(`GenLayer RPC error (${method}):`, err.message || err);
           throw err;
         }
       }
