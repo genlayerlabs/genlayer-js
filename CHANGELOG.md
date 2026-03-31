@@ -1,5 +1,12 @@
 
 
+## 0.28.0 (2026-03-31)
+
+
+### Features
+
+* add appeal tracking methods and fix appealTransaction event handling ([c49b028](https://github.com/genlayerlabs/genlayer-js/commit/c49b02847c244046430025b9a71eb39caeb09e73))
+
 ## 0.27.9 (2026-03-31)
 
 
