@@ -33,12 +33,23 @@ interface ClientConfig {
   provider?: EthereumProvider; // Custom provider for wallet framework integration
 }
 
+// Methods that require the wallet provider (signing/account access).
+// All other methods (reads, queries) go directly to the GenLayer RPC.
+const PROVIDER_METHODS = new Set([
+  "eth_accounts",
+  "eth_requestAccounts",
+  "eth_sendTransaction",
+  "eth_signTransaction",
+  "personal_sign",
+  "eth_signTypedData_v4",
+]);
+
 const getCustomTransportConfig = (config: ClientConfig, chainConfig: GenLayerChain) => {
   const isAddress = typeof config.account !== "object";
 
   return {
     async request({method, params = []}: {method: string; params: any[]}) {
-      if (method.startsWith("eth_") && isAddress) {
+      if (PROVIDER_METHODS.has(method) && isAddress) {
         const provider = config.provider || (typeof window !== "undefined" ? window.ethereum : undefined);
         if (provider) {
           try {
@@ -50,32 +61,30 @@ const getCustomTransportConfig = (config: ClientConfig, chainConfig: GenLayerCha
         }
       }
 
-      {
-        try {
-          const response = await fetch(chainConfig.rpcUrls.default.http[0], {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              jsonrpc: "2.0",
-              id: Date.now(),
-              method,
-              params,
-            }),
-          });
+      try {
+        const response = await fetch(chainConfig.rpcUrls.default.http[0], {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: Date.now(),
+            method,
+            params,
+          }),
+        });
 
-          const data = await response.json();
+        const data = await response.json();
 
-          if (data.error) {
-            throw data.error
-          }
-
-          return data.result;
-        } catch (err) {
-          console.error(`GenLayer RPC error (${method}):`, (err as Error).message || err);
-          throw err;
+        if (data.error) {
+          throw data.error;
         }
+
+        return data.result;
+      } catch (err) {
+        console.error(`GenLayer RPC error (${method}):`, (err as Error).message || err);
+        throw err;
       }
     },
   };

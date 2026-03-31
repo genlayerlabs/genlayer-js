@@ -168,6 +168,46 @@ console.log(trace.stderr);       // standard error output
 console.log(trace.genvm_log);    // detailed GenVM execution logs
 ```
 
+### Using with a wallet provider (MetaMask)
+
+When building a browser dApp, pass the wallet address and EIP-1193 provider. The SDK routes signing operations through the wallet and all reads directly to the GenLayer RPC.
+
+```typescript
+import { createClient } from "genlayer-js";
+import { testnetBradbury } from "genlayer-js/chains";
+import { TransactionStatus } from "genlayer-js/types";
+
+// Get address and provider from your wallet connection
+const address = "0x..."; // from wallet
+const provider = window.ethereum; // or from a wallet SDK
+
+const client = createClient({
+  chain: testnetBradbury,
+  account: address as `0x${string}`,
+  provider,
+});
+
+// Reads go directly to GenLayer RPC — no wallet involved
+const result = await client.readContract({
+  address: contractAddress,
+  functionName: "get_storage",
+  args: [],
+});
+
+// Writes are signed by the wallet (MetaMask popup)
+const txHash = await client.writeContract({
+  address: contractAddress,
+  functionName: "update_storage",
+  args: ["new_value"],
+  value: BigInt(0),
+});
+
+const receipt = await client.waitForTransactionReceipt({
+  hash: txHash,
+  status: TransactionStatus.ACCEPTED,
+});
+```
+
 ### Staking Operations
 
 The SDK provides staking functionality for validators and delegators on testnet-bradbury (and testnet-asimov).
