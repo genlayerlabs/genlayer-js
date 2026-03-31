@@ -25,6 +25,10 @@ export type GenLayerChain = Chain & {
     address: Address;
     abi: readonly unknown[];
   } | null;
+  appealsContract: {
+    address: Address;
+    abi: readonly unknown[];
+  } | null;
   defaultNumberOfInitialValidators: number;
   defaultConsensusMaxRotations: number;
 };

@@ -105,6 +105,10 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     debugTraceTransaction: (args: {hash: TransactionHash; round?: number}) => Promise<DebugTraceResult>;
     getTransactionQueuePosition: (args: {hash: TransactionHash}) => Promise<number>;
     cancelTransaction: (args: {hash: TransactionHash}) => Promise<{transaction_hash: string; status: string}>;
+    getRoundNumber: (args: {txId: `0x${string}`}) => Promise<bigint>;
+    getRoundData: (args: {txId: `0x${string}`; round: bigint}) => Promise<any>;
+    getLastRoundData: (args: {txId: `0x${string}`}) => Promise<any>;
+    canAppeal: (args: {txId: `0x${string}`}) => Promise<boolean>;
     appealTransaction: (args: {
       account?: Account;
       txId: `0x${string}`;

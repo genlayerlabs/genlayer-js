@@ -35,6 +35,70 @@ const ROUNDS_STORAGE_CONTRACT = {
       inputs: [{ name: "_txId", type: "bytes32" }],
       outputs: [{ name: "", type: "uint256" }],
     },
+    {
+      type: "function" as const,
+      name: "getRoundData",
+      stateMutability: "view" as const,
+      inputs: [
+        { name: "_txId", type: "bytes32" },
+        { name: "_round", type: "uint256" },
+      ],
+      outputs: [{
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "round", type: "uint256" },
+          { name: "leaderIndex", type: "uint256" },
+          { name: "votesCommitted", type: "uint256" },
+          { name: "votesRevealed", type: "uint256" },
+          { name: "appealBond", type: "uint256" },
+          { name: "rotationsLeft", type: "uint256" },
+          { name: "result", type: "uint8" },
+          { name: "roundValidators", type: "address[]" },
+          { name: "validatorVotes", type: "uint8[]" },
+          { name: "validatorVotesHash", type: "bytes32[]" },
+          { name: "validatorResultHash", type: "bytes32[]" },
+        ],
+      }],
+    },
+    {
+      type: "function" as const,
+      name: "getLastRoundData",
+      stateMutability: "view" as const,
+      inputs: [{ name: "_txId", type: "bytes32" }],
+      outputs: [
+        { name: "", type: "uint256" },
+        {
+          name: "",
+          type: "tuple",
+          components: [
+            { name: "round", type: "uint256" },
+            { name: "leaderIndex", type: "uint256" },
+            { name: "votesCommitted", type: "uint256" },
+            { name: "votesRevealed", type: "uint256" },
+            { name: "appealBond", type: "uint256" },
+            { name: "rotationsLeft", type: "uint256" },
+            { name: "result", type: "uint8" },
+            { name: "roundValidators", type: "address[]" },
+            { name: "validatorVotes", type: "uint8[]" },
+            { name: "validatorVotesHash", type: "bytes32[]" },
+            { name: "validatorResultHash", type: "bytes32[]" },
+          ],
+        },
+      ],
+    },
+  ],
+};
+const APPEALS_CONTRACT = {
+  address: "0xbb8C35AA878D09b9830aFF9e5aAC6492BFbd5471" as Address,
+  abi: [
+    {
+      type: "function" as const,
+      name: "canAppeal",
+      stateMutability: "view" as const,
+      inputs: [{ name: "_txId", type: "bytes32" }],
+      outputs: [{ name: "", type: "bool" }],
+    },
   ],
 };
 const EXPLORER_URL = "https://explorer-bradbury.genlayer.com/";
@@ -3382,6 +3446,7 @@ export const testnetBradbury: GenLayerChain = defineChain({
   stakingContract: STAKING_CONTRACT,
   feeManagerContract: FEE_MANAGER_CONTRACT,
   roundsStorageContract: ROUNDS_STORAGE_CONTRACT,
+  appealsContract: APPEALS_CONTRACT,
   defaultNumberOfInitialValidators: 5,
   defaultConsensusMaxRotations: 3,
 });

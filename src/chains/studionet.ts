@@ -4014,6 +4014,7 @@ export const studionet: GenLayerChain = defineChain({
   stakingContract: null,
   feeManagerContract: null,
   roundsStorageContract: null,
+  appealsContract: null,
   defaultNumberOfInitialValidators: 5,
   defaultConsensusMaxRotations: 3,
 });

@@ -274,6 +274,54 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
 
       return minBond;
     },
+    /** Returns the current consensus round number for a transaction. */
+    getRoundNumber: async (args: {txId: `0x${string}`}): Promise<bigint> => {
+      if (!client.chain.roundsStorageContract?.address) {
+        throw new Error("getRoundNumber not supported on this chain (missing roundsStorageContract)");
+      }
+      return publicClient.readContract({
+        address: client.chain.roundsStorageContract.address as `0x${string}`,
+        abi: client.chain.roundsStorageContract.abi as Abi,
+        functionName: "getRoundNumber",
+        args: [args.txId],
+      }) as Promise<bigint>;
+    },
+    /** Returns detailed data for a specific consensus round. */
+    getRoundData: async (args: {txId: `0x${string}`; round: bigint}) => {
+      if (!client.chain.roundsStorageContract?.address) {
+        throw new Error("getRoundData not supported on this chain (missing roundsStorageContract)");
+      }
+      return publicClient.readContract({
+        address: client.chain.roundsStorageContract.address as `0x${string}`,
+        abi: client.chain.roundsStorageContract.abi as Abi,
+        functionName: "getRoundData",
+        args: [args.txId, args.round],
+      });
+    },
+    /** Returns the current round number and its data for a transaction. */
+    getLastRoundData: async (args: {txId: `0x${string}`}) => {
+      if (!client.chain.roundsStorageContract?.address) {
+        throw new Error("getLastRoundData not supported on this chain (missing roundsStorageContract)");
+      }
+      return publicClient.readContract({
+        address: client.chain.roundsStorageContract.address as `0x${string}`,
+        abi: client.chain.roundsStorageContract.abi as Abi,
+        functionName: "getLastRoundData",
+        args: [args.txId],
+      });
+    },
+    /** Checks if a transaction can be appealed. */
+    canAppeal: async (args: {txId: `0x${string}`}): Promise<boolean> => {
+      if (!client.chain.appealsContract?.address) {
+        throw new Error("canAppeal not supported on this chain (missing appealsContract)");
+      }
+      return publicClient.readContract({
+        address: client.chain.appealsContract.address as `0x${string}`,
+        abi: client.chain.appealsContract.abi as Abi,
+        functionName: "canAppeal",
+        args: [args.txId],
+      }) as Promise<boolean>;
+    },
     /** Appeals a consensus transaction to trigger a new round of validation. */
     appealTransaction: async (args: {
       account?: Account;
@@ -308,13 +356,71 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
 
       const senderAccount = account || client.account;
       const encodedData = _encodeSubmitAppealData({client, txId});
-      return _sendTransaction({
-        client,
-        publicClient,
-        encodedData,
-        senderAccount,
+      const validatedAccount = validateAccount(senderAccount);
+
+      // Appeals don't go through _sendTransaction because submitAppeal emits
+      // AppealStarted/TransactionActivated events, not NewTransaction/CreatedTransaction.
+      // The appeal operates on the same GenLayer txId, so we return it directly.
+      if (!client.chain.consensusMainContract?.address) {
+        throw new Error("Consensus main contract not initialized.");
+      }
+
+      const nonce = await client.getCurrentNonce({address: validatedAccount.address});
+
+      let estimatedGas: bigint;
+      try {
+        estimatedGas = await client.estimateTransactionGas({
+          to: client.chain.consensusMainContract.address,
+          data: encodedData,
+          value,
+          nonce,
+        });
+      } catch (err) {
+        console.error("Gas estimation failed, using default 200_000:", err);
+        estimatedGas = 200_000n;
+      }
+
+      const gasPriceHex = (await client.request({method: "eth_gasPrice"})) as string;
+
+      const txRequest = {
+        account: validatedAccount,
+        to: client.chain.consensusMainContract.address as `0x${string}`,
+        data: encodedData,
         value,
-      });
+        gas: estimatedGas,
+        gasPrice: BigInt(gasPriceHex),
+        nonce,
+        chainId: client.chain.id,
+      };
+
+      if (validatedAccount.type === "local") {
+        if (!validatedAccount.signTransaction) {
+          throw new Error("Local account does not support signTransaction.");
+        }
+        const serializedTransaction = await validatedAccount.signTransaction(txRequest);
+        const evmHash = await client.sendRawTransaction({serializedTransaction});
+        const receipt = await publicClient.waitForTransactionReceipt({hash: evmHash});
+        if (receipt.status === "reverted") {
+          throw new Error(`Appeal reverted: EVM tx ${evmHash}`);
+        }
+      } else {
+        const evmHash = (await client.request({
+          method: "eth_sendTransaction",
+          params: [{
+            from: validatedAccount.address,
+            to: client.chain.consensusMainContract.address,
+            data: encodedData,
+            value: value ? (`0x${value.toString(16)}` as `0x${string}`) : undefined,
+            gas: `0x${estimatedGas.toString(16)}` as `0x${string}`,
+          }],
+        })) as `0x${string}`;
+        const receipt = await publicClient.waitForTransactionReceipt({hash: evmHash});
+        if (receipt.status === "reverted") {
+          throw new Error(`Appeal reverted: EVM tx ${evmHash}`);
+        }
+      }
+
+      return txId;
     },
   };
 };
