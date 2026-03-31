@@ -38,7 +38,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
     /** Retrieves the source code of a deployed contract. Localnet only. */
     getContractCode: async (address: Address): Promise<string> => {
       if (client.chain.id !== localnet.id) {
-        throw new Error("Getting contract code is not supported on this network");
+        throw new Error(`getContractCode is only available on localnet (current chain: ${client.chain.name})`);
       }
       const result = (await client.request({
         method: "gen_getContractCode",
@@ -50,7 +50,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
     /** Gets the schema (methods and constructor) of a deployed contract. Localnet only. */
     getContractSchema: async (address: Address): Promise<ContractSchema> => {
       if (client.chain.id !== localnet.id) {
-        throw new Error("Contract schema is not supported on this network");
+        throw new Error(`getContractSchema is only available on localnet (current chain: ${client.chain.name})`);
       }
       const schema = (await client.request({
         method: "gen_getContractSchema",
@@ -61,7 +61,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
     /** Generates a schema for contract code without deploying it. Localnet only. */
     getContractSchemaForCode: async (contractCode: string | Uint8Array): Promise<ContractSchema> => {
       if (client.chain.id !== localnet.id) {
-        throw new Error("Contract schema is not supported on this network");
+        throw new Error(`getContractSchema is only available on localnet (current chain: ${client.chain.name})`);
       }
       const schema = (await client.request({
         method: "gen_getContractSchemaForCode",
@@ -328,6 +328,18 @@ const validateAccount = (Account?: Account): Account => {
   return Account;
 };
 
+const CREATED_TRANSACTION_EVENT_ABI = [
+  {
+    anonymous: false,
+    inputs: [
+      {indexed: true, internalType: "bytes32", name: "txId", type: "bytes32"},
+      {indexed: false, internalType: "uint256", name: "txSlot", type: "uint256"},
+    ],
+    name: "CreatedTransaction",
+    type: "event",
+  },
+] as const;
+
 const ADD_TRANSACTION_ABI_V5 = [
   {
     type: "function",
@@ -486,6 +498,37 @@ const isAddTransactionAbiMismatchError = (error: unknown): boolean => {
   );
 };
 
+/**
+ * Extracts the GenLayer txId from receipt logs by checking for either
+ * NewTransaction (immediately activated) or CreatedTransaction (queued) events.
+ */
+const extractTxIdFromLogs = (
+  client: GenLayerClient<GenLayerChain>,
+  logs: any[],
+): `0x${string}` | null => {
+  const newTxEvents = parseEventLogs({
+    abi: client.chain.consensusMainContract?.abi as any,
+    eventName: "NewTransaction",
+    logs,
+  }) as unknown as {args: {txId: `0x${string}`}}[];
+
+  if (newTxEvents.length > 0) {
+    return newTxEvents[0].args["txId"];
+  }
+
+  const createdTxEvents = parseEventLogs({
+    abi: CREATED_TRANSACTION_EVENT_ABI as any,
+    eventName: "CreatedTransaction",
+    logs,
+  }) as unknown as {args: {txId: `0x${string}`}}[];
+
+  if (createdTxEvents.length > 0) {
+    return createdTxEvents[0].args["txId"];
+  }
+
+  return null;
+};
+
 const _sendTransaction = async ({
   client,
   publicClient,
@@ -502,7 +545,7 @@ const _sendTransaction = async ({
   value?: bigint;
 }) => {
   if (!client.chain.consensusMainContract?.address) {
-    throw new Error("Consensus main contract not initialized. Please ensure client is properly initialized.");
+    throw new Error(`Consensus main contract address not found in chain config for "${client.chain.name}".`);
   }
 
   const validatedSenderAccount = validateAccount(senderAccount);
@@ -526,7 +569,7 @@ const _sendTransaction = async ({
     // prepareTransactionRequest which calls eth_fillTransaction (unsupported by GenLayer RPC)
     if (validatedSenderAccount?.type === "local") {
       if (!validatedSenderAccount?.signTransaction) {
-        throw new Error("Account does not support signTransaction");
+        throw new Error("Local account does not support signTransaction. Use a private key account created via privateKeyToAccount().");
       }
 
       const gasPriceHex = (await client.request({
@@ -550,20 +593,17 @@ const _sendTransaction = async ({
       const receipt = await publicClient.waitForTransactionReceipt({hash: txHash});
 
       if (receipt.status === "reverted") {
-        throw new Error("Transaction reverted");
+        throw new Error(`Transaction reverted: EVM tx ${txHash} to consensus contract ${client.chain.consensusMainContract?.address} was reverted.`);
       }
 
-      const newTxEvents = parseEventLogs({
-        abi: client.chain.consensusMainContract?.abi as any,
-        eventName: "NewTransaction",
-        logs: receipt.logs,
-      }) as unknown as {args: {txId: `0x${string}`}}[];
-
-      if (newTxEvents.length === 0) {
-        throw new Error("Transaction not processed by consensus");
+      const txId = extractTxIdFromLogs(client, receipt.logs);
+      if (!txId) {
+        throw new Error(
+          `Transaction not processed by consensus: EVM tx ${txHash} succeeded but no NewTransaction or CreatedTransaction event was found in the receipt logs.`,
+        );
       }
 
-      return newTxEvents[0].args["txId"];
+      return txId;
     }
 
     // For injected/external wallets (e.g. MetaMask), avoid viem's
@@ -611,20 +651,17 @@ const _sendTransaction = async ({
     const externalReceipt = await publicClient.waitForTransactionReceipt({hash: evmTxHash});
 
     if (externalReceipt.status === "reverted") {
-      throw new Error("Transaction reverted");
+      throw new Error(`Transaction reverted: EVM tx ${evmTxHash} to consensus contract ${client.chain.consensusMainContract?.address} was reverted.`);
     }
 
-    const externalNewTxEvents = parseEventLogs({
-      abi: client.chain.consensusMainContract?.abi as any,
-      eventName: "NewTransaction",
-      logs: externalReceipt.logs,
-    }) as unknown as {args: {txId: `0x${string}`}}[];
-
-    if (externalNewTxEvents.length === 0) {
-      throw new Error("Transaction not processed by consensus");
+    const externalTxId = extractTxIdFromLogs(client, externalReceipt.logs);
+    if (!externalTxId) {
+      throw new Error(
+        `Transaction not processed by consensus: EVM tx ${evmTxHash} succeeded but no NewTransaction or CreatedTransaction event was found in the receipt logs.`,
+      );
     }
 
-    return externalNewTxEvents[0].args["txId"];
+    return externalTxId;
   };
 
   try {

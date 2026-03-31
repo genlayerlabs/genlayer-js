@@ -103,6 +103,7 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     metamaskClient: (snapSource?: SnapSource) => Promise<MetaMaskClientResult>;
     getTriggeredTransactionIds: (args: {hash: TransactionHash}) => Promise<TransactionHash[]>;
     debugTraceTransaction: (args: {hash: TransactionHash; round?: number}) => Promise<DebugTraceResult>;
+    getTransactionQueuePosition: (args: {hash: TransactionHash}) => Promise<number>;
     cancelTransaction: (args: {hash: TransactionHash}) => Promise<{transaction_hash: string; status: string}>;
     appealTransaction: (args: {
       account?: Account;

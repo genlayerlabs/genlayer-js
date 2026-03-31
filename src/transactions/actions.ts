@@ -35,7 +35,7 @@ export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClie
     });
 
     if (!transaction) {
-      throw new Error("Transaction not found");
+      throw new Error(`Transaction not found: ${hash}`);
     }
     const transactionStatusString = String(transaction.status);
     const requestedStatus = transactionsStatusNameToNumber[status];
@@ -54,7 +54,7 @@ export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClie
     }
 
     if (retries === 0) {
-      throw new Error("Transaction status is not " + status);
+      throw new Error(`Timed out waiting for transaction ${hash} to reach status "${status}" (current status: ${transactionStatusString}).`);
     }
 
     await sleep(interval);
@@ -175,6 +175,36 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
       method: "sim_cancelTransaction",
       params: [hash, signature],
     }) as Promise<{transaction_hash: string; status: string}>;
+  },
+  /** Returns the queue slot position of a transaction in the pending queue. */
+  getTransactionQueuePosition: async ({hash}: {hash: TransactionHash}): Promise<number> => {
+    const consensusAddress = client.chain.consensusMainContract?.address as Address;
+    const consensusAbi = client.chain.consensusMainContract?.abi as Abi;
+
+    const queuesAddress = await publicClient.readContract({
+      address: consensusAddress,
+      abi: consensusAbi,
+      functionName: "queues",
+    }) as Address;
+
+    const QUEUES_ABI = [
+      {
+        inputs: [{internalType: "bytes32", name: "txId", type: "bytes32"}],
+        name: "getTransactionQueuePosition",
+        outputs: [{internalType: "uint256", name: "", type: "uint256"}],
+        stateMutability: "view",
+        type: "function",
+      },
+    ] as const;
+
+    const position = await publicClient.readContract({
+      address: queuesAddress,
+      abi: QUEUES_ABI,
+      functionName: "getTransactionQueuePosition",
+      args: [hash as `0x${string}`],
+    }) as bigint;
+
+    return Number(position);
   },
   /** Estimates gas required for a transaction. */
   estimateTransactionGas: async (transactionParams: {
