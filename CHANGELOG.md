@@ -1,5 +1,12 @@
 
 
+## 0.27.9 (2026-03-31)
+
+
+### Bug Fixes
+
+* handle queued transactions and improve error messages ([6ffc48e](https://github.com/genlayerlabs/genlayer-js/commit/6ffc48efd1088e58fa54a0becbc50bd4d2ed307d))
+
 ## 0.27.8 (2026-03-31)
 
 ## 0.27.7 (2026-03-31)
