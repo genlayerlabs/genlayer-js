@@ -170,39 +170,44 @@ console.log(trace.genvm_log);    // detailed GenVM execution logs
 
 ### Using with a wallet provider (MetaMask)
 
-When building a browser dApp, pass the wallet address and EIP-1193 provider. The SDK routes signing operations through the wallet and all reads directly to the GenLayer RPC.
+When building a browser dApp, create two clients: one for reads (no wallet needed) and one for writes (signed by the wallet). This follows the standard viem pattern and keeps concerns separated.
 
 ```typescript
 import { createClient } from "genlayer-js";
 import { testnetBradbury } from "genlayer-js/chains";
 import { TransactionStatus } from "genlayer-js/types";
 
-// Get address and provider from your wallet connection
-const address = "0x..."; // from wallet
-const provider = window.ethereum; // or from a wallet SDK
-
-const client = createClient({
+// Read client — talks directly to GenLayer RPC, no wallet needed
+const readClient = createClient({
   chain: testnetBradbury,
-  account: address as `0x${string}`,
-  provider,
 });
 
-// Reads go directly to GenLayer RPC — no wallet involved
-const result = await client.readContract({
+// Write client — signs transactions through the wallet
+const writeClient = createClient({
+  chain: testnetBradbury,
+  account: address as `0x${string}`, // from wallet connection
+  provider: window.ethereum,          // or from a wallet SDK
+});
+
+// Use readClient for all reads
+const result = await readClient.readContract({
   address: contractAddress,
   functionName: "get_storage",
   args: [],
 });
 
-// Writes are signed by the wallet (MetaMask popup)
-const txHash = await client.writeContract({
+const tx = await readClient.getTransaction({ hash: txHash });
+
+// Use writeClient for transactions (MetaMask popup)
+const txHash = await writeClient.writeContract({
   address: contractAddress,
   functionName: "update_storage",
   args: ["new_value"],
   value: BigInt(0),
 });
 
-const receipt = await client.waitForTransactionReceipt({
+// Either client can wait for receipts
+const receipt = await readClient.waitForTransactionReceipt({
   hash: txHash,
   status: TransactionStatus.ACCEPTED,
 });
