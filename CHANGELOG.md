@@ -1,5 +1,12 @@
 
 
+## 0.27.7 (2026-03-31)
+
+
+### Bug Fixes
+
+* route only signing methods through wallet provider ([11ec3a1](https://github.com/genlayerlabs/genlayer-js/commit/11ec3a1ffceae65d1cd78aec0e8d2eefff80dfe3))
+
 ## 0.27.6 (2026-03-30)
 
 
