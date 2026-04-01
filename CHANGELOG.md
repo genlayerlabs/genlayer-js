@@ -1,5 +1,12 @@
 
 
+## 0.28.2 (2026-04-01)
+
+
+### Bug Fixes
+
+* resolve merge conflict in gen_call comment ([16dc289](https://github.com/genlayerlabs/genlayer-js/commit/16dc2896a396ca65e19b02f080b2949dc1ea5b17))
+
 ## 0.28.1 (2026-04-01)
 
 ## 0.28.0 (2026-03-31)
