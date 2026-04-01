@@ -44,6 +44,25 @@ const PROVIDER_METHODS = new Set([
   "eth_signTypedData_v4",
 ]);
 
+const assertChainMatch = async (
+  provider: EthereumProvider | {request: (args: {method: string; params?: any[]}) => Promise<any>},
+  chainConfig: GenLayerChain,
+) => {
+  const expectedChainIdHex = `0x${chainConfig.id.toString(16)}`;
+  try {
+    const currentChainId = await provider.request({method: "eth_chainId"});
+    if (currentChainId !== expectedChainIdHex) {
+      const currentId = parseInt(currentChainId as string, 16);
+      throw new Error(
+        `Wallet is on chain ${currentId} but client is configured for chain ${chainConfig.id} (${chainConfig.name}). ` +
+        `Call client.connect("${chainConfig.name}") or switch your wallet to the correct network before sending transactions.`,
+      );
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("Wallet is on chain")) throw err;
+  }
+};
+
 const getCustomTransportConfig = (config: ClientConfig, chainConfig: GenLayerChain) => {
   const isAddress = typeof config.account !== "object";
 
@@ -53,6 +72,9 @@ const getCustomTransportConfig = (config: ClientConfig, chainConfig: GenLayerCha
         const provider = config.provider || (typeof window !== "undefined" ? window.ethereum : undefined);
         if (provider) {
           try {
+            if (method === "eth_sendTransaction" || method === "eth_signTransaction") {
+              await assertChainMatch(provider, chainConfig);
+            }
             return await provider.request({method, params});
           } catch (err) {
             console.warn(`Error using provider for method ${method}:`, err);
