@@ -16,8 +16,8 @@ import {toJsonSafeDeep, b64ToArray} from "@/utils/jsonifier";
 
 /**
  * Extract hex data from a gen_call result.
- * Studio returns a bare hex string; testnet node returns an object:
- * { data: "hex...", status: { code, message }, eqOutputs, stdout, stderr, logs }
+ * Some RPCs return a bare hex string, others return an object like
+ * { data: "hex...", status: { code, message }, ... }.
  */
 function extractGenCallResult(result: unknown): `0x${string}` {
   if (typeof result === "string") {
