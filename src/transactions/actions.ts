@@ -44,7 +44,7 @@ export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClie
       (status === TransactionStatus.ACCEPTED && isDecidedState(transactionStatusString))
     ) {
       let finalTransaction = transaction;
-      if (client.chain.id === localnet.id) {
+      if (client.chain.isStudio) {
         finalTransaction = decodeLocalnetTransaction(transaction as unknown as GenLayerTransaction);
       }
       if (!fullTransaction) {

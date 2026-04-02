@@ -1,6 +1,6 @@
 import * as calldata from "@/abi/calldata";
 import {serialize} from "@/abi/transactions";
-import {localnet} from "@/chains/localnet";
+
 import {
   Account,
   ContractSchema,
@@ -35,10 +35,10 @@ function extractGenCallResult(result: unknown): `0x${string}` {
 
 export const contractActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => {
   return {
-    /** Retrieves the source code of a deployed contract. Localnet only. */
+    /** Retrieves the source code of a deployed contract. Studio only. */
     getContractCode: async (address: Address): Promise<string> => {
-      if (client.chain.id !== localnet.id) {
-        throw new Error(`getContractCode is only available on localnet (current chain: ${client.chain.name})`);
+      if (!client.chain.isStudio) {
+        throw new Error(`getContractCode is only available on Studio networks (current chain: ${client.chain.name})`);
       }
       const result = (await client.request({
         method: "gen_getContractCode",
@@ -47,10 +47,10 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       const codeBytes = b64ToArray(result);
       return new TextDecoder().decode(codeBytes);
     },
-    /** Gets the schema (methods and constructor) of a deployed contract. Localnet only. */
+    /** Gets the schema (methods and constructor) of a deployed contract. Studio only. */
     getContractSchema: async (address: Address): Promise<ContractSchema> => {
-      if (client.chain.id !== localnet.id) {
-        throw new Error(`getContractSchema is only available on localnet (current chain: ${client.chain.name})`);
+      if (!client.chain.isStudio) {
+        throw new Error(`getContractSchema is only available on Studio networks (current chain: ${client.chain.name})`);
       }
       const schema = (await client.request({
         method: "gen_getContractSchema",
@@ -58,10 +58,10 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       })) as string;
       return schema as unknown as ContractSchema;
     },
-    /** Generates a schema for contract code without deploying it. Localnet only. */
+    /** Generates a schema for contract code without deploying it. Studio only. */
     getContractSchemaForCode: async (contractCode: string | Uint8Array): Promise<ContractSchema> => {
-      if (client.chain.id !== localnet.id) {
-        throw new Error(`getContractSchema is only available on localnet (current chain: ${client.chain.name})`);
+      if (!client.chain.isStudio) {
+        throw new Error(`getContractSchemaForCode is only available on Studio networks (current chain: ${client.chain.name})`);
       }
       const schema = (await client.request({
         method: "gen_getContractSchemaForCode",
@@ -751,9 +751,14 @@ const _sendTransaction = async ({
       params: [formattedRequest as any],
     })) as `0x${string}`;
 
-    // Extract GenLayer txId from the NewTransaction event, same as local account path.
-    // On studio RPCs this may already be the GenLayer txId, but on testnets
-    // eth_sendTransaction returns the EVM tx hash which is not the GenLayer tx ID.
+    if (client.chain.isStudio) {
+      // Studio RPCs process eth_sendRawTransaction internally (MetaMask signs
+      // and forwards). The returned hash IS the GenLayer tx hash — no need to
+      // wait for an EVM receipt or extract txId from logs.
+      return evmTxHash;
+    }
+
+    // On real testnets, extract GenLayer txId from the NewTransaction event.
     const externalReceipt = await publicClient.waitForTransactionReceipt({hash: evmTxHash});
 
     if (externalReceipt.status === "reverted") {
