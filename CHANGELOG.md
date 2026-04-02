@@ -1,5 +1,12 @@
 
 
+## 0.28.4 (2026-04-02)
+
+
+### Bug Fixes
+
+* **ci:** restore npm 11 upgrade for OIDC trusted publishing ([feb2baf](https://github.com/genlayerlabs/genlayer-js/commit/feb2bafff335d66cd5fb34e669ff67e3439afc8e))
+
 ## 0.28.2 (2026-04-01)
 
 
