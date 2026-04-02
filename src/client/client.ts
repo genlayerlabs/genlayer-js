@@ -48,6 +48,11 @@ const assertChainMatch = async (
   provider: EthereumProvider | {request: (args: {method: string; params?: any[]}) => Promise<any>},
   chainConfig: GenLayerChain,
 ) => {
+  // Studio chains manage wallet switching externally (useChainEnforcer).
+  // The SDK chain ID (e.g., localnet=61127) may differ from the per-instance
+  // chain ID MetaMask is on (e.g., 61997/61998/61999). Skip validation for Studio.
+  if (chainConfig.isStudio) return;
+
   const expectedChainIdHex = `0x${chainConfig.id.toString(16)}`;
   try {
     const currentChainId = await provider.request({method: "eth_chainId"});
