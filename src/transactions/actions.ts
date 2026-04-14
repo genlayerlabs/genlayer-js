@@ -12,7 +12,6 @@ import {transactionsConfig} from "../config/transactions";
 import {sleep} from "../utils/async";
 import {GenLayerChain} from "@/types";
 import {Abi, PublicClient, Address, keccak256, concat, stringToBytes, toBytes} from "viem";
-import {localnet} from "@/chains/localnet";
 import {decodeLocalnetTransaction, decodeTransaction, simplifyTransactionReceipt} from "./decoders";
 
 export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => ({

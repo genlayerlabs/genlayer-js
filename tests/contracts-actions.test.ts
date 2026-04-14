@@ -453,3 +453,110 @@ describe("contractActions addTransaction ABI compatibility", () => {
     ).rejects.toThrow("Transaction not processed by consensus");
   });
 });
+
+const FINALIZE_TX_ABI = [
+  {
+    type: "function" as const,
+    name: "finalizeTransaction",
+    stateMutability: "nonpayable" as const,
+    inputs: [{name: "_txId", type: "bytes32"}],
+    outputs: [],
+  },
+  {
+    type: "function" as const,
+    name: "finalizeIdlenessTxs",
+    stateMutability: "nonpayable" as const,
+    inputs: [{name: "_txIds", type: "bytes32[]"}],
+    outputs: [],
+  },
+];
+
+const finalizeTransactionSelector = encodeFunctionData({
+  abi: FINALIZE_TX_ABI as any,
+  functionName: "finalizeTransaction",
+  args: [MOCK_GENLAYER_TX_ID],
+}).slice(0, 10);
+
+const finalizeIdlenessSelector = encodeFunctionData({
+  abi: FINALIZE_TX_ABI as any,
+  functionName: "finalizeIdlenessTxs",
+  args: [[MOCK_GENLAYER_TX_ID]],
+}).slice(0, 10);
+
+const setupFinalizeHarness = ({receiptStatus = "success"}: {receiptStatus?: string} = {}) => {
+  const signTransaction = vi.fn().mockResolvedValue("0xsigned");
+  const sendRawTransaction = vi.fn().mockResolvedValue(MOCK_EVM_TX_HASH);
+  const waitForTransactionReceipt = vi.fn().mockResolvedValue({status: receiptStatus, logs: []});
+  const estimateTransactionGas = vi.fn().mockResolvedValue(21_000n);
+
+  const client = {
+    chain: {
+      id: 61_127,
+      consensusMainContract: {
+        address: MAIN_CONTRACT_ADDRESS,
+        abi: FINALIZE_TX_ABI,
+        bytecode: "0x",
+      },
+    },
+    account: {
+      address: SENDER_ADDRESS,
+      type: "local",
+      signTransaction,
+    },
+    getCurrentNonce: vi.fn().mockResolvedValue(0n),
+    estimateTransactionGas,
+    sendRawTransaction,
+    request: vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "eth_gasPrice") return "0x1";
+      throw new Error(`Unexpected RPC method: ${method}`);
+    }),
+  };
+
+  const publicClient = {waitForTransactionReceipt};
+  const actions = contractActions(client as any, publicClient as any);
+
+  return {actions, signTransaction, sendRawTransaction, waitForTransactionReceipt, estimateTransactionGas, client};
+};
+
+describe("contractActions finalizeTransaction", () => {
+  it("encodes finalizeTransaction(bytes32) and returns EVM tx hash", async () => {
+    const {actions, signTransaction, sendRawTransaction} = setupFinalizeHarness();
+
+    const evmHash = await actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID});
+
+    expect(evmHash).toBe(MOCK_EVM_TX_HASH);
+    expect(sendRawTransaction).toHaveBeenCalledWith({serializedTransaction: "0xsigned"});
+    const txRequest = signTransaction.mock.calls[0][0];
+    expect(txRequest.to).toBe(MAIN_CONTRACT_ADDRESS);
+    expect(txRequest.data.slice(0, 10)).toBe(finalizeTransactionSelector);
+    expect(txRequest.value).toBe(0n);
+  });
+
+  it("throws when receipt is reverted", async () => {
+    const {actions} = setupFinalizeHarness({receiptStatus: "reverted"});
+    await expect(
+      actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID}),
+    ).rejects.toThrow(/Finalize reverted/);
+  });
+});
+
+describe("contractActions finalizeIdlenessTxs", () => {
+  it("encodes finalizeIdlenessTxs(bytes32[]) and returns EVM tx hash", async () => {
+    const {actions, signTransaction, sendRawTransaction} = setupFinalizeHarness();
+
+    const evmHash = await actions.finalizeIdlenessTxs({txIds: [MOCK_GENLAYER_TX_ID]});
+
+    expect(evmHash).toBe(MOCK_EVM_TX_HASH);
+    expect(sendRawTransaction).toHaveBeenCalledTimes(1);
+    const txRequest = signTransaction.mock.calls[0][0];
+    expect(txRequest.data.slice(0, 10)).toBe(finalizeIdlenessSelector);
+  });
+
+  it("rejects an empty batch upfront", async () => {
+    const {actions, signTransaction} = setupFinalizeHarness();
+    await expect(
+      actions.finalizeIdlenessTxs({txIds: []}),
+    ).rejects.toThrow(/at least one txId/);
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
+});

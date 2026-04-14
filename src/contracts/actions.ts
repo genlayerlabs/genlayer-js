@@ -356,70 +356,61 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
 
       const senderAccount = account || client.account;
       const encodedData = _encodeSubmitAppealData({client, txId});
-      const validatedAccount = validateAccount(senderAccount);
-
       // Appeals don't go through _sendTransaction because submitAppeal emits
       // AppealStarted/TransactionActivated events, not NewTransaction/CreatedTransaction.
       // The appeal operates on the same GenLayer txId, so we return it directly.
-      if (!client.chain.consensusMainContract?.address) {
-        throw new Error("Consensus main contract not initialized.");
-      }
-
-      const nonce = await client.getCurrentNonce({address: validatedAccount.address});
-
-      let estimatedGas: bigint;
-      try {
-        estimatedGas = await client.estimateTransactionGas({
-          to: client.chain.consensusMainContract.address,
-          data: encodedData,
-          value,
-        });
-      } catch (err) {
-        console.error("Gas estimation failed, using default 200_000:", err);
-        estimatedGas = 200_000n;
-      }
-
-      const gasPriceHex = (await client.request({method: "eth_gasPrice"})) as string;
-
-      const txRequest = {
-        account: validatedAccount,
-        to: client.chain.consensusMainContract.address as `0x${string}`,
-        data: encodedData,
+      await _sendConsensusCall({
+        client,
+        publicClient,
+        encodedData,
+        senderAccount,
         value,
-        gas: estimatedGas,
-        gasPrice: BigInt(gasPriceHex),
-        nonce,
-        chainId: client.chain.id,
-      };
-
-      if (validatedAccount.type === "local") {
-        if (!validatedAccount.signTransaction) {
-          throw new Error("Local account does not support signTransaction.");
-        }
-        const serializedTransaction = await validatedAccount.signTransaction(txRequest);
-        const evmHash = await client.sendRawTransaction({serializedTransaction});
-        const receipt = await publicClient.waitForTransactionReceipt({hash: evmHash});
-        if (receipt.status === "reverted") {
-          throw new Error(`Appeal reverted: EVM tx ${evmHash}`);
-        }
-      } else {
-        const evmHash = (await client.request({
-          method: "eth_sendTransaction",
-          params: [{
-            from: validatedAccount.address,
-            to: client.chain.consensusMainContract.address,
-            data: encodedData,
-            value: value ? (`0x${value.toString(16)}` as `0x${string}`) : undefined,
-            gas: `0x${estimatedGas.toString(16)}` as `0x${string}`,
-          }],
-        })) as `0x${string}`;
-        const receipt = await publicClient.waitForTransactionReceipt({hash: evmHash});
-        if (receipt.status === "reverted") {
-          throw new Error(`Appeal reverted: EVM tx ${evmHash}`);
-        }
-      }
-
+        operationName: "Appeal",
+      });
       return txId;
+    },
+    /** Finalizes a single GenLayer transaction that is ready to be finalized. Returns the EVM transaction hash. */
+    finalizeTransaction: async (args: {
+      account?: Account;
+      txId: `0x${string}`;
+    }): Promise<`0x${string}`> => {
+      const {account, txId} = args;
+      const senderAccount = account || client.account;
+      const encodedData = encodeFunctionData({
+        abi: client.chain.consensusMainContract?.abi as any,
+        functionName: "finalizeTransaction",
+        args: [txId],
+      });
+      return _sendConsensusCall({
+        client,
+        publicClient,
+        encodedData,
+        senderAccount,
+        operationName: "Finalize",
+      });
+    },
+    /** Batch-finalizes idle GenLayer transactions (those stuck without progressing). Returns the EVM transaction hash. */
+    finalizeIdlenessTxs: async (args: {
+      account?: Account;
+      txIds: readonly `0x${string}`[];
+    }): Promise<`0x${string}`> => {
+      const {account, txIds} = args;
+      if (txIds.length === 0) {
+        throw new Error("finalizeIdlenessTxs requires at least one txId.");
+      }
+      const senderAccount = account || client.account;
+      const encodedData = encodeFunctionData({
+        abi: client.chain.consensusMainContract?.abi as any,
+        functionName: "finalizeIdlenessTxs",
+        args: [txIds],
+      });
+      return _sendConsensusCall({
+        client,
+        publicClient,
+        encodedData,
+        senderAccount,
+        operationName: "Finalize idleness",
+      });
     },
   };
 };
@@ -561,6 +552,89 @@ const _encodeSubmitAppealData = ({
     functionName: "submitAppeal",
     args: [txId],
   });
+};
+
+/**
+ * Sends a pre-encoded call to the consensus main contract, bypassing the
+ * NewTransaction/CreatedTransaction log extraction used by _sendTransaction.
+ * Used for consensus admin calls (appeal, finalize, etc.) that operate on
+ * existing GenLayer transactions rather than creating new ones.
+ * Returns the EVM transaction hash.
+ */
+const _sendConsensusCall = async ({
+  client,
+  publicClient,
+  encodedData,
+  senderAccount,
+  value = 0n,
+  operationName = "Consensus call",
+}: {
+  client: GenLayerClient<GenLayerChain>;
+  publicClient: PublicClient;
+  encodedData: `0x${string}`;
+  senderAccount?: Account;
+  value?: bigint;
+  operationName?: string;
+}): Promise<`0x${string}`> => {
+  if (!client.chain.consensusMainContract?.address) {
+    throw new Error("Consensus main contract not initialized.");
+  }
+
+  const validatedAccount = validateAccount(senderAccount);
+  const nonce = await client.getCurrentNonce({address: validatedAccount.address});
+
+  let estimatedGas: bigint;
+  try {
+    estimatedGas = await client.estimateTransactionGas({
+      to: client.chain.consensusMainContract.address,
+      data: encodedData,
+      value,
+    });
+  } catch (err) {
+    console.error("Gas estimation failed, using default 200_000:", err);
+    estimatedGas = 200_000n;
+  }
+
+  const gasPriceHex = (await client.request({method: "eth_gasPrice"})) as string;
+
+  if (validatedAccount.type === "local") {
+    if (!validatedAccount.signTransaction) {
+      throw new Error("Local account does not support signTransaction.");
+    }
+    const txRequest = {
+      account: validatedAccount,
+      to: client.chain.consensusMainContract.address as `0x${string}`,
+      data: encodedData,
+      value,
+      gas: estimatedGas,
+      gasPrice: BigInt(gasPriceHex),
+      nonce,
+      chainId: client.chain.id,
+    };
+    const serializedTransaction = await validatedAccount.signTransaction(txRequest);
+    const evmHash = await client.sendRawTransaction({serializedTransaction});
+    const receipt = await publicClient.waitForTransactionReceipt({hash: evmHash});
+    if (receipt.status === "reverted") {
+      throw new Error(`${operationName} reverted: EVM tx ${evmHash}`);
+    }
+    return evmHash;
+  }
+
+  const evmHash = (await client.request({
+    method: "eth_sendTransaction",
+    params: [{
+      from: validatedAccount.address,
+      to: client.chain.consensusMainContract.address,
+      data: encodedData,
+      value: value ? (`0x${value.toString(16)}` as `0x${string}`) : undefined,
+      gas: `0x${estimatedGas.toString(16)}` as `0x${string}`,
+    }],
+  })) as `0x${string}`;
+  const receipt = await publicClient.waitForTransactionReceipt({hash: evmHash});
+  if (receipt.status === "reverted") {
+    throw new Error(`${operationName} reverted: EVM tx ${evmHash}`);
+  }
+  return evmHash;
 };
 
 const isAddTransactionAbiMismatchError = (error: unknown): boolean => {

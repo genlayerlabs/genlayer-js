@@ -114,5 +114,13 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       txId: `0x${string}`;
       value?: bigint;
     }) => Promise<any>;
+    finalizeTransaction: (args: {
+      account?: Account;
+      txId: `0x${string}`;
+    }) => Promise<`0x${string}`>;
+    finalizeIdlenessTxs: (args: {
+      account?: Account;
+      txIds: readonly `0x${string}`[];
+    }) => Promise<`0x${string}`>;
     getMinAppealBond: (args: {txId: `0x${string}`}) => Promise<bigint>;
   } & StakingActions;
