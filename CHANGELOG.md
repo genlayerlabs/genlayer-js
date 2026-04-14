@@ -1,5 +1,12 @@
 
 
+## 0.28.5 (2026-04-14)
+
+
+### Bug Fixes
+
+* **ci:** bump publish workflow to Node 24 to get npm 11 natively ([f5decf9](https://github.com/genlayerlabs/genlayer-js/commit/f5decf9cd7c641cb7c3b0b2c24b90c1f37707c26))
+
 ## 0.28.4 (2026-04-02)
 
 
