@@ -261,25 +261,33 @@ export const stakingActions = (
       };
     },
 
-    /** Adds additional self-stake to an active validator position. */
+    /**
+     * Adds additional self-stake to an active validator position. The
+     * underlying Staking contract requires msg.sender == ValidatorWallet,
+     * so the call is routed through the wallet's own validatorDeposit
+     * forwarder (which re-enters Staking with the correct sender).
+     */
     validatorDeposit: async (options: ValidatorDepositOptions): Promise<StakingTransactionResult> => {
       const amount = parseStakingAmount(options.amount);
       const data = encodeFunctionData({
-        abi: STAKING_ABI,
+        abi: VALIDATOR_WALLET_ABI,
         functionName: "validatorDeposit",
       });
-      return executeWrite({to: getStakingAddress(), data, value: amount});
+      return executeWrite({to: options.validator as ViemAddress, data, value: amount});
     },
 
-    /** Exits a validator position by burning the specified shares. */
+    /**
+     * Exits a validator position by burning the specified shares. Same
+     * msg.sender constraint as validatorDeposit — routed via the wallet.
+     */
     validatorExit: async (options: ValidatorExitOptions): Promise<StakingTransactionResult> => {
       const shares = typeof options.shares === "string" ? BigInt(options.shares) : options.shares;
       const data = encodeFunctionData({
-        abi: STAKING_ABI,
+        abi: VALIDATOR_WALLET_ABI,
         functionName: "validatorExit",
         args: [shares],
       });
-      return executeWrite({to: getStakingAddress(), data});
+      return executeWrite({to: options.validator as ViemAddress, data});
     },
 
     /** Claims pending validator withdrawals. */
