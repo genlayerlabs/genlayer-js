@@ -538,10 +538,16 @@ const _encodeAddTransactionData = ({
     args: addTransactionArgs,
   });
 
+  // `_validUntil = 0` is treated as "expired" by the on-chain consensus
+  // contract, so every submission with a v6 signature would revert. Use
+  // `now + 1 hour` — enough buffer for wallet confirmation + mining, short
+  // enough that stale signed txs don't hang around forever.
+  const validUntil = BigInt(Math.floor(Date.now() / 1000) + 3600);
+
   const encodedDataV6 = encodeFunctionData({
     abi: ADD_TRANSACTION_ABI_V6 as any,
     functionName: "addTransaction",
-    args: [...addTransactionArgs, 0n],
+    args: [...addTransactionArgs, validUntil],
   });
 
   if (getAddTransactionInputCount(client.chain.consensusMainContract?.abi) >= 6) {
