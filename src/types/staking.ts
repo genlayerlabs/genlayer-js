@@ -156,10 +156,12 @@ export interface ValidatorJoinOptions {
 
 export interface ValidatorDepositOptions {
   amount: bigint | string;
+  validator: Address;
 }
 
 export interface ValidatorExitOptions {
   shares: bigint | string;
+  validator: Address;
 }
 
 export interface ValidatorClaimOptions {
