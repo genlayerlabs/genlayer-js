@@ -14,9 +14,9 @@ export type GenLayerMethod =
   | {method: "eth_getTransactionByHash"; params: [hash: TransactionHash]}
   | {method: "eth_call"; params: [requestParams: any, blockNumberOrHash: string]}
   | {method: "eth_sendRawTransaction"; params: [signedTransaction: string]}
-  | {method: "gen_getContractSchema"; params: [address: Address]}
+  | {method: "gen_getContractSchema"; params: [address: Address] | [{address: Address}] | [{code: string}]}
   | {method: "gen_getContractSchemaForCode"; params: [contractCode: string]}
-  | {method: "gen_getContractCode"; params: [address: Address]}
+  | {method: "gen_getContractCode"; params: [address: Address] | [{address: Address}]}
   | {method: "sim_getTransactionsForAddress"; params: [address: Address, filter?: "all" | "from" | "to"]}
   | {method: "eth_getTransactionCount"; params: [address: Address, block: string]}
   | {method: "eth_estimateGas"; params: [transactionParams: any]}

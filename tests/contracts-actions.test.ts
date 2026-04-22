@@ -518,6 +518,136 @@ const setupFinalizeHarness = ({receiptStatus = "success"}: {receiptStatus?: stri
   return {actions, signTransaction, sendRawTransaction, waitForTransactionReceipt, estimateTransactionGas, client};
 };
 
+describe("contractActions getContractCode", () => {
+  const SOURCE = '# v0.1.0\n# { "Depends": "py-genlayer:test" }\n\nfrom genlayer import *\n';
+  const SOURCE_B64 = Buffer.from(SOURCE, "utf-8").toString("base64");
+  const CONTRACT = "0x000000000000000000000000000000000000dEaD";
+
+  const buildClient = ({isStudio}: {isStudio: boolean}) => {
+    const request = vi.fn().mockResolvedValue(SOURCE_B64);
+    const client = {
+      chain: {id: isStudio ? 61_127 : 4_221, name: isStudio ? "localnet" : "Bradbury", isStudio},
+      request,
+    };
+    const actions = contractActions(client as any, {} as any);
+    return {actions, request};
+  };
+
+  it("uses positional params on Studio chains", async () => {
+    const {actions, request} = buildClient({isStudio: true});
+    const code = await actions.getContractCode(CONTRACT);
+    expect(code).toBe(SOURCE);
+    expect(request).toHaveBeenCalledWith({
+      method: "gen_getContractCode",
+      params: [CONTRACT],
+    });
+  });
+
+  it("uses object-shaped params on non-Studio chains", async () => {
+    const {actions, request} = buildClient({isStudio: false});
+    const code = await actions.getContractCode(CONTRACT);
+    expect(code).toBe(SOURCE);
+    expect(request).toHaveBeenCalledWith({
+      method: "gen_getContractCode",
+      params: [{address: CONTRACT}],
+    });
+  });
+});
+
+describe("contractActions getContractSchema", () => {
+  const SOURCE = 'from genlayer import *\n';
+  const SOURCE_B64 = Buffer.from(SOURCE, "utf-8").toString("base64");
+  const CONTRACT = "0x000000000000000000000000000000000000dEaD";
+  const SCHEMA = {ctor: {kwparams: {}, params: []}, methods: {}};
+
+  it("calls gen_getContractSchema(address) directly on Studio", async () => {
+    const request = vi.fn().mockResolvedValue(SCHEMA);
+    const client = {chain: {id: 61_127, name: "localnet", isStudio: true}, request};
+    const actions = contractActions(client as any, {} as any);
+
+    const schema = await actions.getContractSchema(CONTRACT);
+
+    expect(schema).toEqual(SCHEMA);
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledWith({
+      method: "gen_getContractSchema",
+      params: [CONTRACT],
+    });
+  });
+
+  it("fetches code then calls gen_getContractSchema({code}) on non-Studio chains", async () => {
+    const request = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "gen_getContractCode") return SOURCE_B64;
+      if (method === "gen_getContractSchema") return SCHEMA;
+      throw new Error(`Unexpected RPC method: ${method}`);
+    });
+    const client = {chain: {id: 4_221, name: "Bradbury", isStudio: false}, request};
+    const actions = contractActions(client as any, {} as any);
+
+    const schema = await actions.getContractSchema(CONTRACT);
+
+    expect(schema).toEqual(SCHEMA);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(request).toHaveBeenNthCalledWith(1, {
+      method: "gen_getContractCode",
+      params: [{address: CONTRACT}],
+    });
+    expect(request).toHaveBeenNthCalledWith(2, {
+      method: "gen_getContractSchema",
+      params: [{code: SOURCE_B64}],
+    });
+  });
+});
+
+describe("contractActions getContractSchemaForCode", () => {
+  const SOURCE = 'from genlayer import *\n';
+  const SOURCE_B64 = Buffer.from(SOURCE, "utf-8").toString("base64");
+  const SOURCE_HEX = toHex(SOURCE);
+  const SCHEMA = {ctor: {kwparams: {}, params: []}, methods: {}};
+
+  it("calls gen_getContractSchemaForCode with hex-encoded code on Studio", async () => {
+    const request = vi.fn().mockResolvedValue(SCHEMA);
+    const client = {chain: {id: 61_127, name: "localnet", isStudio: true}, request};
+    const actions = contractActions(client as any, {} as any);
+
+    const schema = await actions.getContractSchemaForCode(SOURCE);
+
+    expect(schema).toEqual(SCHEMA);
+    expect(request).toHaveBeenCalledWith({
+      method: "gen_getContractSchemaForCode",
+      params: [SOURCE_HEX],
+    });
+  });
+
+  it("calls gen_getContractSchema({code}) with base64-encoded code on non-Studio chains", async () => {
+    const request = vi.fn().mockResolvedValue(SCHEMA);
+    const client = {chain: {id: 4_221, name: "Bradbury", isStudio: false}, request};
+    const actions = contractActions(client as any, {} as any);
+
+    const schema = await actions.getContractSchemaForCode(SOURCE);
+
+    expect(schema).toEqual(SCHEMA);
+    expect(request).toHaveBeenCalledWith({
+      method: "gen_getContractSchema",
+      params: [{code: SOURCE_B64}],
+    });
+  });
+
+  it("accepts Uint8Array input and base64-encodes it on non-Studio chains", async () => {
+    const request = vi.fn().mockResolvedValue(SCHEMA);
+    const client = {chain: {id: 4_221, name: "Bradbury", isStudio: false}, request};
+    const actions = contractActions(client as any, {} as any);
+
+    const bytes = new TextEncoder().encode(SOURCE);
+    await actions.getContractSchemaForCode(bytes);
+
+    expect(request).toHaveBeenCalledWith({
+      method: "gen_getContractSchema",
+      params: [{code: SOURCE_B64}],
+    });
+  });
+});
+
 describe("contractActions finalizeTransaction", () => {
   it("encodes finalizeTransaction(bytes32) and returns EVM tx hash", async () => {
     const {actions, signTransaction, sendRawTransaction} = setupFinalizeHarness();
