@@ -21,7 +21,9 @@ const FEE_MANAGER_CONTRACT = {
         { name: "_round", type: "uint256" },
         { name: "_status", type: "uint8" },
       ],
-      outputs: [{ name: "totalFeesToPay", type: "uint256" }],
+      outputs: [
+        { name: "totalFeesToPay", type: "uint256" },
+      ],
     },
   ],
 };
@@ -30,23 +32,17 @@ const ROUNDS_STORAGE_CONTRACT = {
   abi: [
     {
       type: "function" as const,
-      name: "getRoundNumber",
-      stateMutability: "view" as const,
-      inputs: [{ name: "_txId", type: "bytes32" }],
-      outputs: [{ name: "", type: "uint256" }],
-    },
-    {
-      type: "function" as const,
-      name: "getRoundData",
+      name: "getLastRoundData",
       stateMutability: "view" as const,
       inputs: [
-        { name: "_txId", type: "bytes32" },
-        { name: "_round", type: "uint256" },
+        { name: "txId", type: "bytes32" },
       ],
-      outputs: [{
-        name: "",
-        type: "tuple",
-        components: [
+      outputs: [
+        { name: "round", type: "uint256" },
+        {
+          name: "roundData",
+          type: "tuple",
+          components: [
           { name: "round", type: "uint256" },
           { name: "leaderIndex", type: "uint256" },
           { name: "votesCommitted", type: "uint256" },
@@ -58,33 +54,47 @@ const ROUNDS_STORAGE_CONTRACT = {
           { name: "validatorVotes", type: "uint8[]" },
           { name: "validatorVotesHash", type: "bytes32[]" },
           { name: "validatorResultHash", type: "bytes32[]" },
-        ],
-      }],
+          ],
+        },
+      ],
     },
     {
       type: "function" as const,
-      name: "getLastRoundData",
+      name: "getRoundData",
       stateMutability: "view" as const,
-      inputs: [{ name: "_txId", type: "bytes32" }],
+      inputs: [
+        { name: "txId", type: "bytes32" },
+        { name: "round", type: "uint256" },
+      ],
       outputs: [
-        { name: "", type: "uint256" },
         {
           name: "",
           type: "tuple",
           components: [
-            { name: "round", type: "uint256" },
-            { name: "leaderIndex", type: "uint256" },
-            { name: "votesCommitted", type: "uint256" },
-            { name: "votesRevealed", type: "uint256" },
-            { name: "appealBond", type: "uint256" },
-            { name: "rotationsLeft", type: "uint256" },
-            { name: "result", type: "uint8" },
-            { name: "roundValidators", type: "address[]" },
-            { name: "validatorVotes", type: "uint8[]" },
-            { name: "validatorVotesHash", type: "bytes32[]" },
-            { name: "validatorResultHash", type: "bytes32[]" },
+          { name: "round", type: "uint256" },
+          { name: "leaderIndex", type: "uint256" },
+          { name: "votesCommitted", type: "uint256" },
+          { name: "votesRevealed", type: "uint256" },
+          { name: "appealBond", type: "uint256" },
+          { name: "rotationsLeft", type: "uint256" },
+          { name: "result", type: "uint8" },
+          { name: "roundValidators", type: "address[]" },
+          { name: "validatorVotes", type: "uint8[]" },
+          { name: "validatorVotesHash", type: "bytes32[]" },
+          { name: "validatorResultHash", type: "bytes32[]" },
           ],
         },
+      ],
+    },
+    {
+      type: "function" as const,
+      name: "getRoundNumber",
+      stateMutability: "view" as const,
+      inputs: [
+        { name: "txId", type: "bytes32" },
+      ],
+      outputs: [
+        { name: "", type: "uint256" },
       ],
     },
   ],
@@ -96,8 +106,12 @@ const APPEALS_CONTRACT = {
       type: "function" as const,
       name: "canAppeal",
       stateMutability: "view" as const,
-      inputs: [{ name: "_txId", type: "bytes32" }],
-      outputs: [{ name: "", type: "bool" }],
+      inputs: [
+        { name: "_txId", type: "bytes32" },
+      ],
+      outputs: [
+        { name: "", type: "bool" },
+      ],
     },
   ],
 };
@@ -117,17 +131,7 @@ const CONSENSUS_MAIN_CONTRACT = {
   },
   {
     "inputs": [],
-    "name": "CanNotAppeal",
-    "type": "error"
-  },
-  {
-    "inputs": [],
     "name": "InvalidDeploymentWithSalt",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "InvalidGhostContract",
     "type": "error"
   },
   {
@@ -175,6 +179,16 @@ const CONSENSUS_MAIN_CONTRACT = {
   {
     "inputs": [],
     "name": "ReentrancyGuardReentrantCall",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TransactionNotFinalized",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "Unauthorized",
     "type": "error"
   },
   {
@@ -627,48 +641,17 @@ const CONSENSUS_MAIN_CONTRACT = {
       {
         "indexed": false,
         "internalType": "uint256",
-        "name": "tribunalIndex",
+        "name": "totalUnissuedValue",
         "type": "uint256"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "validator",
-        "type": "address"
-      }
-    ],
-    "name": "TribunalAppealVoteCommitted",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "bytes32",
-        "name": "txId",
-        "type": "bytes32"
       },
       {
         "indexed": false,
         "internalType": "uint256",
-        "name": "tribunalIndex",
+        "name": "unissuedCount",
         "type": "uint256"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "validator",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "enum ITransactions.VoteType",
-        "name": "voteType",
-        "type": "uint8"
       }
     ],
-    "name": "TribunalAppealVoteRevealed",
+    "name": "UnissuedMessagesAtFinalization",
     "type": "event"
   },
   {
@@ -905,29 +888,6 @@ const CONSENSUS_MAIN_CONTRACT = {
       }
     ],
     "name": "cancelTransaction",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "bytes32",
-        "name": "_txId",
-        "type": "bytes32"
-      },
-      {
-        "internalType": "uint256",
-        "name": "_tribunalIndex",
-        "type": "uint256"
-      },
-      {
-        "internalType": "bytes32",
-        "name": "_commitHash",
-        "type": "bytes32"
-      }
-    ],
-    "name": "commitTribunalAppealVote",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -1262,6 +1222,19 @@ const CONSENSUS_MAIN_CONTRACT = {
   {
     "inputs": [
       {
+        "internalType": "address[]",
+        "name": "affectedRecipients",
+        "type": "address[]"
+      }
+    ],
+    "name": "promoteNextPendingTransactions",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
         "internalType": "bytes32",
         "name": "_txId",
         "type": "bytes32"
@@ -1326,44 +1299,6 @@ const CONSENSUS_MAIN_CONTRACT = {
   {
     "inputs": [],
     "name": "renounceOwnership",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "bytes32",
-        "name": "_txId",
-        "type": "bytes32"
-      },
-      {
-        "internalType": "uint256",
-        "name": "_tribunalIndex",
-        "type": "uint256"
-      },
-      {
-        "internalType": "bytes32",
-        "name": "_voteHash",
-        "type": "bytes32"
-      },
-      {
-        "internalType": "enum ITransactions.VoteType",
-        "name": "_voteType",
-        "type": "uint8"
-      },
-      {
-        "internalType": "bytes32",
-        "name": "_otherExecutionFieldsHash",
-        "type": "bytes32"
-      },
-      {
-        "internalType": "uint256",
-        "name": "_nonce",
-        "type": "uint256"
-      }
-    ],
-    "name": "revealTribunalAppealVote",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -2884,6 +2819,16 @@ const CONSENSUS_DATA_CONTRACT = {
           {
             "internalType": "uint256",
             "name": "value",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "lockedStorageUnitPrice",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "storageFeeUsed",
             "type": "uint256"
           }
         ],
