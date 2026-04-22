@@ -12,7 +12,7 @@ import {
 } from "@/types";
 import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs, type Abi} from "viem";
 import {TransactionHash} from "@/types/transactions";
-import {toJsonSafeDeep, b64ToArray} from "@/utils/jsonifier";
+import {toJsonSafeDeep, b64ToArray, arrayToB64} from "@/utils/jsonifier";
 
 /**
  * Extract hex data from a gen_call result.
@@ -35,39 +35,56 @@ function extractGenCallResult(result: unknown): `0x${string}` {
 
 export const contractActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => {
   return {
-    /** Retrieves the source code of a deployed contract. Studio only. */
+    /** Retrieves the source code of a deployed contract. */
     getContractCode: async (address: Address): Promise<string> => {
-      if (!client.chain.isStudio) {
-        throw new Error(`getContractCode is only available on Studio networks (current chain: ${client.chain.name})`);
-      }
+      const params = (client.chain.isStudio ? [address] : [{address}]) as
+        | [Address]
+        | [{address: Address}];
       const result = (await client.request({
         method: "gen_getContractCode",
-        params: [address],
+        params,
       })) as string;
       const codeBytes = b64ToArray(result);
       return new TextDecoder().decode(codeBytes);
     },
-    /** Gets the schema (methods and constructor) of a deployed contract. Studio only. */
+    /** Gets the schema (methods and constructor) of a deployed contract. */
     getContractSchema: async (address: Address): Promise<ContractSchema> => {
-      if (!client.chain.isStudio) {
-        throw new Error(`getContractSchema is only available on Studio networks (current chain: ${client.chain.name})`);
+      if (client.chain.isStudio) {
+        const schema = (await client.request({
+          method: "gen_getContractSchema",
+          params: [address],
+        })) as string;
+        return schema as unknown as ContractSchema;
       }
+      // Non-Studio nodes expose `gen_getContractSchema({code})` rather than a per-address lookup,
+      // so fetch the code first and ask for its schema.
+      const codeB64 = (await client.request({
+        method: "gen_getContractCode",
+        params: [{address}],
+      })) as string;
       const schema = (await client.request({
         method: "gen_getContractSchema",
-        params: [address],
-      })) as string;
-      return schema as unknown as ContractSchema;
+        params: [{code: codeB64}],
+      })) as unknown as ContractSchema;
+      return schema;
     },
-    /** Generates a schema for contract code without deploying it. Studio only. */
+    /** Generates a schema for contract code without deploying it. */
     getContractSchemaForCode: async (contractCode: string | Uint8Array): Promise<ContractSchema> => {
-      if (!client.chain.isStudio) {
-        throw new Error(`getContractSchemaForCode is only available on Studio networks (current chain: ${client.chain.name})`);
+      if (client.chain.isStudio) {
+        const schema = (await client.request({
+          method: "gen_getContractSchemaForCode",
+          params: [toHex(contractCode)],
+        })) as string;
+        return schema as unknown as ContractSchema;
       }
+      // Non-Studio nodes expose the same semantic as `gen_getContractSchema({code: <base64>})`.
+      const bytes = typeof contractCode === "string" ? new TextEncoder().encode(contractCode) : contractCode;
+      const codeB64 = arrayToB64(bytes);
       const schema = (await client.request({
-        method: "gen_getContractSchemaForCode",
-        params: [toHex(contractCode)],
-      })) as string;
-      return schema as unknown as ContractSchema;
+        method: "gen_getContractSchema",
+        params: [{code: codeB64}],
+      })) as unknown as ContractSchema;
+      return schema;
     },
     /** Executes a read-only contract call without modifying state. */
     readContract: async <RawReturn extends boolean | undefined>(args: {

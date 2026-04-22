@@ -8,6 +8,14 @@ export function b64ToArray(b64: string): Uint8Array {
   return Uint8Array.from(atob(b64 as string), (c) => c.charCodeAt(0));
 }
 
+export function arrayToB64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
 export function calldataToUserFriendlyJson(cd: Uint8Array): any {
   return {
     raw: Array.from(cd),
