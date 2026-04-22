@@ -17,6 +17,7 @@
     "test:smoke": "vitest run --config vitest.smoke.config.ts",
     "test:watch": "vitest --watch",
     "lint": "eslint . --fix --ext .ts",
+    "check:chains": "node scripts/check-chains-drift.mjs",
     "release": "release-it --ci",
     "docs": "node scripts/generate-api-docs.mjs"
   },
