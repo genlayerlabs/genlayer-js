@@ -1,5 +1,12 @@
 
 
+## 1.1.1 (2026-04-22)
+
+
+### Bug Fixes
+
+* **contracts:** default _validUntil to now + 1h instead of 0 ([#157](https://github.com/genlayerlabs/genlayer-js/issues/157)) ([530513f](https://github.com/genlayerlabs/genlayer-js/commit/530513fcac2427f508a8d2a1b0f90b406d9ee54d))
+
 ## 1.1.0 (2026-04-22)
 
 
