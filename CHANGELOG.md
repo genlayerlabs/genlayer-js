@@ -1,5 +1,12 @@
 
 
+## 0.28.6 (2026-04-22)
+
+
+### Bug Fixes
+
+* **chains:** refresh testnetAsimov + testnetBradbury from genlayer-networks ([#152](https://github.com/genlayerlabs/genlayer-js/issues/152)) ([2f93ced](https://github.com/genlayerlabs/genlayer-js/commit/2f93ced17c33b2025d292696be6327425fcca79c))
+
 ## 0.28.5 (2026-04-14)
 
 
