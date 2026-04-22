@@ -1,5 +1,17 @@
 
 
+## 1.0.0 (2026-04-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **staking:** both methods now require a `validator` address
+(the ValidatorWallet, i.e. what validatorJoin() returned).
+
+### Bug Fixes
+
+* **staking:** route validatorDeposit/Exit via ValidatorWallet ([#155](https://github.com/genlayerlabs/genlayer-js/issues/155)) ([5d5749f](https://github.com/genlayerlabs/genlayer-js/commit/5d5749f64877110ba741da65e527a02635c634e6))
+
 ## 0.28.7 (2026-04-22)
 
 ## 0.28.6 (2026-04-22)
