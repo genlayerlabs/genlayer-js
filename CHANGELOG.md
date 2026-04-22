@@ -1,5 +1,12 @@
 
 
+## 1.1.0 (2026-04-22)
+
+
+### Features
+
+* **contracts:** support getContractCode/Schema on non-Studio chains ([#156](https://github.com/genlayerlabs/genlayer-js/issues/156)) ([410a816](https://github.com/genlayerlabs/genlayer-js/commit/410a81658c4b9b54fe8bf1a73208456c5e632329))
+
 ## 1.0.0 (2026-04-22)
 
 
