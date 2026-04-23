@@ -1,5 +1,12 @@
 
 
+## 1.1.2 (2026-04-23)
+
+
+### Bug Fixes
+
+* **accounts:** default getCurrentNonce to block="pending" ([#158](https://github.com/genlayerlabs/genlayer-js/issues/158)) ([b454681](https://github.com/genlayerlabs/genlayer-js/commit/b4546819b4c560d4e70dafcc1b57dae8959dacfc))
+
 ## 1.1.1 (2026-04-22)
 
 
