@@ -11,3 +11,4 @@ export * as chains from "./chains";
 export * as abi from "./abi";
 export {parseStakingAmount, formatStakingAmount} from "./staking";
 export {buildGenVmPositionalArgs} from "./contracts/schema";
+// fees feature marker (placeholder for v2-dev fees work)
