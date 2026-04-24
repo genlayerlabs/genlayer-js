@@ -1,0 +1,222 @@
+# Reference caller workflow for any component repo (genlayer-node,
+# -consensus, -js, -py, -cli, -explorer, -testing-suite). Copy to
+# .github/workflows/e2e.yml in the target repo.
+#
+# Triggers:
+#   1. /run-e2e comment by a member/collaborator → runs against stable
+#      track by default, optional track selection via `/run-e2e <track>`
+#      or `/run-e2e <profile> <track>`.
+#   2. PR opened / synchronized / reopened / ready_for_review — AUTO-GATE.
+#      Runs E2E as a required check. Track defaults to `main`.
+#   3. PR approved — auto-runs E2E (dedup if a prior run covered the SHA).
+#
+# Track = which branch of ci-core-e2e-runner to run against. `main` is the
+# stable track; `v0.6-dev` etc. are in-flight tracks. Each track ships
+# its own matrix/ file, tests, and resolver.
+
+name: E2E Tests
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+  checks: write
+  pull-requests: write
+
+# Per-PR group so pushes cancel in-flight E2E on the same PR.
+concurrency:
+  group: e2e-${{ github.repository }}-pr-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID || 'devops-infra-428314' }}
+  GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER || 'projects/795309574007/locations/global/workloadIdentityPools/ci-core-e2e-runner/providers/ci-core-e2e-runner' }}
+  GCP_SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT || 'ci-core-e2e-runner@devops-workload-identities.iam.gserviceaccount.com' }}
+  GCP_SECRET_APP_ID: ${{ vars.GCP_SECRET_APP_ID || 'ci-core-e2e-runner-app-id' }}
+  GCP_SECRET_APP_PRIVATE_KEY: ${{ vars.GCP_SECRET_APP_PRIVATE_KEY || 'ci-core-e2e-runner-app-private-key' }}
+
+jobs:
+  # ===========================================================================
+  # Job 0: Parse trigger event → compute PR context, runner-ref, matrix-file
+  # Gates on author association (members/collaborators/owners only), draft
+  # status (skip drafts), and fork status (skip external PRs — they can't
+  # safely access secrets on pull_request; the commenter path re-gates).
+  # ===========================================================================
+  parse:
+    if: |
+      (github.event_name == 'issue_comment'
+         && github.event.issue.pull_request
+         && startsWith(github.event.comment.body, '/run-e2e')
+         && contains(fromJSON('["MEMBER","OWNER","COLLABORATOR"]'), github.event.comment.author_association))
+      ||
+      (github.event_name == 'pull_request'
+         && !github.event.pull_request.draft
+         && github.event.pull_request.head.repo.full_name == github.repository
+         && contains(fromJSON('["MEMBER","OWNER","COLLABORATOR"]'), github.event.pull_request.author_association))
+      ||
+      (github.event_name == 'pull_request_review'
+         && github.event.review.state == 'approved'
+         && github.event.pull_request.head.repo.full_name == github.repository
+         && contains(fromJSON('["MEMBER","OWNER","COLLABORATOR"]'), github.event.review.author_association))
+    runs-on: ubuntu-latest
+    outputs:
+      pr-number: ${{ steps.parse.outputs.pr_number }}
+      comment-id: ${{ steps.parse.outputs.comment_id }}
+      profile: ${{ steps.parse.outputs.profile }}
+      runner-ref: ${{ steps.parse.outputs.runner_ref }}
+      matrix-file: ${{ steps.parse.outputs.matrix_file }}
+    steps:
+      - name: Parse trigger
+        id: parse
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          case "${EVENT_NAME}" in
+            issue_comment)
+              pr_number='${{ github.event.issue.number }}'
+              comment_id='${{ github.event.comment.id }}'
+              # /run-e2e [<profile>] [<track>]
+              # - token 1 = /run-e2e
+              # - token 2 (if present, not starting with 'v') = profile
+              # - any token starting with 'v' OR containing '-dev' = track
+              # Default: profile=default, track=main.
+              args=$(echo "${COMMENT_BODY}" | head -1)
+              profile="default"
+              track="main"
+              for tok in ${args}; do
+                [[ "${tok}" == "/run-e2e" ]] && continue
+                if [[ "${tok}" =~ ^(v[0-9]|main$|.*-dev$) ]]; then
+                  track="${tok}"
+                else
+                  profile="${tok}"
+                fi
+              done
+              ;;
+            pull_request|pull_request_review)
+              pr_number='${{ github.event.pull_request.number }}'
+              comment_id=''
+              profile='default'
+              track='main'
+              ;;
+          esac
+
+          # Matrix file convention: matrix/<track>.yaml — with the
+          # historical exception that `main` track reads the v0.5
+          # stable matrix until v0.6 becomes stable.
+          case "${track}" in
+            main) matrix_file='matrix/v0.5.yaml' ;;
+            *)    matrix_file="matrix/${track}.yaml" ;;
+          esac
+
+          echo "pr_number=${pr_number}"     >> "$GITHUB_OUTPUT"
+          echo "comment_id=${comment_id}"   >> "$GITHUB_OUTPUT"
+          echo "profile=${profile}"         >> "$GITHUB_OUTPUT"
+          echo "runner_ref=${track}"        >> "$GITHUB_OUTPUT"
+          echo "matrix_file=${matrix_file}" >> "$GITHUB_OUTPUT"
+
+          echo "Event: ${EVENT_NAME}"
+          echo "PR:    ${pr_number}"
+          echo "Profile: ${profile}"
+          echo "Track (runner-ref): ${track}"
+          echo "Matrix file: ${matrix_file}"
+
+  # ===========================================================================
+  # Job 1: Generate feedback (eyes reaction, check run), resolve versions
+  # ===========================================================================
+  resolve:
+    needs: parse
+    runs-on: ubuntu-latest
+    outputs:
+      profile: ${{ steps.resolve.outputs.profile }}
+      pr-number: ${{ steps.resolve.outputs.pr-number }}
+      comment-id: ${{ steps.resolve.outputs.comment-id }}
+      repo: ${{ steps.resolve.outputs.repo }}
+      genvm-version: ${{ steps.resolve.outputs.genvm-version }}
+      genlayer-node-ref: ${{ steps.resolve.outputs.genlayer-node-ref }}
+      consensus-ref: ${{ steps.resolve.outputs.consensus-ref }}
+      genlayer-js-ref: ${{ steps.resolve.outputs.genlayer-js-ref }}
+      genlayer-py-ref: ${{ steps.resolve.outputs.genlayer-py-ref }}
+      genlayer-cli-ref: ${{ steps.resolve.outputs.genlayer-cli-ref }}
+      genlayer-explorer-ref: ${{ steps.resolve.outputs.genlayer-explorer-ref }}
+      genlayer-testing-suite-ref: ${{ steps.resolve.outputs.genlayer-testing-suite-ref }}
+      tag-filter: ${{ steps.resolve.outputs.tag-filter }}
+      impacted-components: ${{ steps.resolve.outputs.impacted-components }}
+      check-run-id: ${{ steps.check-run.outputs.check_run_id }}
+      head-sha: ${{ steps.check-run.outputs.head_sha }}
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: genlayerlabs/ci-core-e2e-runner/.github/actions/gcp-app-token@main
+
+      - name: React with eyes on trigger comment
+        if: needs.parse.outputs.comment-id != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh api --method POST \
+            "/repos/${{ github.repository }}/issues/comments/${{ needs.parse.outputs.comment-id }}/reactions" \
+            -f content='eyes'
+
+      - name: Create check run
+        id: check-run
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          head_sha=$(gh api "/repos/${{ github.repository }}/pulls/${{ needs.parse.outputs.pr-number }}" --jq '.head.sha')
+          echo "head_sha=${head_sha}" >> "$GITHUB_OUTPUT"
+
+          check_run_id=$(gh api --method POST \
+            "/repos/${{ github.repository }}/check-runs" \
+            -f name='E2E Tests' \
+            -f head_sha="${head_sha}" \
+            -f status='in_progress' \
+            -f "details_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --jq '.id')
+          echo "check_run_id=${check_run_id}" >> "$GITHUB_OUTPUT"
+
+      # Resolver action is pinned to @main — it must stay compatible across
+      # all tracks. Track-specific divergence (matrix schema, new components)
+      # lands on main first, then branches pick up.
+      - uses: genlayerlabs/ci-core-e2e-runner/actions/e2e-resolve@main
+        id: resolve
+        with:
+          cross-repo-token: ${{ steps.app-token.outputs.token }}
+          profile: ${{ needs.parse.outputs.profile }}
+          pr-number: ${{ needs.parse.outputs.pr-number }}
+          comment-id: ${{ needs.parse.outputs.comment-id }}
+          matrix-file: ${{ needs.parse.outputs.matrix-file }}
+          matrix-ref: ${{ needs.parse.outputs.runner-ref }}
+
+  # ===========================================================================
+  # Job 2: Run E2E tests on self-hosted runner (reusable workflow)
+  # Workflow invocation uses the track ref — tests, taskfile, shard-run.yml
+  # logic all come from that branch.
+  # ===========================================================================
+  e2e:
+    needs: [parse, resolve]
+    uses: genlayerlabs/ci-core-e2e-runner/.github/workflows/e2e-run.yml@${{ needs.parse.outputs.runner-ref }}
+    with:
+      genvm-version: ${{ needs.resolve.outputs.genvm-version }}
+      genlayer-node-ref: ${{ needs.resolve.outputs.genlayer-node-ref }}
+      consensus-ref: ${{ needs.resolve.outputs.consensus-ref }}
+      genlayer-js-ref: ${{ needs.resolve.outputs.genlayer-js-ref }}
+      genlayer-py-ref: ${{ needs.resolve.outputs.genlayer-py-ref }}
+      genlayer-cli-ref: ${{ needs.resolve.outputs.genlayer-cli-ref }}
+      genlayer-explorer-ref: ${{ needs.resolve.outputs.genlayer-explorer-ref }}
+      genlayer-testing-suite-ref: ${{ needs.resolve.outputs.genlayer-testing-suite-ref }}
+      tag-filter: ${{ needs.resolve.outputs.tag-filter }}
+      profile: ${{ needs.resolve.outputs.profile }}
+      pr-number: ${{ needs.resolve.outputs.pr-number }}
+      comment-id: ${{ needs.resolve.outputs.comment-id }}
+      target-repo: ${{ needs.resolve.outputs.repo }}
+      check-run-id: ${{ needs.resolve.outputs.check-run-id }}
+      head-sha: ${{ needs.resolve.outputs.head-sha }}
