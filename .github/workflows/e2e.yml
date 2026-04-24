@@ -231,7 +231,7 @@ jobs:
     # The ref must be a static literal. Track-aware resolver + matrix
     # still flow through inputs; only the orchestration workflow itself
     # (shard allocation, provisioning) is pinned by this line.
-    uses: genlayerlabs/ci-core-e2e-runner/.github/workflows/e2e-run.yml@feat/version-matrix-phase1
+    uses: genlayerlabs/ci-core-e2e-runner/.github/workflows/e2e-run.yml@3e9b56292f1ac036218227186205614d64690a83
     with:
       genvm-version: ${{ needs.resolve.outputs.genvm-version }}
       genlayer-node-ref: ${{ needs.resolve.outputs.genlayer-node-ref }}
