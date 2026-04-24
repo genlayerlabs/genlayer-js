@@ -222,7 +222,16 @@ jobs:
   # ===========================================================================
   e2e:
     needs: [parse, resolve]
-    uses: genlayerlabs/ci-core-e2e-runner/.github/workflows/e2e-run.yml@${{ needs.parse.outputs.runner-ref }}
+    # Reusable-workflow `uses:` refs can't reference `needs` context —
+    # GitHub resolves this ref at workflow-load time, before the parse
+    # job runs. Pin at @main and let track-specific behavior flow
+    # through inputs (tag-filter, matrix-file, tooling-refs already
+    # computed by the resolve job from the track's matrix).
+    #
+    # The resolver and matrix file DO come from the parsed track ref
+    # (via the local checkout in the resolve job). Only the orchestration
+    # workflow itself (shard allocation, provisioning) runs from main.
+    uses: genlayerlabs/ci-core-e2e-runner/.github/workflows/e2e-run.yml@main
     with:
       genvm-version: ${{ needs.resolve.outputs.genvm-version }}
       genlayer-node-ref: ${{ needs.resolve.outputs.genlayer-node-ref }}
