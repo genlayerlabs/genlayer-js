@@ -79,36 +79,76 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           COMMENT_BODY: ${{ github.event.comment.body }}
+          GH_TOKEN: ${{ github.token }}
+          # Allowlist of valid track names. Mirrors the convention
+          # documented in ci-core-e2e-runner README.md (Participation
+          # section). Reject anything else — the resolved track ends up
+          # as both the matrix-fetch ref and the runner-checkout ref, so
+          # arbitrary input would let a comment author point at any
+          # branch/SHA on the runner repo.
+          TRACK_PATTERN: '^(main|v[0-9]+(\.[0-9]+)?(-dev)?)$'
         run: |
+          set -euo pipefail
+
+          # ----- 1. Identify the PR + base ref + comment override (if any) -----
+          override_track=""
           case "${EVENT_NAME}" in
             issue_comment)
               pr_number='${{ github.event.issue.number }}'
               comment_id='${{ github.event.comment.id }}'
               # /run-e2e [<profile>] [<track>]
-              # - token 1 = /run-e2e
-              # - token 2 (if present, not starting with 'v') = profile
-              # - any token starting with 'v' OR containing '-dev' = track
-              # Default: profile=default, track=main.
+              # token 1 = /run-e2e; tokens after = profile and/or track.
+              # A token starting with 'v' or ending in '-dev' is the track,
+              # else it's the profile name. Either may be omitted.
               args=$(echo "${COMMENT_BODY}" | head -1)
               profile="default"
-              track="main"
               for tok in ${args}; do
                 [[ "${tok}" == "/run-e2e" ]] && continue
                 if [[ "${tok}" =~ ^(v[0-9]|main$|.*-dev$) ]]; then
-                  track="${tok}"
+                  override_track="${tok}"
                 else
                   profile="${tok}"
                 fi
               done
+              # Need to fetch the PR to learn its base ref for the file lookup.
+              base_ref=$(gh api "/repos/${{ github.repository }}/pulls/${pr_number}" --jq '.base.ref')
               ;;
             pull_request|pull_request_review)
               pr_number='${{ github.event.pull_request.number }}'
               comment_id=''
               profile='default'
-              track='main'
+              base_ref='${{ github.event.pull_request.base.ref }}'
               ;;
           esac
 
+          # ----- 2. Resolve track: comment override > .github/e2e-track > main -----
+          # The base branch's `.github/e2e-track` file is the source of
+          # truth for which version-matrix track this branch's PRs run
+          # against. Each long-lived branch (v1, v2-dev, etc.) declares
+          # its target in this file. See the runner repo's README,
+          # "Participation" section, for the lifecycle.
+          if [[ -n "${override_track}" ]]; then
+            track="${override_track}"
+            track_source="comment override"
+          else
+            track=$(gh api "/repos/${{ github.repository }}/contents/.github/e2e-track?ref=${base_ref}" \
+              --jq '.content' 2>/dev/null | base64 -d | tr -d '[:space:]' || echo "")
+            if [[ -n "${track}" ]]; then
+              track_source=".github/e2e-track on ${base_ref}"
+            else
+              track="main"
+              track_source="fallback (no .github/e2e-track on ${base_ref})"
+              echo "::warning::No .github/e2e-track on ${base_ref}. Falling back to main track. Add the file to make this branch's track explicit — see ci-core-e2e-runner README."
+            fi
+          fi
+
+          # ----- 3. Validate track against allowlist -----
+          if ! [[ "${track}" =~ ${TRACK_PATTERN} ]]; then
+            echo "::error::Invalid track '${track}' (source: ${track_source}). Must match ${TRACK_PATTERN}."
+            exit 1
+          fi
+
+          # ----- 4. Map track → matrix file -----
           # Matrix file convention: matrix/<track>.yaml — with the
           # historical exception that `main` track reads the v0.5
           # stable matrix until v0.6 becomes stable.
@@ -117,17 +157,21 @@ jobs:
             *)    matrix_file="matrix/${track}.yaml" ;;
           esac
 
-          echo "pr_number=${pr_number}"     >> "$GITHUB_OUTPUT"
-          echo "comment_id=${comment_id}"   >> "$GITHUB_OUTPUT"
-          echo "profile=${profile}"         >> "$GITHUB_OUTPUT"
-          echo "runner_ref=${track}"        >> "$GITHUB_OUTPUT"
-          echo "matrix_file=${matrix_file}" >> "$GITHUB_OUTPUT"
+          # ----- 5. Emit outputs + summary -----
+          {
+            echo "pr_number=${pr_number}"
+            echo "comment_id=${comment_id}"
+            echo "profile=${profile}"
+            echo "runner_ref=${track}"
+            echo "matrix_file=${matrix_file}"
+          } >> "$GITHUB_OUTPUT"
 
-          echo "Event: ${EVENT_NAME}"
-          echo "PR:    ${pr_number}"
-          echo "Profile: ${profile}"
-          echo "Track (runner-ref): ${track}"
-          echo "Matrix file: ${matrix_file}"
+          echo "Event:        ${EVENT_NAME}"
+          echo "PR:           ${pr_number}"
+          echo "Base ref:     ${base_ref}"
+          echo "Profile:      ${profile}"
+          echo "Track:        ${track}  (source: ${track_source})"
+          echo "Matrix file:  ${matrix_file}"
 
   # ===========================================================================
   # Job 1: Generate feedback (eyes reaction, check run), resolve versions
@@ -217,20 +261,18 @@ jobs:
 
   # ===========================================================================
   # Job 2: Run E2E tests on self-hosted runner (reusable workflow)
-  # Workflow invocation uses the track ref — tests, taskfile, shard-run.yml
-  # logic all come from that branch.
+  # Workflow invocation pinned to @main because GitHub Actions does not
+  # allow expressions (not `needs`, `inputs`, or `vars`) in
+  # `jobs.<job_id>.uses`. See:
+  #   https://docs.github.com/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_iduses
+  #
+  # Track-aware behaviour still flows through: the resolver + matrix
+  # are loaded from the track ref via gh api, and the tests/taskfile
+  # that shard-run.yml invokes come from the track branch (shard-run
+  # clones the runner repo at the caller's configured ref).
   # ===========================================================================
   e2e:
     needs: [parse, resolve]
-    # TEMPORARY: pointing at the feature branch so we can verify the full
-    # pipeline end-to-end before merging ci-core-e2e-runner#170. Revert
-    # to @main immediately after that merge.
-    #
-    # Reusable-workflow `uses:` refs don't accept any contexts (not
-    # `needs`, `vars`, or `inputs`) — see GitHub workflow-syntax docs.
-    # The ref must be a static literal. Track-aware resolver + matrix
-    # still flow through inputs; only the orchestration workflow itself
-    # (shard allocation, provisioning) is pinned by this line.
     uses: genlayerlabs/ci-core-e2e-runner/.github/workflows/e2e-run.yml@feat/version-matrix-phase1
     with:
       genvm-version: ${{ needs.resolve.outputs.genvm-version }}
