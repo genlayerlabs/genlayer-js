@@ -85,6 +85,12 @@ export const decodeTransaction = (tx: GenLayerRawTransaction): GenLayerTransacti
     txData: txData,
     txDataDecoded: txDataDecoded,
 
+    // Same identifier exposed under both names; the on-chain Solidity struct
+    // uses `txId`, the legacy localnet RPC used `hash`. Populate both so
+    // consumers can rely on either.
+    hash: tx.txId,
+    txId: tx.txId,
+
     currentTimestamp: tx.currentTimestamp.toString(),
     numOfInitialValidators: numOfInitialValidators?.toString() ?? "0",
     txSlot: tx.txSlot.toString(),
@@ -241,6 +247,11 @@ export const simplifyTransactionReceipt = (tx: GenLayerTransaction): GenLayerTra
 };
 
 export const decodeLocalnetTransaction = (tx: GenLayerTransaction): GenLayerTransaction => {
+  // Mirror the testnet decoder: expose the identifier under both `hash`
+  // (legacy localnet name) and `txId` (on-chain Solidity name).
+  if (tx.hash && !tx.txId) tx.txId = tx.hash;
+  else if (tx.txId && !tx.hash) tx.hash = tx.txId;
+
   if (!tx.data) return tx;
   try {
     const leaderReceipt = tx.consensus_data?.leader_receipt;

@@ -255,7 +255,9 @@ export type GenLayerTransaction = {
   status?: TransactionStatus | number;
   statusName?: TransactionStatus;
 
-  // hash: localnet // txId: testnet// hash: localnet // txId: testnet
+  // The same identifier is exposed under both names: `txId` matches the
+  // on-chain Solidity struct field; `hash` is kept for back-compat with the
+  // legacy localnet RPC. Decoders populate both, so consumers can use either.
   hash?: TransactionHash;
   txId?: TransactionHash;
 
