@@ -322,6 +322,12 @@ describe("decodeTransaction", () => {
     const names = (decoded.lastRound as any)?.validatorVotesName;
     expect(names).toEqual(["AGREE", "AGREE", "AGREE"]);
   });
+
+  it("should expose the identifier under both `txId` and `hash`", () => {
+    const decoded = decodeTransaction(makeRawTx());
+    expect(decoded.txId).toBe("0x" + "ff".repeat(32));
+    expect(decoded.hash).toBe(decoded.txId);
+  });
 });
 
 describe("simplifyTransactionReceipt", () => {
