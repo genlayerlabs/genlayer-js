@@ -13,7 +13,7 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    environment: Publish
+    environment: npm
     steps:
       - name: Get CI Bot Token
         uses: actions/create-github-app-token@v3
