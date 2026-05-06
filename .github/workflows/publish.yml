@@ -1,5 +1,6 @@
 name: Release & Publish Package to NPM
 
+# Triggered on push to main or manual dispatch.
 on:
   workflow_dispatch:
   push:
