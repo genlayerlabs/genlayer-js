@@ -1,5 +1,12 @@
 
 
+## 1.1.8 (2026-05-06)
+
+
+### Bug Fixes
+
+* **ci:** add trigger comment to publish workflow ([#170](https://github.com/genlayerlabs/genlayer-js/issues/170)) ([a76bec3](https://github.com/genlayerlabs/genlayer-js/commit/a76bec395aaa927720ee0ce364899a64044dd43e)), closes [#168](https://github.com/genlayerlabs/genlayer-js/issues/168)
+
 ## 1.1.7 (2026-04-25)
 
 ## 1.1.6 (2026-04-24)
