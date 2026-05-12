@@ -20,7 +20,7 @@ Before installing GenLayerJS SDK, ensure you have the following prerequisites in
 
 To install the GenLayerJS SDK, use the following command:
 ```bash
-$ npm install genlayer-js
+npm install genlayer-js
 ```
 Here’s how to initialize the client and connect to the GenLayer Simulator:
 
@@ -87,7 +87,7 @@ import { localnet } from 'genlayer-js/chains';
 import { createClient, createAccount } from "genlayer-js";
 
 const client = createClient({
-  network: localnet,
+  chain: localnet,
 });
 
 const account = createAccount();
