@@ -1,37 +1,28 @@
-name: Release & Publish Package to NPM
+name: Publish Package to NPM
 
-# Triggered on push to main or manual dispatch.
+# Tag-driven publish. The release is cut by a human (or Claude via the
+# release skill) running scripts/release.sh on the target stable branch
+# — that script bumps package.json, writes the CHANGELOG, commits, tags
+# vX.Y.Z, and pushes both the branch commit and the tag. This workflow
+# fires on the tag push, builds, sanity-checks the tag matches
+# package.json, and publishes to npm. It never bumps or tags by itself.
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    tags:
+      - "v*"
 
 permissions:
   contents: write
   id-token: write
 
 jobs:
-  release:
+  publish:
     runs-on: ubuntu-latest
     environment: Publish
     steps:
-      - name: Get CI Bot Token
-        uses: actions/create-github-app-token@v3
-        id: ci_bot_token
-        with:
-          client-id: ${{ vars.PUBLISH_CI_APP_CLIENT_ID }}
-          private-key: ${{ secrets.PUBLISH_CI_APP_KEY }}
-
-      - name: Checkout source code
+      - name: Checkout tag
         uses: actions/checkout@v4
-        with:
-          token: ${{ steps.ci_bot_token.outputs.token }}
-
-      - name: Initialize Git User
-        run: |
-          git config --global user.email "github-actions[bot]@genlayer.com"
-          git config --global user.name "github-actions[bot]"
 
       - uses: actions/setup-node@v4
         with:
@@ -40,7 +31,38 @@ jobs:
 
       - run: npm ci
 
-      - name: Release
-        run: npm run release
+      - name: Verify tag matches package.json version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "Tag ($TAG_VERSION) and package.json ($PKG_VERSION) disagree — refusing to publish." >&2
+            echo "Re-cut the release via scripts/release.sh so the tag and the committed version match." >&2
+            exit 1
+          fi
+          echo "Tag $GITHUB_REF_NAME matches package.json $PKG_VERSION."
+
+      - run: npm run build
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
         env:
-          GITHUB_TOKEN: ${{ steps.ci_bot_token.outputs.token }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Pull the changelog block for this version out of CHANGELOG.md.
+          # Falls back to a generic body if the section isn't found.
+          NOTES="$(awk -v ver="$GITHUB_REF_NAME" '
+            $0 ~ "^## \\[?" substr(ver, 2) {capture=1; next}
+            capture && /^## / {exit}
+            capture {print}
+          ' CHANGELOG.md)"
+          if [ -z "$NOTES" ]; then
+            NOTES="Release $GITHUB_REF_NAME"
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes "$NOTES"
