@@ -18,7 +18,7 @@
     "test:watch": "vitest --watch",
     "lint": "eslint . --fix --ext .ts",
     "check:chains": "node scripts/check-chains-drift.mjs",
-    "release": "release-it --ci",
+    "release": "./scripts/release.sh",
     "docs": "node scripts/generate-api-docs.mjs"
   },
   "exports": {
