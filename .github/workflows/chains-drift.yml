@@ -3,10 +3,10 @@ name: Chains Drift Check
 on:
   pull_request:
     branches:
-      - main
+      - v1
   push:
     branches:
-      - main
+      - v1
   schedule:
     # Daily at 07:00 UTC. Catches upstream contract deployments even when no
     # PRs are open against the SDK.
