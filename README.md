@@ -107,6 +107,161 @@ const receipt = await client.waitForTransactionReceipt({
 
 ```
 
+### Fee presets for transactions
+
+Apps can build a trusted fee preset once they know the transaction shape, then
+submit the same preset with the transaction. The user may still override these
+values in wallet or app UI before signing.
+
+```typescript
+const estimate = await client.estimateTransactionFees({
+  leaderTimeunitsAllocation: 100n,
+  validatorTimeunitsAllocation: 200n,
+  rotations: [0n],
+});
+
+const txHash = await client.writeContract({
+  account,
+  address: contractAddress,
+  functionName: "update_storage",
+  args: ["new_storage"],
+  fees: {
+    distribution: estimate.distribution,
+    feeValue: estimate.feeValue,
+  },
+});
+```
+
+If `fees.distribution` is provided without `feeValue`, the SDK derives the fee
+deposit from FeeManager on network backends, or from `sim_getFeeConfig` on
+Studio. Use `messageAllocations` with `estimateTransactionFees` for transactions
+that can emit funded messages.
+
+Use the SDK call-key helpers when targeting a specific emitted message. Internal
+messages are keyed by the GenVM method name; external EVM messages are keyed by
+the first 4 bytes of the calldata selector.
+
+```typescript
+import {
+  MessageType,
+  deriveExternalMessageCallKey,
+  deriveInternalMessageCallKey,
+  encodeExternalMessageFeeParams,
+  encodeInternalMessageFeeParams,
+} from "genlayer-js";
+
+const estimate = await client.estimateTransactionFees({
+  messageAllocations: [
+    {
+      messageType: MessageType.Internal,
+      recipient: childContractAddress,
+      callKey: deriveInternalMessageCallKey("settle_campaign"),
+      budget: 700_000n,
+      feeParams: encodeInternalMessageFeeParams({
+        leaderTimeunitsAllocation: 100n,
+        validatorTimeunitsAllocation: 200n,
+      }),
+    },
+    {
+      messageType: MessageType.External,
+      recipient: tokenAddress,
+      callKey: deriveExternalMessageCallKey("0xa9059cbb"),
+      budget: 210_000n,
+      feeParams: encodeExternalMessageFeeParams({
+        gasLimit: 21_000n,
+        maxGasPrice: 10n,
+      }),
+    },
+  ],
+});
+```
+
+You can also pass the same preset to Studio/localnet simulation. On Studio,
+`includeReceipt` uses `sim_call` so the returned object includes the GenVM
+receipt and fee accounting report:
+
+```typescript
+const recommended = await client.estimateTransactionFeesForWrite({
+  account,
+  address: contractAddress,
+  functionName: "update_storage",
+  args: ["new_storage"],
+});
+
+await client.writeContract({
+  account,
+  address: contractAddress,
+  functionName: "update_storage",
+  args: ["new_storage"],
+  fees: {
+    distribution: recommended.distribution,
+    messageAllocations: recommended.messageAllocations,
+    feeValue: recommended.feeValue,
+  },
+});
+```
+
+For tests or tools that need to inspect the raw simulation, use the explicit
+two-step flow:
+
+```typescript
+const simulation = await client.simulateWriteContract({
+  account,
+  address: contractAddress,
+  functionName: "update_storage",
+  args: ["new_storage"],
+  fees: {
+    distribution: estimate.distribution,
+    feeValue: estimate.feeValue,
+  },
+  includeReceipt: true,
+});
+
+console.log(simulation.feeAccounting);
+
+const recommended = await client.estimateTransactionFeesFromSimulation({
+  simulation,
+});
+
+await client.writeContract({
+  account,
+  address: contractAddress,
+  functionName: "update_storage",
+  args: ["new_storage"],
+  fees: {
+    distribution: recommended.distribution,
+    messageAllocations: recommended.messageAllocations,
+    feeValue: recommended.feeValue,
+  },
+});
+```
+
+For transactions that are already submitted, use the fee-management helpers:
+
+```typescript
+await client.topUpFees({
+  txId,
+  value: 1_100n,
+  distribution: {
+    leaderTimeunitsAllocation: 100n,
+    validatorTimeunitsAllocation: 200n,
+    rotations: [0n],
+  },
+});
+
+await client.topUpAndSubmitAppeal({
+  txId,
+  value: 1_400n,
+  distribution: {
+    appealRounds: 1n,
+    rotations: [0n, 0n],
+  },
+});
+```
+
+`topUpFees` returns the backend RPC hash. On network backends this is the EVM
+transaction hash; on Studio/localnet it is the target GenLayer transaction id.
+
 ### Checking execution results
 
 A transaction can be finalized by consensus but still have a failed execution. Always check `txExecutionResult` before reading contract state:

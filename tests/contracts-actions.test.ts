@@ -1,6 +1,15 @@
 import {describe, it, expect, vi} from "vitest";
-import {encodeFunctionData, keccak256, toHex} from "viem";
+import {decodeAbiParameters, decodeFunctionData, encodeFunctionData, keccak256, toHex} from "viem";
 import {contractActions} from "../src/contracts/actions";
+import {
+  CALL_KEY_DEPLOY,
+  CALL_KEY_WILDCARD,
+  deriveExternalMessageCallKey,
+  deriveInternalMessageCallKey,
+  encodeExternalMessageFeeParams,
+  encodeInternalMessageFeeParams,
+  MessageType,
+} from "../src/transactions/fees";
 
 const MAIN_CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000001";
 const SENDER_ADDRESS = "0x0000000000000000000000000000000000000002";
@@ -81,6 +90,81 @@ const ADD_TRANSACTION_ABI_V6 = [
   },
 ] as const;
 
+const FEES_DISTRIBUTION_COMPONENTS = [
+  {name: "leaderTimeunitsAllocation", type: "uint256"},
+  {name: "validatorTimeunitsAllocation", type: "uint256"},
+  {name: "appealRounds", type: "uint256"},
+  {name: "executionBudgetPerRound", type: "uint256"},
+  {name: "executionConsumed", type: "uint256"},
+  {name: "totalMessageFees", type: "uint256"},
+  {name: "rotations", type: "uint256[]"},
+  {name: "maxPriceGenPerTimeUnit", type: "uint256"},
+  {name: "storageFeeMaxGasPrice", type: "uint256"},
+  {name: "receiptFeeMaxGasPrice", type: "uint256"},
+] as const;
+
+const MESSAGE_FEE_ALLOCATION_COMPONENTS = [
+  {name: "messageType", type: "uint8"},
+  {name: "onAcceptance", type: "bool"},
+  {name: "parentIndex", type: "uint256"},
+  {name: "recipient", type: "address"},
+  {name: "callKey", type: "bytes32"},
+  {name: "budget", type: "uint256"},
+  {name: "feeParams", type: "bytes"},
+] as const;
+
+const INTERNAL_MESSAGE_FEE_PARAMS_ABI = [
+  {
+    name: "params",
+    type: "tuple",
+    components: [
+      {name: "leaderTimeunitsAllocation", type: "uint256"},
+      {name: "validatorTimeunitsAllocation", type: "uint256"},
+      {name: "appealRounds", type: "uint256"},
+      {name: "executionBudgetPerRound", type: "uint256"},
+      {name: "rotations", type: "uint256[]"},
+    ],
+  },
+] as const;
+
+const EXTERNAL_MESSAGE_FEE_PARAMS_ABI = [
+  {
+    name: "params",
+    type: "tuple",
+    components: [
+      {name: "gasLimit", type: "uint256"},
+      {name: "maxGasPrice", type: "uint256"},
+    ],
+  },
+] as const;
+
+const ADD_TRANSACTION_ABI_WITH_FEES = [
+  {
+    type: "function",
+    name: "addTransaction",
+    stateMutability: "payable",
+    inputs: [
+      {
+        name: "_params",
+        type: "tuple",
+        components: [
+          {name: "sender", type: "address"},
+          {name: "recipient", type: "address"},
+          {name: "numOfInitialValidators", type: "uint256"},
+          {name: "maxRotations", type: "uint256"},
+          {name: "validUntil", type: "uint256"},
+          {name: "saltNonce", type: "uint256"},
+          {name: "userValue", type: "uint256"},
+          {name: "feesDistribution", type: "tuple", components: FEES_DISTRIBUTION_COMPONENTS},
+          {name: "txCalldata", type: "bytes"},
+          {name: "messageAllocations", type: "tuple[]", components: MESSAGE_FEE_ALLOCATION_COMPONENTS},
+        ],
+      },
+    ],
+    outputs: [],
+  },
+] as const;
+
 const selectorForV5 = encodeFunctionData({
   abi: ADD_TRANSACTION_ABI_V5 as any,
   functionName: "addTransaction",
@@ -93,12 +177,48 @@ const selectorForV6 = encodeFunctionData({
   args: [SENDER_ADDRESS, RECIPIENT_ADDRESS, 5, 3, "0x", 0n],
 }).slice(0, 10);
 
+const selectorForFees = encodeFunctionData({
+  abi: ADD_TRANSACTION_ABI_WITH_FEES as any,
+  functionName: "addTransaction",
+  args: [{
+    sender: SENDER_ADDRESS,
+    recipient: RECIPIENT_ADDRESS,
+    numOfInitialValidators: 5n,
+    maxRotations: 3n,
+    validUntil: 1n,
+    saltNonce: 0n,
+    userValue: 0n,
+    feesDistribution: {
+      leaderTimeunitsAllocation: 0n,
+      validatorTimeunitsAllocation: 0n,
+      appealRounds: 0n,
+      executionBudgetPerRound: 0n,
+      executionConsumed: 0n,
+      totalMessageFees: 0n,
+      rotations: [0n],
+      maxPriceGenPerTimeUnit: 0n,
+      storageFeeMaxGasPrice: 0n,
+      receiptFeeMaxGasPrice: 0n,
+    },
+    txCalldata: "0x",
+    messageAllocations: [],
+  }],
+}).slice(0, 10);
+
 const setupWriteContractHarness = ({
   initialAbi,
   signTransactionMock,
+  publicClient = {},
+  feeManagerAddress,
+  isStudio = false,
+  requestMock,
 }: {
   initialAbi: readonly unknown[];
   signTransactionMock?: ReturnType<typeof vi.fn>;
+  publicClient?: Record<string, unknown>;
+  feeManagerAddress?: string;
+  isStudio?: boolean;
+  requestMock?: ReturnType<typeof vi.fn>;
 }) => {
   const estimateTransactionGas = vi.fn().mockResolvedValue(21_000n);
   const signTransaction = signTransactionMock ?? vi.fn().mockRejectedValue(new Error("stop_after_encoding"));
@@ -106,6 +226,7 @@ const setupWriteContractHarness = ({
   const client = {
     chain: {
       id: 61_127,
+      isStudio,
       defaultNumberOfInitialValidators: 5,
       defaultConsensusMaxRotations: 3,
       consensusMainContract: {
@@ -113,6 +234,12 @@ const setupWriteContractHarness = ({
         abi: [...initialAbi],
         bytecode: "0x",
       },
+      feeManagerContract: feeManagerAddress
+        ? {
+          address: feeManagerAddress,
+          abi: [],
+        }
+        : null,
     },
     account: {
       address: SENDER_ADDRESS,
@@ -122,7 +249,7 @@ const setupWriteContractHarness = ({
     initializeConsensusSmartContract: vi.fn().mockResolvedValue(undefined),
     getCurrentNonce: vi.fn().mockResolvedValue(0n),
     estimateTransactionGas,
-    request: vi.fn().mockImplementation(async ({method}: {method: string}) => {
+    request: requestMock ?? vi.fn().mockImplementation(async ({method}: {method: string}) => {
       if (method === "eth_gasPrice") {
         return "0x1";
       }
@@ -130,12 +257,189 @@ const setupWriteContractHarness = ({
     }),
   };
 
-  const actions = contractActions(client as any, {} as any);
+  const actions = contractActions(client as any, publicClient as any);
 
-  return {actions, estimateTransactionGas, client, signTransaction};
+  return {actions, estimateTransactionGas, client, signTransaction, publicClient};
 };
 
 describe("contractActions addTransaction ABI compatibility", () => {
+  it("passes trusted fees and user value through Studio simulateWriteContract sim_call", async () => {
+    const request = vi.fn().mockResolvedValue({
+      result: Buffer.from([0, 0xab, 0xcd]).toString("base64"),
+      execution_result: "SUCCESS",
+      genvm_result: {
+        fee_accounting: {
+          status: "active",
+          primary_fee_budget: "123",
+          execution_fee_report: {
+            receiptGasPrice: "1",
+            proposalReceipt: {
+              eqBlocksOutputsLength: "10",
+              receiptBytes: "1034",
+              estimatedGas: "314544",
+              fee: "314544",
+            },
+            messageReveal: {
+              messageBytes: "320",
+              messageCount: "1",
+              estimatedGas: "187120",
+              fee: "187120",
+              messages: [
+                {
+                  messageType: "Internal",
+                  recipient: RECIPIENT_ADDRESS,
+                  value: "0",
+                  dataBytes: "2",
+                  onAcceptance: true,
+                  saltNonce: "0",
+                  feeParamsBytes: "2",
+                  declaredBudget: "5",
+                  allocationSubtreeBytes: "0",
+                  callKey: `0x${"12".repeat(32)}`,
+                },
+              ],
+            },
+            totalEstimatedFee: "501664",
+          },
+        },
+      },
+    });
+    const actions = contractActions({
+      chain: {
+        id: 61_127,
+        defaultNumberOfInitialValidators: 5,
+        defaultConsensusMaxRotations: 3,
+        isStudio: true,
+      },
+      account: {
+        address: SENDER_ADDRESS,
+      },
+      request,
+    } as any, {} as any);
+
+    const result = await actions.simulateWriteContract({
+      address: RECIPIENT_ADDRESS,
+      functionName: "update_storage",
+      args: ["simulated"],
+      rawReturn: true,
+      includeReceipt: true,
+      value: 12n,
+      fees: {
+        feeValue: 123n,
+        distribution: {
+          leaderTimeunitsAllocation: 100n,
+          validatorTimeunitsAllocation: 200n,
+          totalMessageFees: 5n,
+          rotations: [0n],
+        },
+        messageAllocations: [
+          {
+            messageType: MessageType.Internal,
+            recipient: RECIPIENT_ADDRESS,
+            budget: 5n,
+            feeParams: "0x1234",
+          },
+        ],
+      },
+    });
+
+    expect(request.mock.calls[0][0].method).toBe("sim_call");
+    const params = request.mock.calls[0][0].params[0];
+    expect(result.result).toBe("0xabcd");
+    expect(result.feeAccounting).toEqual({
+      status: "active",
+      primary_fee_budget: "123",
+      execution_fee_report: {
+        receiptGasPrice: "1",
+        proposalReceipt: {
+          eqBlocksOutputsLength: "10",
+          receiptBytes: "1034",
+          estimatedGas: "314544",
+          fee: "314544",
+        },
+        messageReveal: {
+          messageBytes: "320",
+          messageCount: "1",
+          estimatedGas: "187120",
+          fee: "187120",
+          messages: [
+            {
+              messageType: "Internal",
+              recipient: RECIPIENT_ADDRESS,
+              value: "0",
+              dataBytes: "2",
+              onAcceptance: true,
+              saltNonce: "0",
+              feeParamsBytes: "2",
+              declaredBudget: "5",
+              allocationSubtreeBytes: "0",
+              callKey: `0x${"12".repeat(32)}`,
+            },
+          ],
+        },
+        totalEstimatedFee: "501664",
+      },
+    });
+    expect(result.feeReport?.messageReveal?.messages?.[0].declaredBudget).toBe("5");
+    expect(params.value).toBe("0xc");
+    expect(params.fees.feeValue).toBe("123");
+    expect(params.fees.distribution.leaderTimeunitsAllocation).toBe("100");
+    expect(params.fees.distribution.validatorTimeunitsAllocation).toBe("200");
+    expect(params.fees.distribution.totalMessageFees).toBe("5");
+    expect(params.fees.distribution.rotations).toEqual(["0"]);
+    expect(params.fees.messageAllocations[0].messageType).toBe(MessageType.Internal);
+    expect(params.fees.messageAllocations[0].budget).toBe("5");
+  });
+
+  it("encodes internal message fee params as the consensus tuple", () => {
+    const encoded = encodeInternalMessageFeeParams({
+      leaderTimeunitsAllocation: 5n,
+      validatorTimeunitsAllocation: 10n,
+      appealRounds: 1n,
+      executionBudgetPerRound: 20n,
+      rotations: [2n, 3n],
+    });
+
+    const [decoded] = decodeAbiParameters(INTERNAL_MESSAGE_FEE_PARAMS_ABI, encoded) as any;
+    expect(decoded.leaderTimeunitsAllocation).toBe(5n);
+    expect(decoded.validatorTimeunitsAllocation).toBe(10n);
+    expect(decoded.appealRounds).toBe(1n);
+    expect(decoded.executionBudgetPerRound).toBe(20n);
+    expect(decoded.rotations).toEqual([2n, 3n]);
+  });
+
+  it("encodes external message fee params as the consensus tuple", () => {
+    const encoded = encodeExternalMessageFeeParams({
+      gasLimit: 21_000n,
+      maxGasPrice: 10n,
+    });
+
+    const [decoded] = decodeAbiParameters(EXTERNAL_MESSAGE_FEE_PARAMS_ABI, encoded) as any;
+    expect(decoded.gasLimit).toBe(21_000n);
+    expect(decoded.maxGasPrice).toBe(10n);
+  });
+
+  it("derives GenVM-compatible message call keys", () => {
+    const shortInternal = deriveInternalMessageCallKey("update_storage");
+    expect(shortInternal).toBe(
+      `0x${Buffer.from("update_storage", "utf8").toString("hex").padEnd(64, "0")}`,
+    );
+
+    const exactLengthMethod = "a".repeat(32);
+    const hashed = keccak256(toHex(new TextEncoder().encode(exactLengthMethod)));
+    const lastByte = Number.parseInt(hashed.slice(-2), 16) | 1;
+    expect(deriveInternalMessageCallKey(exactLengthMethod)).toBe(
+      `${hashed.slice(0, -2)}${lastByte.toString(16).padStart(2, "0")}`,
+    );
+
+    expect(deriveInternalMessageCallKey()).toBe(CALL_KEY_WILDCARD);
+    expect(CALL_KEY_DEPLOY).toBe(CALL_KEY_WILDCARD);
+    expect(deriveExternalMessageCallKey("0xaabbccdd11223344")).toBe(
+      `0xaabbccdd${"0".repeat(56)}`,
+    );
+    expect(deriveExternalMessageCallKey("0x123456")).toBe(CALL_KEY_WILDCARD);
+  });
+
   it("encodes addTransaction with 5 args when ABI has 5 inputs", async () => {
     const {actions, estimateTransactionGas} = setupWriteContractHarness({
       initialAbi: ADD_TRANSACTION_ABI_V5,
@@ -168,6 +472,691 @@ describe("contractActions addTransaction ABI compatibility", () => {
 
     const encodedData = estimateTransactionGas.mock.calls[0][0].data as `0x${string}`;
     expect(encodedData.slice(0, 10)).toBe(selectorForV6);
+  });
+
+  it("encodes addTransaction with v0.6 fee params when ABI has tuple input", async () => {
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+    });
+
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        value: 7n,
+        validUntil: 123n,
+      }),
+    ).rejects.toThrow("stop_after_encoding");
+
+    const estimateParams = estimateTransactionGas.mock.calls[0][0];
+    const encodedData = estimateParams.data as `0x${string}`;
+    expect(encodedData.slice(0, 10)).toBe(selectorForFees);
+    expect(estimateParams.value).toBe(7n);
+
+    const decoded = decodeFunctionData({
+      abi: ADD_TRANSACTION_ABI_WITH_FEES as any,
+      data: encodedData,
+    });
+    const params = decoded.args[0] as any;
+    expect(params.sender).toBe(SENDER_ADDRESS);
+    expect(params.recipient).toBe(RECIPIENT_ADDRESS);
+    expect(params.numOfInitialValidators).toBe(5n);
+    expect(params.maxRotations).toBe(3n);
+    expect(params.validUntil).toBe(123n);
+    expect(params.userValue).toBe(7n);
+    expect(params.feesDistribution.rotations).toEqual([0n]);
+    expect(params.messageAllocations).toEqual([]);
+  });
+
+  it("separates user value from v0.6 fee deposit value", async () => {
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+    });
+
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        value: 5n,
+        validUntil: 123n,
+        fees: {
+          feeValue: 123n,
+          distribution: {
+            totalMessageFees: 123n,
+          },
+          messageAllocations: [{
+            messageType: MessageType.Internal,
+            onAcceptance: false,
+            recipient: RECIPIENT_ADDRESS,
+            budget: 123n,
+            feeParams: "0x1234",
+          }],
+        },
+      }),
+    ).rejects.toThrow("stop_after_encoding");
+
+    const estimateParams = estimateTransactionGas.mock.calls[0][0];
+    expect(estimateParams.value).toBe(128n);
+
+    const decoded = decodeFunctionData({
+      abi: ADD_TRANSACTION_ABI_WITH_FEES as any,
+      data: estimateParams.data as `0x${string}`,
+    });
+    const params = decoded.args[0] as any;
+    expect(params.userValue).toBe(5n);
+    expect(params.feesDistribution.totalMessageFees).toBe(123n);
+    expect(params.messageAllocations).toHaveLength(1);
+    expect(params.messageAllocations[0].messageType).toBe(MessageType.Internal);
+    expect(params.messageAllocations[0].onAcceptance).toBe(false);
+    expect(params.messageAllocations[0].budget).toBe(123n);
+    expect(params.messageAllocations[0].feeParams).toBe("0x1234");
+  });
+
+  it("defaults external message allocations to on-finalization", async () => {
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+    });
+
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        validUntil: 123n,
+        fees: {
+          feeValue: 210_000n,
+          distribution: {
+            totalMessageFees: 210_000n,
+          },
+          messageAllocations: [{
+            messageType: MessageType.External,
+            recipient: RECIPIENT_ADDRESS,
+            budget: 210_000n,
+            feeParams: encodeExternalMessageFeeParams({
+              gasLimit: 21_000n,
+              maxGasPrice: 10n,
+            }),
+          }],
+        },
+      }),
+    ).rejects.toThrow("stop_after_encoding");
+
+    const decoded = decodeFunctionData({
+      abi: ADD_TRANSACTION_ABI_WITH_FEES as any,
+      data: estimateTransactionGas.mock.calls[0][0].data as `0x${string}`,
+    });
+    const params = decoded.args[0] as any;
+    expect(params.messageAllocations[0].messageType).toBe(MessageType.External);
+    expect(params.messageAllocations[0].onAcceptance).toBe(false);
+  });
+
+  it("calculates v0.6 fee deposit from FeeManager when feeValue is omitted", async () => {
+    const publicClient = {
+      readContract: vi.fn().mockResolvedValue(77n),
+    };
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      publicClient,
+      feeManagerAddress: "0x00000000000000000000000000000000000000fe",
+    });
+
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        value: 2n,
+        validUntil: 123n,
+        fees: {
+          distribution: {
+            leaderTimeunitsAllocation: 10n,
+            totalMessageFees: 3n,
+          },
+        },
+      }),
+    ).rejects.toThrow("stop_after_encoding");
+
+    expect(publicClient.readContract).toHaveBeenCalledWith(expect.objectContaining({
+      functionName: "calculateRoundFees",
+      args: [expect.any(Object), 5n, 0n],
+    }));
+    expect(estimateTransactionGas.mock.calls[0][0].value).toBe(82n);
+  });
+
+  it("calculates v0.6 fee deposit from FeeManager when only execution budget is provided", async () => {
+    const publicClient = {
+      readContract: vi.fn().mockResolvedValue(500_000n),
+    };
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      publicClient,
+      feeManagerAddress: "0x00000000000000000000000000000000000000fe",
+    });
+
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        validUntil: 123n,
+        fees: {
+          distribution: {
+            executionBudgetPerRound: 500_000n,
+          },
+        },
+      }),
+    ).rejects.toThrow("stop_after_encoding");
+
+    expect(publicClient.readContract).toHaveBeenCalledWith(expect.objectContaining({
+      functionName: "calculateRoundFees",
+      args: [expect.any(Object), 5n, 0n],
+    }));
+    expect(estimateTransactionGas.mock.calls[0][0].value).toBe(500_000n);
+  });
+
+  it("calculates v0.6 fee deposit locally on Studio when feeValue is omitted", async () => {
+    const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "sim_getFeeConfig") {
+        return {
+          enabled: true,
+          policy: {
+            genPerTimeUnit: "10",
+            storageUnitPrice: "20",
+            receiptGasPrice: "30",
+          },
+        };
+      }
+      if (method === "eth_gasPrice") return "0x1";
+      throw new Error(`unexpected request ${method}`);
+    });
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        validUntil: 123n,
+        fees: {
+          distribution: {
+            leaderTimeunitsAllocation: 100n,
+            validatorTimeunitsAllocation: 200n,
+            maxPriceGenPerTimeUnit: 10n,
+          },
+        },
+      }),
+    ).rejects.toThrow("stop_after_encoding");
+
+    expect(estimateTransactionGas.mock.calls[0][0].value).toBe(11_000n);
+  });
+
+  it("estimates fee distribution caps and fee value from FeeManager prices", async () => {
+    const publicClient = {
+      readContract: vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
+        if (functionName === "GENPerTimeUnit") return 10n;
+        if (functionName === "storageUnitPrice") return 20n;
+        if (functionName === "quoteGasPrice") return 30n;
+        if (functionName === "messageFeeParamsBudgetFloor") return 1_234n;
+        if (functionName === "calculateRoundFees") return 77n;
+        throw new Error(`unexpected readContract ${functionName}`);
+      }),
+    };
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      publicClient,
+      feeManagerAddress: "0x00000000000000000000000000000000000000fe",
+    });
+
+    const fees = await actions.estimateTransactionFees({totalMessageFees: 5n});
+
+    expect(fees.policy).toEqual({
+      enabled: true,
+      genPerTimeUnit: 10n,
+      storageUnitPrice: 20n,
+      receiptGasPrice: 30n,
+      executionBudgetFloor: 1_234n,
+    });
+    expect(fees.distribution.maxPriceGenPerTimeUnit).toBe(12n);
+    expect(fees.distribution.storageFeeMaxGasPrice).toBe(24n);
+    expect(fees.distribution.receiptFeeMaxGasPrice).toBe(36n);
+    expect(fees.distribution.executionBudgetPerRound).toBe(500_000n);
+    expect(fees.feeValue).toBe(82n);
+  });
+
+  it("defaults total message fees from root and external message allocation budgets", async () => {
+    const publicClient = {
+      readContract: vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
+        if (functionName === "GENPerTimeUnit") return 10n;
+        if (functionName === "storageUnitPrice") return 20n;
+        if (functionName === "quoteGasPrice") return 30n;
+        if (functionName === "messageFeeParamsBudgetFloor") return 1_234n;
+        if (functionName === "calculateRoundFees") return 77n;
+        throw new Error(`unexpected readContract ${functionName}`);
+      }),
+    };
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      publicClient,
+      feeManagerAddress: "0x00000000000000000000000000000000000000fe",
+    });
+
+    const fees = await actions.estimateTransactionFees({
+      messageAllocations: [
+        {
+          messageType: MessageType.Internal,
+          recipient: RECIPIENT_ADDRESS,
+          budget: 50n,
+          feeParams: "0x1234",
+        },
+        {
+          messageType: MessageType.Internal,
+          parentIndex: 0n,
+          recipient: RECIPIENT_ADDRESS,
+          budget: 10n,
+          feeParams: "0x1234",
+        },
+        {
+          messageType: MessageType.External,
+          recipient: RECIPIENT_ADDRESS,
+          budget: 30n,
+          feeParams: "0x1234",
+        },
+      ],
+    });
+
+    expect(fees.distribution.totalMessageFees).toBe(80n);
+    expect(fees.feeValue).toBe(157n);
+  });
+
+  it("estimates Studio fee value from sim_getFeeConfig when no FeeManager contract exists", async () => {
+    const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "sim_getFeeConfig") {
+        return {
+          enabled: true,
+          policy: {
+            genPerTimeUnit: "10",
+            storageUnitPrice: "20",
+            receiptGasPrice: "30",
+          },
+        };
+      }
+      if (method === "eth_gasPrice") return "0x1";
+      throw new Error(`unexpected request ${method}`);
+    });
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    const fees = await actions.estimateTransactionFees({priceCapHeadroomBps: 10_000n});
+
+    expect(fees.distribution.maxPriceGenPerTimeUnit).toBe(10n);
+    expect(fees.distribution.storageFeeMaxGasPrice).toBe(20n);
+    expect(fees.distribution.receiptFeeMaxGasPrice).toBe(30n);
+    expect(fees.distribution.executionBudgetPerRound).toBe(9_185_760n);
+    expect(fees.feeValue).toBe(9_196_760n);
+  });
+
+  it("prefers Studio's exposed message fee budget floor over local fallback math", async () => {
+    const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "sim_getFeeConfig") {
+        return {
+          enabled: true,
+          policy: {
+            genPerTimeUnit: "10",
+            storageUnitPrice: "20",
+            receiptGasPrice: "30",
+            fixedProposeReceiptGas: "1",
+            messageFeeParamsBudgetFloor: "700000",
+          },
+        };
+      }
+      if (method === "eth_gasPrice") return "0x1";
+      throw new Error(`unexpected request ${method}`);
+    });
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    const fees = await actions.estimateTransactionFees({priceCapHeadroomBps: 10_000n});
+
+    expect(fees.policy.executionBudgetFloor).toBe(700_000n);
+    expect(fees.distribution.executionBudgetPerRound).toBe(700_000n);
+    expect(fees.feeValue).toBe(711_000n);
+  });
+
+  it("builds a Studio trusted fee preset from a simulation fee report", async () => {
+    const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "sim_getFeeConfig") {
+        return {
+          enabled: true,
+          policy: {
+            genPerTimeUnit: "10",
+            storageUnitPrice: "20",
+            receiptGasPrice: "30",
+            messageFeeParamsBudgetFloor: "400000",
+          },
+        };
+      }
+      if (method === "eth_gasPrice") return "0x1";
+      throw new Error(`unexpected request ${method}`);
+    });
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    const fees = await actions.estimateTransactionFeesFromSimulation({
+      simulation: {
+        feeAccounting: {
+          execution_fee_consumed: "100",
+          genvm_message_fee_consumed: "5",
+          message_fee_budget: "10",
+          message_fee_consumed: "5",
+          message_fee_refunded: "0",
+          external_message_fee_reserved: "0",
+          external_message_fee_reimbursed: "0",
+          external_message_fee_remainder: "0",
+          execution_fee_report: {
+            receiptGasPrice: "30",
+            proposalReceipt: {
+              eqBlocksOutputsLength: "10",
+              receiptBytes: "1034",
+              estimatedGas: "314544",
+              fee: "314544",
+            },
+            messageReveal: {
+              messageBytes: "320",
+              messageCount: "1",
+              estimatedGas: "187120",
+              fee: "187120",
+              consensusAdditionalGas: "87120",
+              consensusAdditionalFee: "87120",
+              studioFixedOverheadGas: "100000",
+              studioFixedOverheadFee: "100000",
+              messages: [
+                {
+                  messageFeeMode: "mode1",
+                  messageType: "Internal",
+                  recipient: RECIPIENT_ADDRESS,
+                  value: "0",
+                  dataBytes: "2",
+                  onAcceptance: true,
+                  saltNonce: "0",
+                  feeParams: "0x1234",
+                  feeParamsDecoded: null,
+                  feeParamsBytes: "2",
+                  declaredBudget: "5",
+                  allocationSubtree: "0x",
+                  allocationSubtreeBytes: "0",
+                  callKey: `0x${"12".repeat(32)}`,
+                },
+              ],
+            },
+            chargeableExecution: {
+              receiptAndNondetOutput: "501664",
+              storage: "0",
+              message: "0",
+              totalExecution: "501664",
+              totalWithMessage: "501664",
+              executionBudgetPerRound: "600000",
+              executionBudgetRemaining: "98336",
+              executionBudgetOverrun: "0",
+              executionBudgetExceeded: false,
+            },
+            genvmBuckets: {
+              receiptAndNondetOutput: "100",
+              storage: "0",
+              message: "5",
+              totalExecution: "100",
+              totalWithMessage: "105",
+              executionBudgetPerRound: "600000",
+              executionBudgetRemaining: "599900",
+              executionBudgetOverrun: "0",
+              executionBudgetExceeded: false,
+              buckets: [
+                {index: "0", name: "receiptAndNondetOutput", consumed: "100"},
+                {index: "1", name: "storage", consumed: "0"},
+                {index: "2", name: "message", consumed: "5"},
+              ],
+            },
+            executionMetering: {
+              chargeableExecutionFee: "501664",
+              genvmReportedExecution: "100",
+              genvmDeltaFromChargeable: "-501564",
+            },
+            messageFees: {
+              budget: "10",
+              declaredConsumed: "5",
+              genvmMeteredConsumed: "5",
+              declaredRefunded: "0",
+              remaining: "5",
+              meteringDelta: "0",
+              reportedTotal: "5",
+            },
+            totalEstimatedFee: "501664",
+            totalStudioMeteredFee: "688784",
+          },
+        },
+      },
+      priceCapHeadroomBps: 10_000n,
+    });
+
+    expect(fees.observed).toEqual({
+      executionFeeConsumed: 100n,
+      executionFeeReportTotal: 501_664n,
+      recommendedExecutionBudgetPerRound: 602_117n,
+      genvmMessageFeeConsumed: 5n,
+      messageFeeBudget: 10n,
+      messageFeeConsumed: 5n,
+      messageFeeRefunded: 0n,
+      internalDeclaredBudget: 5n,
+      externalMessageReserved: 0n,
+      externalMessageReimbursed: 0n,
+      externalMessageRemainder: 0n,
+      recommendedTotalMessageFees: 6n,
+    });
+    expect(fees.distribution.executionBudgetPerRound).toBe(602_117n);
+    expect(fees.distribution.totalMessageFees).toBe(6n);
+    expect(fees.feeValue).toBe(613_123n);
+  });
+
+  it("builds a Studio trusted fee preset for a target write in one call", async () => {
+    const feeParams = encodeInternalMessageFeeParams({
+      leaderTimeunitsAllocation: 5n,
+      validatorTimeunitsAllocation: 10n,
+    });
+    const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "sim_getFeeConfig") {
+        return {
+          enabled: true,
+          policy: {
+            genPerTimeUnit: "10",
+            storageUnitPrice: "20",
+            receiptGasPrice: "30",
+            messageFeeParamsBudgetFloor: "400000",
+          },
+        };
+      }
+      if (method === "sim_estimateTransactionFees") {
+        return {
+          feeAccounting: {
+            execution_fee_consumed: "100",
+            message_fee_consumed: "50",
+            message_fee_budget: "110",
+            message_allocations: [
+              {
+                messageType: MessageType.Internal,
+                onAcceptance: true,
+                parentIndex: ((1n << 256n) - 1n).toString(),
+                recipient: RECIPIENT_ADDRESS,
+                callKey: `0x${"00".repeat(32)}`,
+                budget: "110",
+                feeParams,
+              },
+            ],
+            execution_fee_report: {
+              totalEstimatedFee: "501664",
+            },
+          },
+          feeReport: {
+            totalEstimatedFee: "501664",
+          },
+          recommendedPreset: {
+            distribution: {
+              leaderTimeunitsAllocation: "100",
+              validatorTimeunitsAllocation: "200",
+              appealRounds: "0",
+              executionBudgetPerRound: "700000",
+              executionConsumed: "0",
+              totalMessageFees: "110",
+              rotations: ["0"],
+              maxPriceGenPerTimeUnit: "10",
+              storageFeeMaxGasPrice: "20",
+              receiptFeeMaxGasPrice: "30",
+            },
+            messageAllocations: [
+              {
+                messageType: MessageType.Internal,
+                onAcceptance: true,
+                parentIndex: ((1n << 256n) - 1n).toString(),
+                recipient: RECIPIENT_ADDRESS,
+                callKey: `0x${"00".repeat(32)}`,
+                budget: "110",
+                feeParams,
+              },
+            ],
+            feeValue: "711110",
+          },
+        };
+      }
+      throw new Error(`unexpected request ${method}`);
+    });
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    const fees = await actions.estimateTransactionFeesForWrite({
+      address: RECIPIENT_ADDRESS,
+      functionName: "update_storage",
+      args: ["after"],
+      value: 7n,
+      priceCapHeadroomBps: 10_000n,
+      messageAllocations: [
+        {
+          messageType: MessageType.Internal,
+          recipient: RECIPIENT_ADDRESS,
+          budget: 110n,
+          feeParams,
+        },
+      ],
+    });
+
+    const simCall = requestMock.mock.calls.find(([call]) => call.method === "sim_estimateTransactionFees")?.[0];
+    expect(simCall).toBeDefined();
+    expect(simCall.params[0].value).toBe("0x7");
+    expect(simCall.params[0].fees.feeValue).toBe("511110");
+    expect(simCall.params[0].fees.distribution.totalMessageFees).toBe("110");
+    expect(simCall.params[0].fees.messageAllocations[0].budget).toBe("110");
+    expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(602_117n);
+    expect(fees.observed?.messageFeeBudget).toBe(110n);
+    expect(fees.observed?.messageFeeConsumed).toBe(50n);
+    expect(fees.distribution.executionBudgetPerRound).toBe(700_000n);
+    expect(fees.distribution.totalMessageFees).toBe(110n);
+    expect(fees.messageAllocations?.[0].budget).toBe(110n);
+    expect(fees.feeValue).toBe(711_110n);
+  });
+
+  it("preserves mode-2 message allocations from simulation fee accounting", async () => {
+    const feeParams = encodeInternalMessageFeeParams({
+      leaderTimeunitsAllocation: 5n,
+      validatorTimeunitsAllocation: 10n,
+    });
+    const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "sim_getFeeConfig") {
+        return {
+          enabled: true,
+          policy: {
+            genPerTimeUnit: "10",
+            storageUnitPrice: "20",
+            receiptGasPrice: "30",
+            messageFeeParamsBudgetFloor: "400000",
+          },
+        };
+      }
+      if (method === "eth_gasPrice") return "0x1";
+      throw new Error(`unexpected request ${method}`);
+    });
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    const fees = await actions.estimateTransactionFeesFromSimulation({
+      simulation: {
+        feeAccounting: {
+          message_fee_consumed: "20",
+          message_allocations: [
+            {
+              messageType: MessageType.Internal,
+              onAcceptance: false,
+              parentIndex: ((1n << 256n) - 1n).toString(),
+              recipient: RECIPIENT_ADDRESS,
+              callKey: `0x${"00".repeat(32)}`,
+              budget: "50",
+              feeParams,
+            },
+          ],
+        },
+      },
+      priceCapHeadroomBps: 10_000n,
+    });
+
+    expect(fees.messageAllocations).toHaveLength(1);
+    expect(fees.messageAllocations?.[0].budget).toBe(50n);
+    expect(fees.messageAllocations?.[0].feeParams).toBe(feeParams);
+    expect(fees.distribution.totalMessageFees).toBe(50n);
+    expect(fees.feeValue).toBe(511_050n);
+  });
+
+  it("keeps Studio fee estimation gasless when sim_getFeeConfig is disabled", async () => {
+    const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "sim_getFeeConfig") {
+        return {
+          enabled: false,
+          policy: {
+            genPerTimeUnit: "0",
+            storageUnitPrice: "0",
+            receiptGasPrice: "0",
+          },
+        };
+      }
+      if (method === "eth_gasPrice") return "0x1";
+      throw new Error(`unexpected request ${method}`);
+    });
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    const fees = await actions.estimateTransactionFees();
+
+    expect(fees.policy.enabled).toBe(false);
+    expect(fees.distribution.leaderTimeunitsAllocation).toBe(0n);
+    expect(fees.distribution.validatorTimeunitsAllocation).toBe(0n);
+    expect(fees.distribution.executionBudgetPerRound).toBe(0n);
+    expect(fees.distribution.maxPriceGenPerTimeUnit).toBe(0n);
+    expect(fees.distribution.storageFeeMaxGasPrice).toBe(0n);
+    expect(fees.distribution.receiptFeeMaxGasPrice).toBe(0n);
+    expect(fees.feeValue).toBe(0n);
   });
 
   it("retries with v6 signature when v5 signature fails with ABI mismatch", async () => {
@@ -307,7 +1296,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
       from: SENDER_ADDRESS,
       to: MAIN_CONTRACT_ADDRESS,
       value: "0x0",
-      gas: "0x5208",
+      gas: "0xa410",
       nonce: "0x0",
       type: "0x0",
       chainId: "0xeec7",
@@ -471,6 +1460,29 @@ const FINALIZE_TX_ABI = [
   },
 ];
 
+const FEE_MANAGEMENT_ABI = [
+  {
+    type: "function" as const,
+    name: "topUpFees",
+    stateMutability: "payable" as const,
+    inputs: [
+      {name: "_txId", type: "bytes32"},
+      {name: "_feesDistribution", type: "tuple", components: FEES_DISTRIBUTION_COMPONENTS},
+    ],
+    outputs: [],
+  },
+  {
+    type: "function" as const,
+    name: "topUpAndSubmitAppeal",
+    stateMutability: "payable" as const,
+    inputs: [
+      {name: "_txId", type: "bytes32"},
+      {name: "_feesDistribution", type: "tuple", components: FEES_DISTRIBUTION_COMPONENTS},
+    ],
+    outputs: [],
+  },
+] as const;
+
 const finalizeTransactionSelector = encodeFunctionData({
   abi: FINALIZE_TX_ABI as any,
   functionName: "finalizeTransaction",
@@ -481,6 +1493,46 @@ const finalizeIdlenessSelector = encodeFunctionData({
   abi: FINALIZE_TX_ABI as any,
   functionName: "finalizeIdlenessTxs",
   args: [[MOCK_GENLAYER_TX_ID]],
+}).slice(0, 10);
+
+const topUpFeesSelector = encodeFunctionData({
+  abi: FEE_MANAGEMENT_ABI as any,
+  functionName: "topUpFees",
+  args: [
+    MOCK_GENLAYER_TX_ID,
+    {
+      leaderTimeunitsAllocation: 0n,
+      validatorTimeunitsAllocation: 0n,
+      appealRounds: 0n,
+      executionBudgetPerRound: 0n,
+      executionConsumed: 0n,
+      totalMessageFees: 0n,
+      rotations: [0n],
+      maxPriceGenPerTimeUnit: 0n,
+      storageFeeMaxGasPrice: 0n,
+      receiptFeeMaxGasPrice: 0n,
+    },
+  ],
+}).slice(0, 10);
+
+const topUpAndSubmitAppealSelector = encodeFunctionData({
+  abi: FEE_MANAGEMENT_ABI as any,
+  functionName: "topUpAndSubmitAppeal",
+  args: [
+    MOCK_GENLAYER_TX_ID,
+    {
+      leaderTimeunitsAllocation: 0n,
+      validatorTimeunitsAllocation: 0n,
+      appealRounds: 0n,
+      executionBudgetPerRound: 0n,
+      executionConsumed: 0n,
+      totalMessageFees: 0n,
+      rotations: [0n],
+      maxPriceGenPerTimeUnit: 0n,
+      storageFeeMaxGasPrice: 0n,
+      receiptFeeMaxGasPrice: 0n,
+    },
+  ],
 }).slice(0, 10);
 
 const setupFinalizeHarness = ({receiptStatus = "success"}: {receiptStatus?: string} = {}) => {
@@ -495,6 +1547,48 @@ const setupFinalizeHarness = ({receiptStatus = "success"}: {receiptStatus?: stri
       consensusMainContract: {
         address: MAIN_CONTRACT_ADDRESS,
         abi: FINALIZE_TX_ABI,
+        bytecode: "0x",
+      },
+    },
+    account: {
+      address: SENDER_ADDRESS,
+      type: "local",
+      signTransaction,
+    },
+    getCurrentNonce: vi.fn().mockResolvedValue(0n),
+    estimateTransactionGas,
+    sendRawTransaction,
+    request: vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "eth_gasPrice") return "0x1";
+      throw new Error(`Unexpected RPC method: ${method}`);
+    }),
+  };
+
+  const publicClient = {waitForTransactionReceipt};
+  const actions = contractActions(client as any, publicClient as any);
+
+  return {actions, signTransaction, sendRawTransaction, waitForTransactionReceipt, estimateTransactionGas, client};
+};
+
+const setupFeeManagementHarness = ({
+  receiptStatus = "success",
+  isStudio = false,
+}: {
+  receiptStatus?: string;
+  isStudio?: boolean;
+} = {}) => {
+  const signTransaction = vi.fn().mockResolvedValue("0xsigned");
+  const sendRawTransaction = vi.fn().mockResolvedValue(MOCK_EVM_TX_HASH);
+  const waitForTransactionReceipt = vi.fn().mockResolvedValue({status: receiptStatus, logs: []});
+  const estimateTransactionGas = vi.fn().mockResolvedValue(21_000n);
+
+  const client = {
+    chain: {
+      id: 61_127,
+      isStudio,
+      consensusMainContract: {
+        address: MAIN_CONTRACT_ADDRESS,
+        abi: FEE_MANAGEMENT_ABI,
         bytecode: "0x",
       },
     },
@@ -645,6 +1739,145 @@ describe("contractActions getContractSchemaForCode", () => {
       method: "gen_getContractSchema",
       params: [{code: SOURCE_B64}],
     });
+  });
+});
+
+describe("contractActions fee management", () => {
+  it("encodes topUpFees(bytes32, FeesDistribution) and returns the EVM tx hash", async () => {
+    const {actions, signTransaction, sendRawTransaction} = setupFeeManagementHarness();
+
+    const evmHash = await actions.topUpFees({
+      txId: MOCK_GENLAYER_TX_ID,
+      value: 999n,
+      distribution: {
+        leaderTimeunitsAllocation: 100n,
+        validatorTimeunitsAllocation: 200n,
+        appealRounds: 1n,
+        executionBudgetPerRound: 500_000n,
+        totalMessageFees: 30n,
+        rotations: [0n, 2n],
+        maxPriceGenPerTimeUnit: 12n,
+        storageFeeMaxGasPrice: 24n,
+        receiptFeeMaxGasPrice: 36n,
+      },
+    });
+
+    expect(evmHash).toBe(MOCK_EVM_TX_HASH);
+    expect(sendRawTransaction).toHaveBeenCalledWith({serializedTransaction: "0xsigned"});
+    const txRequest = signTransaction.mock.calls[0][0];
+    expect(txRequest.to).toBe(MAIN_CONTRACT_ADDRESS);
+    expect(txRequest.value).toBe(999n);
+    expect(txRequest.data.slice(0, 10)).toBe(topUpFeesSelector);
+
+    const decoded = decodeFunctionData({
+      abi: FEE_MANAGEMENT_ABI as any,
+      data: txRequest.data,
+    });
+    const [txId, distribution] = decoded.args as any[];
+    expect(txId).toBe(MOCK_GENLAYER_TX_ID);
+    expect(distribution.leaderTimeunitsAllocation).toBe(100n);
+    expect(distribution.validatorTimeunitsAllocation).toBe(200n);
+    expect(distribution.appealRounds).toBe(1n);
+    expect(distribution.executionBudgetPerRound).toBe(500_000n);
+    expect(distribution.totalMessageFees).toBe(30n);
+    expect(distribution.rotations).toEqual([0n, 2n]);
+    expect(distribution.maxPriceGenPerTimeUnit).toBe(12n);
+    expect(distribution.storageFeeMaxGasPrice).toBe(24n);
+    expect(distribution.receiptFeeMaxGasPrice).toBe(36n);
+  });
+
+  it("encodes topUpAndSubmitAppeal(bytes32, FeesDistribution) and returns the GenLayer tx id", async () => {
+    const {actions, signTransaction, sendRawTransaction} = setupFeeManagementHarness();
+
+    const txId = await actions.topUpAndSubmitAppeal({
+      txId: MOCK_GENLAYER_TX_ID,
+      value: 1234n,
+      distribution: {
+        appealRounds: 1n,
+        rotations: [0n, 1n],
+      },
+    });
+
+    expect(txId).toBe(MOCK_GENLAYER_TX_ID);
+    expect(sendRawTransaction).toHaveBeenCalledWith({serializedTransaction: "0xsigned"});
+    const txRequest = signTransaction.mock.calls[0][0];
+    expect(txRequest.to).toBe(MAIN_CONTRACT_ADDRESS);
+    expect(txRequest.value).toBe(1234n);
+    expect(txRequest.data.slice(0, 10)).toBe(topUpAndSubmitAppealSelector);
+
+    const decoded = decodeFunctionData({
+      abi: FEE_MANAGEMENT_ABI as any,
+      data: txRequest.data,
+    });
+    const [decodedTxId, distribution] = decoded.args as any[];
+    expect(decodedTxId).toBe(MOCK_GENLAYER_TX_ID);
+    expect(distribution.appealRounds).toBe(1n);
+    expect(distribution.rotations).toEqual([0n, 1n]);
+  });
+
+  it("throws when a fee management consensus call is reverted", async () => {
+    const {actions} = setupFeeManagementHarness({receiptStatus: "reverted"});
+
+    await expect(
+      actions.topUpFees({
+        txId: MOCK_GENLAYER_TX_ID,
+        value: 1n,
+        distribution: {},
+      }),
+    ).rejects.toThrow(/Top up fees reverted/);
+  });
+
+  it("returns the Studio RPC hash for fee management calls without waiting for an EVM receipt", async () => {
+    const {actions, waitForTransactionReceipt} = setupFeeManagementHarness({isStudio: true});
+
+    const hash = await actions.topUpFees({
+      txId: MOCK_GENLAYER_TX_ID,
+      value: 1n,
+      distribution: {},
+    });
+
+    expect(hash).toBe(MOCK_EVM_TX_HASH);
+    expect(waitForTransactionReceipt).not.toHaveBeenCalled();
+  });
+
+  it("returns the Studio RPC hash for external-wallet fee management calls without waiting for an EVM receipt", async () => {
+    const request = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "eth_gasPrice") return "0x1";
+      if (method === "eth_sendTransaction") return MOCK_EVM_TX_HASH;
+      throw new Error(`Unexpected RPC method: ${method}`);
+    });
+    const waitForTransactionReceipt = vi.fn();
+    const client = {
+      chain: {
+        id: 61_127,
+        isStudio: true,
+        consensusMainContract: {
+          address: MAIN_CONTRACT_ADDRESS,
+          abi: FEE_MANAGEMENT_ABI,
+          bytecode: "0x",
+        },
+      },
+      account: {
+        address: SENDER_ADDRESS,
+        type: "json-rpc",
+      },
+      getCurrentNonce: vi.fn().mockResolvedValue(0n),
+      estimateTransactionGas: vi.fn().mockResolvedValue(21_000n),
+      request,
+    };
+    const actions = contractActions(client as any, {waitForTransactionReceipt} as any);
+
+    const hash = await actions.topUpFees({
+      txId: MOCK_GENLAYER_TX_ID,
+      value: 1n,
+      distribution: {},
+    });
+
+    expect(hash).toBe(MOCK_EVM_TX_HASH);
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({
+      method: "eth_sendTransaction",
+    }));
+    expect(waitForTransactionReceipt).not.toHaveBeenCalled();
   });
 });
 

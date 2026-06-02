@@ -1,8 +1,10 @@
 import {Hex} from "viem";
-import {Address} from "./accounts";
+import {Account, Address} from "./accounts";
+import type {CalldataEncodable} from "./calldata";
 
 export type Hash = `0x${string}` & {length: 66};
 export type TransactionHash = Hash;
+export type BigNumberish = bigint | number | string;
 
 export enum TransactionStatus {
   UNINITIALIZED = "UNINITIALIZED",
@@ -150,6 +152,271 @@ export enum TransactionHashVariant {
   LATEST_FINAL = "latest-final",
   LATEST_NONFINAL = "latest-nonfinal",
 }
+
+export enum MessageType {
+  External = 0,
+  Internal = 1,
+}
+
+export type FeesDistribution = {
+  leaderTimeunitsAllocation: bigint;
+  validatorTimeunitsAllocation: bigint;
+  appealRounds: bigint;
+  executionBudgetPerRound: bigint;
+  executionConsumed: bigint;
+  totalMessageFees: bigint;
+  rotations: bigint[];
+  maxPriceGenPerTimeUnit: bigint;
+  storageFeeMaxGasPrice: bigint;
+  receiptFeeMaxGasPrice: bigint;
+};
+
+export type FeesDistributionInput = {
+  leaderTimeunitsAllocation?: BigNumberish;
+  validatorTimeunitsAllocation?: BigNumberish;
+  appealRounds?: BigNumberish;
+  executionBudgetPerRound?: BigNumberish;
+  executionConsumed?: BigNumberish;
+  totalMessageFees?: BigNumberish;
+  rotations?: BigNumberish[];
+  maxPriceGenPerTimeUnit?: BigNumberish;
+  storageFeeMaxGasPrice?: BigNumberish;
+  receiptFeeMaxGasPrice?: BigNumberish;
+};
+
+export type InternalMessageFeeParamsInput = {
+  leaderTimeunitsAllocation?: BigNumberish;
+  validatorTimeunitsAllocation?: BigNumberish;
+  appealRounds?: BigNumberish;
+  executionBudgetPerRound?: BigNumberish;
+  rotations?: BigNumberish[];
+};
+
+export type ExternalMessageFeeParamsInput = {
+  gasLimit?: BigNumberish;
+  maxGasPrice?: BigNumberish;
+};
+
+export type MessageFeeAllocationNode = {
+  messageType: MessageType;
+  onAcceptance: boolean;
+  parentIndex: bigint;
+  recipient: Address;
+  callKey: Hex;
+  budget: bigint;
+  feeParams: Hex;
+};
+
+export type MessageFeeAllocationInput = {
+  messageType: MessageType;
+  onAcceptance?: boolean;
+  parentIndex?: BigNumberish;
+  recipient: Address;
+  callKey?: Hex;
+  budget?: BigNumberish;
+  feeParams?: Hex;
+};
+
+export type TransactionFeeOptions = {
+  distribution?: FeesDistributionInput;
+  messageAllocations?: MessageFeeAllocationInput[];
+  feeValue?: BigNumberish;
+};
+
+export type FeePolicyQuote = {
+  enabled: boolean;
+  genPerTimeUnit: bigint;
+  storageUnitPrice: bigint;
+  receiptGasPrice: bigint;
+  executionBudgetFloor: bigint;
+};
+
+export type FeeEstimateOptions = FeesDistributionInput & {
+  /**
+   * Basis-points multiplier applied to current network prices when filling
+   * unset cap fields. Defaults to 12000 (20% headroom).
+   */
+  priceCapHeadroomBps?: BigNumberish;
+  messageAllocations?: MessageFeeAllocationInput[];
+};
+
+export type TransactionFeeEstimate = {
+  distribution: FeesDistribution;
+  messageAllocations?: MessageFeeAllocationInput[];
+  feeValue: bigint;
+  policy: FeePolicyQuote;
+  observed?: SimulationFeeUsage;
+};
+
+export type SimulateWriteContractReceipt = Record<string, unknown>;
+
+export type StudioExecutionFeeReportMessage = {
+  messageFeeMode?: "mode1" | "mode2" | "external";
+  messageType: "External" | "Internal";
+  recipient: Address;
+  value: BigNumberish;
+  dataBytes: BigNumberish;
+  onAcceptance: boolean;
+  saltNonce: BigNumberish;
+  feeParams?: Hex;
+  feeParamsDecoded?: InternalMessageFeeParamsInput | ExternalMessageFeeParamsInput | null;
+  feeParamsBytes: BigNumberish;
+  declaredBudget: BigNumberish;
+  allocationSubtree?: Hex;
+  allocationSubtreeBytes: BigNumberish;
+  callKey: Hex;
+};
+
+export type StudioGenvmFeeBucket = {
+  index?: BigNumberish;
+  name?: string;
+  consumed?: BigNumberish;
+};
+
+export type StudioGenvmFeeBucketReport = {
+  receiptAndNondetOutput?: BigNumberish;
+  storage?: BigNumberish;
+  message?: BigNumberish;
+  totalExecution?: BigNumberish;
+  totalWithMessage?: BigNumberish;
+  executionBudgetPerRound?: BigNumberish;
+  executionBudgetRemaining?: BigNumberish;
+  executionBudgetOverrun?: BigNumberish;
+  executionBudgetExceeded?: boolean;
+  buckets?: StudioGenvmFeeBucket[];
+};
+
+export type StudioExecutionFeeReport = {
+  receiptGasPrice?: BigNumberish;
+  budgetExhaustionReason?: string | null;
+  proposalReceipt?: {
+    eqBlocksOutputsLength: BigNumberish;
+    receiptBytes: BigNumberish;
+    estimatedGas: BigNumberish;
+    fee: BigNumberish;
+  };
+  messageReveal?: {
+    messageBytes: BigNumberish;
+    messageCount: BigNumberish;
+    estimatedGas: BigNumberish;
+    fee: BigNumberish;
+    consensusAdditionalGas?: BigNumberish;
+    consensusAdditionalFee?: BigNumberish;
+    studioFixedOverheadGas?: BigNumberish;
+    studioFixedOverheadFee?: BigNumberish;
+    messages?: StudioExecutionFeeReportMessage[];
+  };
+  genvmBuckets?: StudioGenvmFeeBucketReport;
+  chargeableExecution?: StudioGenvmFeeBucketReport;
+  executionMetering?: {
+    chargeableExecutionFee?: BigNumberish;
+    genvmReportedExecution?: BigNumberish;
+    genvmDeltaFromChargeable?: BigNumberish;
+  };
+  messageFees?: {
+    budget?: BigNumberish;
+    declaredConsumed?: BigNumberish;
+    genvmMeteredConsumed?: BigNumberish;
+    externalReserved?: BigNumberish;
+    externalReimbursed?: BigNumberish;
+    externalRemainder?: BigNumberish;
+    totalConsumed?: BigNumberish;
+    declaredRefunded?: BigNumberish;
+    remaining?: BigNumberish;
+    meteringDelta?: BigNumberish;
+    reportedTotal?: BigNumberish;
+  };
+  totalEstimatedFee?: BigNumberish;
+  totalStudioMeteredFee?: BigNumberish;
+};
+
+export type StudioFeeAccounting = Record<string, unknown> & {
+  paid_fee_value?: BigNumberish;
+  required_fee_value?: BigNumberish;
+  primary_fee_required?: BigNumberish;
+  primary_fee_budget?: BigNumberish;
+  primary_fee_spent?: BigNumberish;
+  primary_fee_refunded?: BigNumberish;
+  execution_budget_total?: BigNumberish;
+  execution_fee_consumed?: BigNumberish;
+  execution_fee_consumed_buckets?: BigNumberish[];
+  genvm_fee_consumed_buckets?: BigNumberish[];
+  genvm_fee_bucket_report?: StudioGenvmFeeBucketReport;
+  genvm_message_fee_consumed?: BigNumberish;
+  message_fee_budget?: BigNumberish;
+  message_fee_consumed?: BigNumberish;
+  message_fee_refunded?: BigNumberish;
+  external_message_fee_reserved?: BigNumberish;
+  external_message_fee_reimbursed?: BigNumberish;
+  external_message_fee_remainder?: BigNumberish;
+  appeal_bonds_total?: BigNumberish;
+  total_refunded?: BigNumberish;
+  fees_distribution?: FeesDistributionInput;
+  message_allocations?: MessageFeeAllocationInput[];
+  execution_fee_report?: StudioExecutionFeeReport;
+};
+
+export type SimulateWriteContractResult<
+  RawReturn extends boolean | undefined = undefined,
+> = {
+  result: RawReturn extends true ? Hex : CalldataEncodable;
+  receipt: SimulateWriteContractReceipt;
+  feeAccounting?: StudioFeeAccounting;
+  feeReport?: StudioExecutionFeeReport;
+};
+
+export type SimulationFeeUsage = {
+  executionFeeConsumed: bigint;
+  executionFeeReportTotal: bigint;
+  recommendedExecutionBudgetPerRound: bigint;
+  genvmMessageFeeConsumed: bigint;
+  messageFeeBudget: bigint;
+  messageFeeConsumed: bigint;
+  messageFeeRefunded: bigint;
+  internalDeclaredBudget: bigint;
+  externalMessageReserved: bigint;
+  externalMessageReimbursed: bigint;
+  externalMessageRemainder: bigint;
+  recommendedTotalMessageFees: bigint;
+};
+
+export type SimulationFeeEstimateOptions = FeeEstimateOptions & {
+  simulation: Pick<
+    SimulateWriteContractResult<boolean | undefined>,
+    "feeAccounting" | "feeReport"
+  >;
+  /**
+   * Basis-points multiplier applied to observed execution fee usage.
+   * Defaults to 12000 (20% headroom).
+   */
+  executionHeadroomBps?: BigNumberish;
+  /**
+   * Basis-points multiplier applied to observed mode-1 message fee usage.
+   * Defaults to 12000 (20% headroom).
+   */
+  messageHeadroomBps?: BigNumberish;
+};
+
+export type WriteFeeEstimateOptions = FeeEstimateOptions & {
+  account?: Account;
+  address: Address;
+  functionName: string;
+  args?: CalldataEncodable[];
+  kwargs?: Map<string, CalldataEncodable> | {[key: string]: CalldataEncodable};
+  value?: BigNumberish;
+  leaderOnly?: boolean;
+  transactionHashVariant?: TransactionHashVariant;
+  /**
+   * Basis-points multiplier applied to observed execution fee usage.
+   * Defaults to 12000 (20% headroom).
+   */
+  executionHeadroomBps?: BigNumberish;
+  /**
+   * Basis-points multiplier applied to observed mode-1 message fee usage.
+   * Defaults to 12000 (20% headroom).
+   */
+  messageHeadroomBps?: BigNumberish;
+};
 
 export type DecodedDeployData = {
   code?: Hex;
