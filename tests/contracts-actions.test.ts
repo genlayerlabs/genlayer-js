@@ -794,8 +794,8 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(fees.distribution.maxPriceGenPerTimeUnit).toBe(10n);
     expect(fees.distribution.storageFeeMaxGasPrice).toBe(20n);
     expect(fees.distribution.receiptFeeMaxGasPrice).toBe(30n);
-    expect(fees.distribution.executionBudgetPerRound).toBe(9_185_760n);
-    expect(fees.feeValue).toBe(9_196_760n);
+    expect(fees.distribution.executionBudgetPerRound).toBe(15_345_360n);
+    expect(fees.feeValue).toBe(15_356_360n);
   });
 
   it("prefers Studio's exposed message fee budget floor over local fallback math", async () => {

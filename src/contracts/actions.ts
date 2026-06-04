@@ -1017,13 +1017,15 @@ const DEFAULT_PRICE_CAP_HEADROOM_BPS = 12_000n;
 const DEFAULT_LEADER_TIMEUNITS_ALLOCATION = 100n;
 const DEFAULT_VALIDATOR_TIMEUNITS_ALLOCATION = 200n;
 const DEFAULT_TRANSACTION_EXECUTION_BUDGET_PER_ROUND = 500_000n;
-const MIN_RECEIPT_BYTES = 512n;
 const DEFAULT_RECEIPT_SLOTS_CHANGED = 7n;
 const DEFAULT_INTRINSIC_GAS = 21_000n;
 const DEFAULT_BOOTLOADER_OVERHEAD = 60_000n;
 const DEFAULT_GAS_PER_CHANGED_SLOT = 1_000n;
 const DEFAULT_CALLDATA_GAS_PER_BYTE = 16n;
 const DEFAULT_FIXED_PROPOSE_RECEIPT_GAS = 210_000n;
+const DEFAULT_FIXED_MESSAGE_REVEAL_GAS = 100_000n;
+const DEFAULT_MESSAGE_REVEAL_LENGTH_SLOTS = 32n;
+const DEFAULT_NONDET_OUTPUT_LENGTH_BYTES = 32n;
 const TRANSACTION_GAS_HEADROOM_BPS = 20_000n;
 const DEFAULT_PARENT_MESSAGE_RECEIPT_HEADROOM = 10_000n;
 const VALIDATORS_PER_ROUND = [
@@ -1105,13 +1107,22 @@ const extractStudioFeePolicy = (config: unknown): FeePolicyQuote => {
     "policy.fixedProposeReceiptGas",
     DEFAULT_FIXED_PROPOSE_RECEIPT_GAS,
   );
+  const fixedMessageRevealGas = bigintFromUnknown(
+    policyRecord.fixedMessageRevealGas,
+    "policy.fixedMessageRevealGas",
+    DEFAULT_FIXED_MESSAGE_REVEAL_GAS,
+  );
   const executionBudgetFloor = policyRecord.messageFeeParamsBudgetFloor == null
     ? receiptGasPrice * (
         fixedProposeReceiptGas +
         intrinsicGas +
         bootloaderOverhead +
-        (MIN_RECEIPT_BYTES * calldataGasPerByte) +
-        (DEFAULT_RECEIPT_SLOTS_CHANGED * gasPerChangedSlot)
+        (DEFAULT_RECEIPT_SLOTS_CHANGED * gasPerChangedSlot) +
+        fixedMessageRevealGas +
+        intrinsicGas +
+        bootloaderOverhead +
+        (DEFAULT_MESSAGE_REVEAL_LENGTH_SLOTS * gasPerChangedSlot) +
+        (DEFAULT_NONDET_OUTPUT_LENGTH_BYTES * calldataGasPerByte)
       )
     : bigintFromUnknown(
         policyRecord.messageFeeParamsBudgetFloor,
