@@ -719,7 +719,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(fees.distribution.maxPriceGenPerTimeUnit).toBe(12n);
     expect(fees.distribution.storageFeeMaxGasPrice).toBe(24n);
     expect(fees.distribution.receiptFeeMaxGasPrice).toBe(36n);
-    expect(fees.distribution.executionBudgetPerRound).toBe(500_000n);
+    expect(fees.distribution.executionBudgetPerRound).toBe(800_000n);
     expect(fees.feeValue).toBe(82n);
   });
 
@@ -1061,7 +1061,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     const simCall = requestMock.mock.calls.find(([call]) => call.method === "sim_estimateTransactionFees")?.[0];
     expect(simCall).toBeDefined();
     expect(simCall.params[0].value).toBe("0x7");
-    expect(simCall.params[0].fees.feeValue).toBe("511110");
+    expect(simCall.params[0].fees.feeValue).toBe("811110");
     expect(simCall.params[0].fees.distribution.totalMessageFees).toBe("110");
     expect(simCall.params[0].fees.messageAllocations[0].budget).toBe("110");
     expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(602_117n);
@@ -1123,7 +1123,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(fees.messageAllocations?.[0].budget).toBe(50n);
     expect(fees.messageAllocations?.[0].feeParams).toBe(feeParams);
     expect(fees.distribution.totalMessageFees).toBe(50n);
-    expect(fees.feeValue).toBe(511_050n);
+    expect(fees.feeValue).toBe(811_050n);
   });
 
   it("keeps Studio fee estimation gasless when sim_getFeeConfig is disabled", async () => {

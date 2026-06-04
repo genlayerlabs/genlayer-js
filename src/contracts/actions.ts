@@ -1025,6 +1025,7 @@ const DEFAULT_GAS_PER_CHANGED_SLOT = 1_000n;
 const DEFAULT_CALLDATA_GAS_PER_BYTE = 16n;
 const DEFAULT_FIXED_PROPOSE_RECEIPT_GAS = 210_000n;
 const TRANSACTION_GAS_HEADROOM_BPS = 20_000n;
+const DEFAULT_PARENT_MESSAGE_RECEIPT_HEADROOM = 10_000n;
 const VALIDATORS_PER_ROUND = [
   5n,
   7n,
@@ -1186,10 +1187,13 @@ const buildEstimatedFeesDistribution = (
     "priceCapHeadroomBps",
     DEFAULT_PRICE_CAP_HEADROOM_BPS,
   );
-  const executionBudgetDefault = defaultExecutionBudgetPerRound(policy);
+  const baseExecutionBudgetDefault = defaultExecutionBudgetPerRound(policy);
+  const messageAllocations = options?.messageAllocations
+    ? normalizeMessageFeeAllocations(options.messageAllocations)
+    : undefined;
   const totalMessageFees = options?.totalMessageFees ?? (
-    options?.messageAllocations
-      ? normalizeMessageFeeAllocations(options.messageAllocations).reduce(
+    messageAllocations
+      ? messageAllocations.reduce(
           (sum, allocation) => {
             if (
               allocation.messageType === MessageType.External ||
@@ -1203,6 +1207,12 @@ const buildEstimatedFeesDistribution = (
         )
       : undefined
   );
+  const emitsMessages = (messageAllocations?.length ?? 0) > 0 || (
+    totalMessageFees !== undefined && toUInt(totalMessageFees, "totalMessageFees") > 0n
+  );
+  const executionBudgetDefault = emitsMessages
+    ? baseExecutionBudgetDefault + (policy.receiptGasPrice * DEFAULT_PARENT_MESSAGE_RECEIPT_HEADROOM)
+    : baseExecutionBudgetDefault;
 
   return createFeesDistribution({
     leaderTimeunitsAllocation: options?.leaderTimeunitsAllocation ?? (
@@ -2036,6 +2046,14 @@ const _sendTransaction = async ({
 
       const serializedTransaction = await validatedSenderAccount.signTransaction(transactionRequest);
       const txHash = await client.sendRawTransaction({serializedTransaction: serializedTransaction});
+
+      if (client.chain.isStudio) {
+        // Studio RPCs process eth_sendRawTransaction internally. The returned
+        // hash is already the GenLayer tx hash; there is no separate EVM
+        // receipt to wait for or consensus event to extract.
+        return txHash;
+      }
+
       const receipt = await publicClient.waitForTransactionReceipt({hash: txHash});
 
       if (receipt.status === "reverted") {
