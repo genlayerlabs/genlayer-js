@@ -1219,7 +1219,7 @@ const buildEstimatedFeesDistribution = (
       : undefined
   );
   const emitsMessages = (messageAllocations?.length ?? 0) > 0 || (
-    totalMessageFees !== undefined && toUInt(totalMessageFees, "totalMessageFees") > 0n
+    totalMessageFees !== undefined && toUInt(totalMessageFees, "totalMessageFees", 0n) > 0n
   );
   const executionBudgetDefault = emitsMessages
     ? baseExecutionBudgetDefault + (policy.receiptGasPrice * DEFAULT_PARENT_MESSAGE_RECEIPT_HEADROOM)
