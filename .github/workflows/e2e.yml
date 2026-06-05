@@ -1,39 +1,36 @@
 # Source-of-truth E2E pipeline workflow.
 #
-# This file is BOTH:
-#   - The workflow that runs in this repo (genlayer-e2e) for dispatch /
-#     local testing.
-#   - The file synced verbatim to every consumer repo as
-#     .github/workflows/e2e.yml (sync-template.yaml owns the fan-out).
+# This file is the central genlayer-e2e entrypoint. The primary PR gate
+# path is GitHub App driven: the webhook service creates/updates the
+# source repo's `E2E Tests` check and dispatches this workflow directly
+# in genlayer-e2e. Consumer repos do not need a synced workflow for that
+# App path.
 #
-# Consumers don't carry a separate thin caller — keeping the consumer's
-# workflow file BYTE-IDENTICAL to this one means:
-#   - Sidebar tiles stay flat: `acknowledge / register`, `plan / action`,
-#     `build / discover`, `genlayer-core / shard ... / e2e`, `result` —
-#     no wrapper-job prefix. A consumer-side thin caller would force
-#     `<wrapper> /` on every inner tile (see #386 follow-up where
-#     deleting e2e-harness.yml restored the flat layout).
-#   - Behavior changes ship via one sync PR per consumer, instead of
-#     each consumer hand-editing their wrapper.
+# The historical synced consumer workflow path is still supported as a
+# legacy/manual fallback while repositories migrate to the App gate.
 #
 # Two trigger paths:
 #   - `issue_comment` — PR comment `/run-e2e [profile] [track] [scope]`
 #     on the consumer's repo. The acknowledge job's `if:` gates on
 #     author-association so only members/owners/collaborators can fire
 #     the pipeline.
-#   - `repository_dispatch` — GitHub App dispatcher path. The webhook
+#   - `workflow_dispatch` with `dispatch_payload` — primary GitHub App
+#     dispatcher path. The webhook service validates the public/private
+#     policy, creates the `E2E Tests` check on the source PR, then
+#     dispatches this central private run with synthetic PR context.
+#   - `repository_dispatch` — legacy GitHub App dispatcher path. The webhook
 #     service validates the public/private policy, creates the `E2E Tests`
 #     check on the source PR, then dispatches this central private run with
 #     synthetic PR context.
-#   - `workflow_dispatch` — manual / debug in this repo (UI dropdowns).
-#     Acknowledge is skipped (no PR comment context); plan/build/waves
-#     run with workflow_dispatch input values.
+#   - `workflow_dispatch` without `dispatch_payload` — manual / debug in
+#     this repo (UI dropdowns). Acknowledge is skipped (no PR comment
+#     context); plan/build/waves run with workflow_dispatch input values.
 #
-# All internal `uses:` references are cross-repo
-# (`genlayerlabs/genlayer-e2e/.github/workflows/X.yml@main`) so the same
-# file works whether it lives in this repo or in a synced consumer.
-# Feature-branch testing requires sedding `@main` → `@<branch>` on the
-# inner uses; see feedback_branch_pin_for_testing.md.
+# Internal reusable workflow calls use local paths so the GitHub App /
+# workflow_dispatch path validates and runs against this exact
+# genlayer-e2e commit. The legacy sync renderer rewrites those local
+# paths to `genlayerlabs/genlayer-e2e/.github/workflows/X.yml@main` only
+# for consumer copies.
 #
 # Sync-time hack — `on: issue_comment:` injection
 # ------------------------------------------------
@@ -79,6 +76,11 @@ run-name: >-
       github.event.client_payload.dispatch.target_repo || github.event.client_payload.target_repo,
       github.event.client_payload.dispatch.pr_number || github.event.client_payload.pr_number))
     || (github.event_name == 'workflow_dispatch'
+    && inputs.dispatch_payload != ''
+    && format('{0} #{1} /run-e2e',
+      inputs.target_repo,
+      inputs.pr_number))
+    || (github.event_name == 'workflow_dispatch'
     && format('E2E Test {0}/{1}/{2}/{3}', inputs.profile, inputs.track, inputs.scope, inputs.stack))
     || format('noop {0}', github.run_id) }}
 
@@ -98,12 +100,13 @@ on:
           - default
           - testnet
       track:
-        description: Matrix track (must exist as matrix/<track>.yaml)
+        description: E2E release train (must exist in release-trains.yaml)
         required: false
         default: v0.5
         type: choice
         options:
           - v0.5
+          - v0.6
       scope:
         description: >
           Wave-plan scope filter. `all` runs every wave (default);
@@ -131,6 +134,29 @@ on:
           - all
           - dev-env
           - studio
+      dispatch_payload:
+        description: GitHub App dispatch payload JSON. Internal; leave empty for manual debug runs.
+        required: false
+        default: ''
+        type: string
+      target_repo:
+        description: Source repo for App dispatch display/grouping. Internal.
+        required: false
+        default: ''
+        type: string
+      pr_number:
+        description: Source PR number for App dispatch display/grouping. Internal.
+        required: false
+        default: ''
+        type: string
+      combo-cache-bust:
+        description: >
+          Optional component-combo cache bust token for debug runs.
+          Use `force` / `no-cache` for a one-off miss, or a stable token
+          to invalidate a family of cached successes.
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -153,6 +179,11 @@ concurrency:
         && format('e2e-{0}-pr-{1}',
           github.event.client_payload.dispatch.target_repo || github.event.client_payload.target_repo,
           github.event.client_payload.dispatch.pr_number || github.event.client_payload.pr_number))
+        || (github.event_name == 'workflow_dispatch'
+        && inputs.dispatch_payload != ''
+        && format('e2e-{0}-pr-{1}',
+          inputs.target_repo,
+          inputs.pr_number))
         || format('e2e-noop-{0}', github.run_id) }}
   cancel-in-progress: true
 
@@ -171,14 +202,14 @@ jobs:
   # dispatch-context — central GitHub App webhook path.
   #
   # The dispatcher service has already verified the webhook, actor, trusted-head
-  # policy, and source PR metadata before emitting repository_dispatch. This job
+  # policy, and source PR metadata before dispatching this workflow. This job
   # validates the payload contract again inside GitHub Actions, updates the
   # already-created source check-run with this private run URL, parses the
   # comment tokens, parses Depends-On from the forwarded PR body, and emits the
   # same context fields that acknowledge emits on the synced issue_comment path.
   # ===========================================================================
   dispatch-context:
-    if: github.event_name == 'repository_dispatch'
+    if: github.event_name == 'repository_dispatch' || (github.event_name == 'workflow_dispatch' && inputs.dispatch_payload != '')
     runs-on: ubuntu-latest
     outputs:
       target-repo: ${{ steps.payload.outputs.target_repo }}
@@ -191,6 +222,7 @@ jobs:
       track-token: ${{ steps.parse.outputs.track-token }}
       scope-token: ${{ steps.parse.outputs.scope-token }}
       stack-token: ${{ steps.parse.outputs.stack-token }}
+      combo-cache-bust: ${{ steps.payload.outputs.combo_cache_bust || steps.parse.outputs.combo-cache-bust-token }}
       pre-build-cache: ${{ steps.pre-build-cache.outputs.pre-build-cache }}
       depends-on-tsv: ${{ steps.validate-depends-on.outputs.depends-on-tsv }}
     steps:
@@ -203,17 +235,26 @@ jobs:
       - name: Validate dispatcher payload
         id: payload
         env:
-          PAYLOAD: ${{ toJson(github.event.client_payload.dispatch || github.event.client_payload) }}
+          PAYLOAD: ${{ github.event_name == 'repository_dispatch' && toJson(github.event.client_payload.dispatch || github.event.client_payload) || inputs.dispatch_payload }}
         run: |
           set -euo pipefail
           node services/e2e-dispatcher/scripts/validate-dispatch-payload.mjs "${PAYLOAD}"
           echo "target_repo=$(jq -r '.target_repo' <<<"${PAYLOAD}")" >> "$GITHUB_OUTPUT"
           echo "pr_number=$(jq -r '.pr_number' <<<"${PAYLOAD}")" >> "$GITHUB_OUTPUT"
           echo "comment_id=$(jq -r '.comment_id // ""' <<<"${PAYLOAD}")" >> "$GITHUB_OUTPUT"
-          echo "check_run_id=$(jq -r '.check_run_id' <<<"${PAYLOAD}")" >> "$GITHUB_OUTPUT"
+          echo "check_run_id=$(jq -r '.check_run_id // ""' <<<"${PAYLOAD}")" >> "$GITHUB_OUTPUT"
           echo "head_sha=$(jq -r '.head_sha' <<<"${PAYLOAD}")" >> "$GITHUB_OUTPUT"
+          echo "combo_cache_bust=$(jq -r '.combo_cache_bust // ""' <<<"${PAYLOAD}")" >> "$GITHUB_OUTPUT"
           public_result_policy=$(jq -r '.public_result_policy // "detailed"' <<<"${PAYLOAD}")
           echo "public_result_policy=${public_result_policy}" >> "$GITHUB_OUTPUT"
+          {
+            echo "comment_body<<COMMENT_BODY_EOF"
+            jq -r '.comment_body' <<<"${PAYLOAD}"
+            echo "COMMENT_BODY_EOF"
+            echo "pull_request_body<<PR_BODY_EOF"
+            jq -r '.pull_request_body // ""' <<<"${PAYLOAD}"
+            echo "PR_BODY_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Generate GitHub App token
         id: app-token
@@ -232,13 +273,13 @@ jobs:
         id: parse
         uses: ./.github/actions/parse-comment
         with:
-          comment-body: ${{ github.event.client_payload.dispatch.comment_body || github.event.client_payload.comment_body }}
+          comment-body: ${{ steps.payload.outputs.comment_body }}
 
       - name: Validate Depends-On lines
         id: validate-depends-on
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          PR_BODY: ${{ github.event.client_payload.dispatch.pull_request_body || github.event.client_payload.pull_request_body || '' }}
+          PR_BODY: ${{ steps.payload.outputs.pull_request_body }}
           COMPONENTS_FILE: ${{ github.workspace }}/components.yaml
         run: |
           set -euo pipefail
@@ -312,7 +353,7 @@ jobs:
       # is behind on syncs. The empty literal here is what the source
       # ships with — it stays empty in the genlayer-e2e repo itself
       # (skipped at the check step on the source-side path).
-      template-hash: '419a85c5c48a72efae81e7fdf1aeed963222a8bcf78f9ac82a51778e4c441c4a' # SYNC_INJECT(template_hash)
+      template-hash: '515480228889995071837d4d5de2d703e0c2fa7a91370f34f17ad29c1a41bfd5' # SYNC_INJECT(template_hash)
     secrets: inherit
 
   # ===========================================================================
@@ -385,7 +426,7 @@ jobs:
       contains(needs.plan.outputs.stack-config, '"target":"dev-env"')
     uses: genlayerlabs/genlayer-e2e/.github/workflows/e2e-build.yml@main
     with:
-      track: ${{ github.ref_name }}
+      track: ${{ needs.plan.outputs.track }}
       profile: ${{ needs.plan.outputs.profile }}
       genvm-version: ${{ needs.plan.outputs.genvm-version }}
       consensus-ref: ${{ needs.plan.outputs.consensus-ref }}
@@ -399,7 +440,7 @@ jobs:
       build-cache-key: ${{ needs.plan.outputs.build-cache-key }}
       full-cache-key: ${{ needs.plan.outputs.full-cache-key }}
       pre-build-cache: ${{ needs.plan.outputs.pre-build-cache }}
-      # Mirrors matrix/<track>.yaml shape ({core, harness, tooling}). The
+      # Mirrors the resolved track matrix shape ({core, harness, tooling}). The
       # conclusion job's Emit build summary step parses this with jq
       # to render the full component Refs sub-list in the Execution
       # block. Trailing JSON commas would be invalid — keep the same
@@ -430,7 +471,7 @@ jobs:
       contains(needs.plan.outputs.stack-config, '"target":"studio"')
     uses: genlayerlabs/genlayer-e2e/.github/workflows/e2e-build-studio.yml@main
     with:
-      track: ${{ github.ref_name }}
+      track: ${{ needs.plan.outputs.track }}
       profile: ${{ needs.plan.outputs.profile }}
       genvm-version: ${{ needs.plan.outputs.genvm-version }}
       genlayer-studio-ref: ${{ needs.plan.outputs.genlayer-studio-ref }}
@@ -500,7 +541,7 @@ jobs:
       # mechanism waves 2-4 use for upstream-wave failures — see
       # e2e-run.yml's sentinel branches.
       component: ${{ ((matrix.stack-target == 'studio' && needs.build-studio.outputs.build-status != 'success') || (matrix.stack-target != 'studio' && needs.build.outputs.build-status != 'success')) && 'none' || matrix.component }}
-      track: ${{ github.ref_name }}
+      track: ${{ needs.plan.outputs.track }}
       job-name: ${{ matrix.job-name || matrix.component }}
       stack-target: ${{ matrix.stack-target || 'dev-env' }}
       setup-task: ${{ matrix.setup-task }}
@@ -508,6 +549,7 @@ jobs:
       tags: ${{ matrix.tags }}
       split: ${{ matrix.split }}
       features-source: ${{ matrix.features-source }}
+      e2e-dir: ${{ needs.plan.outputs.e2e-dir }}
       retry: ${{ matrix.retry }}
       max-shard-split: ${{ matrix.max-shard-split || 0 }}
       failure-tag: ${{ matrix.failure-tag || '' }}
@@ -535,6 +577,7 @@ jobs:
       check-run-id: ${{ needs.acknowledge.outputs.check-run-id || needs.dispatch-context.outputs.check-run-id || '' }}
       public-result-policy: ${{ needs.dispatch-context.outputs.public-result-policy || 'detailed' }}
       head-sha: ${{ needs.acknowledge.outputs.head-sha || needs.dispatch-context.outputs.head-sha || github.sha }}
+      combo-cache-bust: ${{ needs.acknowledge.outputs.combo-cache-bust-token || needs.dispatch-context.outputs.combo-cache-bust || inputs.combo-cache-bust || '' }}
       github-retry-max: ${{ needs.plan.outputs.github-retry-max }}
       github-retry-initial-delay: ${{ needs.plan.outputs.github-retry-initial-delay }}
       github-retry-max-delay: ${{ needs.plan.outputs.github-retry-max-delay }}
@@ -563,7 +606,14 @@ jobs:
       !cancelled() &&
       needs.plan.result == 'success'
     strategy:
-      fail-fast: false
+      fail-fast: true
+      # Wave-2 SDK components can each fan out into multiple stack shards.
+      # Letting JS/Python/CLI all run at once multiplies Studio stack
+      # count (5 shards * 3 components = 15 stacks) and makes Studio
+      # transactions stall. Run one SDK component at a time and stop the
+      # rest of this wave on the first failed component; each component
+      # can still use its internal shard split.
+      max-parallel: 1
       matrix:
         include: ${{ fromJson(needs.plan.outputs.wave-plans)['wave-2'] }}
     uses: genlayerlabs/genlayer-e2e/.github/workflows/e2e-run.yml@main
@@ -573,7 +623,7 @@ jobs:
       # reliable trip signal — failure-label is only used for the
       # tile label content above, not the trip decision.
       component: ${{ (((matrix.stack-target == 'studio' && needs.build-studio.outputs.build-status != 'success') || (matrix.stack-target != 'studio' && needs.build.outputs.build-status != 'success')) || needs.wave-1.result == 'failure') && 'none' || matrix.component }}
-      track: ${{ github.ref_name }}
+      track: ${{ needs.plan.outputs.track }}
       job-name: ${{ matrix.job-name || matrix.component }}
       stack-target: ${{ matrix.stack-target || 'dev-env' }}
       setup-task: ${{ matrix.setup-task }}
@@ -581,6 +631,7 @@ jobs:
       tags: ${{ matrix.tags }}
       split: ${{ matrix.split }}
       features-source: ${{ matrix.features-source }}
+      e2e-dir: ${{ needs.plan.outputs.e2e-dir }}
       retry: ${{ matrix.retry }}
       max-shard-split: ${{ matrix.max-shard-split || 0 }}
       failure-tag: ${{ matrix.failure-tag || '' }}
@@ -608,6 +659,7 @@ jobs:
       check-run-id: ${{ needs.acknowledge.outputs.check-run-id || needs.dispatch-context.outputs.check-run-id || '' }}
       public-result-policy: ${{ needs.dispatch-context.outputs.public-result-policy || 'detailed' }}
       head-sha: ${{ needs.acknowledge.outputs.head-sha || needs.dispatch-context.outputs.head-sha || github.sha }}
+      combo-cache-bust: ${{ needs.acknowledge.outputs.combo-cache-bust-token || needs.dispatch-context.outputs.combo-cache-bust || inputs.combo-cache-bust || '' }}
       github-retry-max: ${{ needs.plan.outputs.github-retry-max }}
       github-retry-initial-delay: ${{ needs.plan.outputs.github-retry-initial-delay }}
       github-retry-max-delay: ${{ needs.plan.outputs.github-retry-max-delay }}
@@ -639,7 +691,7 @@ jobs:
       # for reliability — failure-label is only consumed for the
       # tile label content above, not the trip decision.
       component: ${{ (((matrix.stack-target == 'studio' && needs.build-studio.outputs.build-status != 'success') || (matrix.stack-target != 'studio' && needs.build.outputs.build-status != 'success')) || needs.wave-1.result == 'failure' || needs.wave-2.result == 'failure') && 'none' || matrix.component }}
-      track: ${{ github.ref_name }}
+      track: ${{ needs.plan.outputs.track }}
       job-name: ${{ matrix.job-name || matrix.component }}
       stack-target: ${{ matrix.stack-target || 'dev-env' }}
       setup-task: ${{ matrix.setup-task }}
@@ -647,6 +699,7 @@ jobs:
       tags: ${{ matrix.tags }}
       split: ${{ matrix.split }}
       features-source: ${{ matrix.features-source }}
+      e2e-dir: ${{ needs.plan.outputs.e2e-dir }}
       retry: ${{ matrix.retry }}
       max-shard-split: ${{ matrix.max-shard-split || 0 }}
       failure-tag: ${{ matrix.failure-tag || '' }}
@@ -674,6 +727,7 @@ jobs:
       check-run-id: ${{ needs.acknowledge.outputs.check-run-id || needs.dispatch-context.outputs.check-run-id || '' }}
       public-result-policy: ${{ needs.dispatch-context.outputs.public-result-policy || 'detailed' }}
       head-sha: ${{ needs.acknowledge.outputs.head-sha || needs.dispatch-context.outputs.head-sha || github.sha }}
+      combo-cache-bust: ${{ needs.acknowledge.outputs.combo-cache-bust-token || needs.dispatch-context.outputs.combo-cache-bust || inputs.combo-cache-bust || '' }}
       github-retry-max: ${{ needs.plan.outputs.github-retry-max }}
       github-retry-initial-delay: ${{ needs.plan.outputs.github-retry-initial-delay }}
       github-retry-max-delay: ${{ needs.plan.outputs.github-retry-max-delay }}
@@ -698,7 +752,7 @@ jobs:
       # Cascade override: force sentinel path when any upstream layer
       # (build / wave-1 / wave-2 / wave-3) failed.
       component: ${{ (((matrix.stack-target == 'studio' && needs.build-studio.outputs.build-status != 'success') || (matrix.stack-target != 'studio' && needs.build.outputs.build-status != 'success')) || needs.wave-1.result == 'failure' || needs.wave-2.result == 'failure' || needs.wave-3.result == 'failure') && 'none' || matrix.component }}
-      track: ${{ github.ref_name }}
+      track: ${{ needs.plan.outputs.track }}
       job-name: ${{ matrix.job-name || matrix.component }}
       stack-target: ${{ matrix.stack-target || 'dev-env' }}
       setup-task: ${{ matrix.setup-task }}
@@ -706,6 +760,7 @@ jobs:
       tags: ${{ matrix.tags }}
       split: ${{ matrix.split }}
       features-source: ${{ matrix.features-source }}
+      e2e-dir: ${{ needs.plan.outputs.e2e-dir }}
       retry: ${{ matrix.retry }}
       max-shard-split: ${{ matrix.max-shard-split || 0 }}
       failure-tag: ${{ matrix.failure-tag || '' }}
@@ -733,6 +788,7 @@ jobs:
       check-run-id: ${{ needs.acknowledge.outputs.check-run-id || needs.dispatch-context.outputs.check-run-id || '' }}
       public-result-policy: ${{ needs.dispatch-context.outputs.public-result-policy || 'detailed' }}
       head-sha: ${{ needs.acknowledge.outputs.head-sha || needs.dispatch-context.outputs.head-sha || github.sha }}
+      combo-cache-bust: ${{ needs.acknowledge.outputs.combo-cache-bust-token || needs.dispatch-context.outputs.combo-cache-bust || inputs.combo-cache-bust || '' }}
       github-retry-max: ${{ needs.plan.outputs.github-retry-max }}
       github-retry-initial-delay: ${{ needs.plan.outputs.github-retry-initial-delay }}
       github-retry-max-delay: ${{ needs.plan.outputs.github-retry-max-delay }}
