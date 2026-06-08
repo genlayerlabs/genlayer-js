@@ -1,5 +1,20 @@
 import {Transport, Client, PublicActions, WalletActions} from "viem";
-import {GenLayerTransaction, TransactionHash, TransactionStatus, TransactionHashVariant, DebugTraceResult} from "./transactions";
+import {
+  GenLayerTransaction,
+  TransactionHash,
+  TransactionStatus,
+  TransactionHashVariant,
+  DebugTraceResult,
+  TransactionFeeOptions,
+  TransactionFeeEstimate,
+  FeeEstimateOptions,
+  SimulationFeeEstimateOptions,
+  WriteFeeEstimateOptions,
+  FeePolicyQuote,
+  BigNumberish,
+  FeesDistributionInput,
+  SimulateWriteContractResult,
+} from "./transactions";
 import {GenLayerChain} from "./chains";
 import {Address, Account} from "./accounts";
 import {CalldataEncodable} from "./calldata";
@@ -21,7 +36,10 @@ export type GenLayerMethod =
   | {method: "eth_getTransactionCount"; params: [address: Address, block: string]}
   | {method: "eth_estimateGas"; params: [transactionParams: any]}
   | {method: "gen_call"; params: [requestParams: any]}
-  | {method: "sim_cancelTransaction"; params: [hash: TransactionHash, signature?: string, adminKey?: string]};
+  | {method: "sim_call"; params: [requestParams: any]}
+  | {method: "sim_estimateTransactionFees"; params: [requestParams: any]}
+  | {method: "sim_cancelTransaction"; params: [hash: TransactionHash, signature?: string, adminKey?: string]}
+  | {method: "sim_getFeeConfig"; params: []};
 
 /*
   Take all the properties from Client<Transport, TGenLayerChain>
@@ -58,20 +76,30 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       functionName: string;
       args?: CalldataEncodable[];
       kwargs?: Map<string, CalldataEncodable> | {[key: string]: CalldataEncodable};
-      value: bigint;
+      value?: bigint;
       leaderOnly?: boolean;
       consensusMaxRotations?: number;
+      validUntil?: BigNumberish;
+      fees?: TransactionFeeOptions;
     }) => Promise<any>;
-    simulateWriteContract: <RawReturn extends boolean | undefined>(args: {
+    simulateWriteContract: <
+      RawReturn extends boolean | undefined = undefined,
+      IncludeReceipt extends boolean | undefined = undefined,
+    >(args: {
       account?: Account;
       address: Address;
       functionName: string;
       args?: CalldataEncodable[];
       kwargs?: Map<string, CalldataEncodable> | { [key: string]: CalldataEncodable };
       rawReturn?: RawReturn;
+      includeReceipt?: IncludeReceipt;
+      value?: BigNumberish;
       leaderOnly?: boolean;
+      fees?: TransactionFeeOptions;
       transactionHashVariant?: TransactionHashVariant;
-    }) => Promise<RawReturn extends true ? `0x${string}` : CalldataEncodable>;
+    }) => Promise<IncludeReceipt extends true
+      ? SimulateWriteContractResult<RawReturn>
+      : RawReturn extends true ? `0x${string}` : CalldataEncodable>;
     deployContract: (args: {
       account?: Account;
       code: string | Uint8Array;
@@ -79,6 +107,8 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       kwargs?: Map<string, CalldataEncodable> | {[key: string]: CalldataEncodable};
       leaderOnly?: boolean;
       consensusMaxRotations?: number;
+      validUntil?: BigNumberish;
+      fees?: TransactionFeeOptions;
     }) => Promise<`0x${string}`>;
     getTransaction: (args: {hash: TransactionHash}) => Promise<GenLayerTransaction>;
     getCurrentNonce: (args: {address: Address}) => Promise<number>;
@@ -114,6 +144,18 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       txId: `0x${string}`;
       value?: bigint;
     }) => Promise<any>;
+    topUpFees: (args: {
+      account?: Account;
+      txId: `0x${string}`;
+      distribution: FeesDistributionInput;
+      value: bigint;
+    }) => Promise<`0x${string}`>;
+    topUpAndSubmitAppeal: (args: {
+      account?: Account;
+      txId: `0x${string}`;
+      distribution: FeesDistributionInput;
+      value?: bigint;
+    }) => Promise<`0x${string}`>;
     finalizeTransaction: (args: {
       account?: Account;
       txId: `0x${string}`;
@@ -123,4 +165,9 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       txIds: readonly `0x${string}`[];
     }) => Promise<`0x${string}`>;
     getMinAppealBond: (args: {txId: `0x${string}`}) => Promise<bigint>;
+    getCurrentFeePolicy: () => Promise<FeePolicyQuote>;
+    estimateFeesDistribution: (args?: FeeEstimateOptions) => Promise<TransactionFeeEstimate["distribution"]>;
+    estimateTransactionFees: (args?: FeeEstimateOptions) => Promise<TransactionFeeEstimate>;
+    estimateTransactionFeesFromSimulation: (args: SimulationFeeEstimateOptions) => Promise<TransactionFeeEstimate>;
+    estimateTransactionFeesForWrite: (args: WriteFeeEstimateOptions) => Promise<TransactionFeeEstimate>;
   } & StakingActions;

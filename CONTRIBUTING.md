@@ -28,6 +28,28 @@ Have ideas for new features or use cases? We're eager to hear them! But first:
 - Ensure you have the SDK installed to explore existing use cases.
 - After familiarizing yourself with the SDK, contribute your unique use case and share your ideas in our [Discord channel](https://discord.gg/8Jm4v89VAu).
 
+## Branch model
+
+This repo uses a branch-per-major release model. There is no `main`.
+
+- **`v1`** — current stable major. PRs for bug fixes / non-breaking features target this branch. Releases are cut from here (see `scripts/release.sh`).
+- **`v<next>-dev`** — when a major bump is in progress (e.g. `v2-dev`), this branch is open for the new major's work. PRs introducing breaking changes target this branch, not `v1`.
+- **Older majors** (`v0`, etc.) stay on the repo for back-ports and security patches. Default branch on github.com is whichever major is current stable.
+
+When you fork or clone, the default branch is `v1` today. If you have a `main` branch from a previous checkout, delete it locally:
+
+```sh
+git checkout v1
+git branch -D main
+git remote prune origin
+```
+
+## Releases
+
+Releases are deliberate, not automatic. `scripts/release.sh` bumps the version, updates `CHANGELOG.md`, commits, tags, and pushes; CI takes over from the tag push and publishes to npm. See `.claude/skills/release/SKILL.md` for the full flow.
+
+If you're using Claude Code, ask it to "release a patch" (or "release v1.2.0") and the skill walks through the pre-flight checks before invoking the script.
+
 ### Bug fixing and Feature development
 
 #### 1. Set yourself up to start coding
