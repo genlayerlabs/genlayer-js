@@ -123,6 +123,7 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       status?: TransactionStatus;
       interval?: number;
       retries?: number;
+      fullTransaction?: boolean;
     }) => Promise<GenLayerTransaction>;
     getContractSchema: (address: Address) => Promise<ContractSchema>;
     getContractSchemaForCode: (contractCode: string | Uint8Array) => Promise<ContractSchema>;
