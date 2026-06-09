@@ -719,7 +719,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(fees.distribution.maxPriceGenPerTimeUnit).toBe(12n);
     expect(fees.distribution.storageFeeMaxGasPrice).toBe(24n);
     expect(fees.distribution.receiptFeeMaxGasPrice).toBe(36n);
-    expect(fees.distribution.executionBudgetPerRound).toBe(800_000n);
+    expect(fees.distribution.executionBudgetPerRound).toBe(3_000_300_000n);
     expect(fees.feeValue).toBe(82n);
   });
 
@@ -794,8 +794,8 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(fees.distribution.maxPriceGenPerTimeUnit).toBe(10n);
     expect(fees.distribution.storageFeeMaxGasPrice).toBe(20n);
     expect(fees.distribution.receiptFeeMaxGasPrice).toBe(30n);
-    expect(fees.distribution.executionBudgetPerRound).toBe(15_345_360n);
-    expect(fees.feeValue).toBe(15_356_360n);
+    expect(fees.distribution.executionBudgetPerRound).toBe(3_000_000_000n);
+    expect(fees.feeValue).toBe(3_000_011_000n);
   });
 
   it("prefers Studio's exposed message fee budget floor over local fallback math", async () => {
@@ -824,8 +824,8 @@ describe("contractActions addTransaction ABI compatibility", () => {
     const fees = await actions.estimateTransactionFees({priceCapHeadroomBps: 10_000n});
 
     expect(fees.policy.executionBudgetFloor).toBe(700_000n);
-    expect(fees.distribution.executionBudgetPerRound).toBe(700_000n);
-    expect(fees.feeValue).toBe(711_000n);
+    expect(fees.distribution.executionBudgetPerRound).toBe(3_000_000_000n);
+    expect(fees.feeValue).toBe(3_000_011_000n);
   });
 
   it("builds a Studio trusted fee preset from a simulation fee report", async () => {
@@ -949,7 +949,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(fees.observed).toEqual({
       executionFeeConsumed: 100n,
       executionFeeReportTotal: 501_664n,
-      recommendedExecutionBudgetPerRound: 602_117n,
+      recommendedExecutionBudgetPerRound: 3_000_000_000n,
       genvmMessageFeeConsumed: 5n,
       messageFeeBudget: 10n,
       messageFeeConsumed: 5n,
@@ -960,9 +960,9 @@ describe("contractActions addTransaction ABI compatibility", () => {
       externalMessageRemainder: 0n,
       recommendedTotalMessageFees: 6n,
     });
-    expect(fees.distribution.executionBudgetPerRound).toBe(602_117n);
+    expect(fees.distribution.executionBudgetPerRound).toBe(3_000_000_000n);
     expect(fees.distribution.totalMessageFees).toBe(6n);
-    expect(fees.feeValue).toBe(613_123n);
+    expect(fees.feeValue).toBe(3_000_011_006n);
   });
 
   it("builds a Studio trusted fee preset for a target write in one call", async () => {
@@ -1011,7 +1011,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
               leaderTimeunitsAllocation: "100",
               validatorTimeunitsAllocation: "200",
               appealRounds: "0",
-              executionBudgetPerRound: "700000",
+              executionBudgetPerRound: "3000000000",
               executionConsumed: "0",
               totalMessageFees: "110",
               rotations: ["0"],
@@ -1030,7 +1030,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
                 feeParams,
               },
             ],
-            feeValue: "711110",
+            feeValue: "3000011110",
           },
         };
       }
@@ -1061,16 +1061,16 @@ describe("contractActions addTransaction ABI compatibility", () => {
     const simCall = requestMock.mock.calls.find(([call]) => call.method === "sim_estimateTransactionFees")?.[0];
     expect(simCall).toBeDefined();
     expect(simCall.params[0].value).toBe("0x7");
-    expect(simCall.params[0].fees.feeValue).toBe("811110");
+    expect(simCall.params[0].fees.feeValue).toBe("3000311110");
     expect(simCall.params[0].fees.distribution.totalMessageFees).toBe("110");
     expect(simCall.params[0].fees.messageAllocations[0].budget).toBe("110");
-    expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(602_117n);
+    expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(3_000_000_000n);
     expect(fees.observed?.messageFeeBudget).toBe(110n);
     expect(fees.observed?.messageFeeConsumed).toBe(50n);
-    expect(fees.distribution.executionBudgetPerRound).toBe(700_000n);
+    expect(fees.distribution.executionBudgetPerRound).toBe(3_000_000_000n);
     expect(fees.distribution.totalMessageFees).toBe(110n);
     expect(fees.messageAllocations?.[0].budget).toBe(110n);
-    expect(fees.feeValue).toBe(711_110n);
+    expect(fees.feeValue).toBe(3_000_011_110n);
   });
 
   it("preserves mode-2 message allocations from simulation fee accounting", async () => {
@@ -1123,7 +1123,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(fees.messageAllocations?.[0].budget).toBe(50n);
     expect(fees.messageAllocations?.[0].feeParams).toBe(feeParams);
     expect(fees.distribution.totalMessageFees).toBe(50n);
-    expect(fees.feeValue).toBe(811_050n);
+    expect(fees.feeValue).toBe(3_000_311_050n);
   });
 
   it("keeps Studio fee estimation gasless when sim_getFeeConfig is disabled", async () => {
