@@ -4,9 +4,13 @@ import {
   TransactionStatus,
   GenLayerTransaction,
   GenLayerRawTransaction,
+  ExecutionResult,
   transactionsStatusNameToNumber,
+  transactionsStatusNumberToName,
+  executionResultNumberToName,
   isDecidedState,
   DebugTraceResult,
+  TransactionReceiptWaitUntil,
 } from "../types/transactions";
 import {transactionsConfig} from "../config/transactions";
 import {sleep} from "../utils/async";
@@ -14,21 +18,92 @@ import {GenLayerChain} from "@/types";
 import {Abi, PublicClient, Address, keccak256, concat, stringToBytes, toBytes} from "viem";
 import {decodeLocalnetTransaction, decodeTransaction, simplifyTransactionReceipt} from "./decoders";
 
+let didWarnWaitForTransactionReceiptStatus = false;
+
+const warnDeprecatedReceiptStatus = () => {
+  if (didWarnWaitForTransactionReceiptStatus) return;
+  didWarnWaitForTransactionReceiptStatus = true;
+  console.warn("waitForTransactionReceipt({ status }) is deprecated; use waitUntil: 'decided' or waitUntil: 'finalized' instead.");
+};
+
+const resolveWaitTarget = (
+  status: TransactionStatus | undefined,
+  waitUntil: TransactionReceiptWaitUntil | undefined,
+): {
+  waitUntil?: TransactionReceiptWaitUntil;
+  legacyStatus?: TransactionStatus;
+  label: string;
+} => {
+  if (waitUntil) {
+    return {waitUntil, label: waitUntil};
+  }
+  if (!status) {
+    return {waitUntil: "decided", label: "decided"};
+  }
+
+  warnDeprecatedReceiptStatus();
+  if (status === TransactionStatus.ACCEPTED) {
+    return {waitUntil: "decided", label: "decided"};
+  }
+  if (status === TransactionStatus.FINALIZED) {
+    return {waitUntil: "finalized", label: "finalized"};
+  }
+  return {legacyStatus: status, label: status};
+};
+
+const hasReachedWaitTarget = (
+  transactionStatusString: string,
+  target: ReturnType<typeof resolveWaitTarget>,
+): boolean => {
+  if (target.waitUntil === "decided") {
+    return isDecidedState(transactionStatusString);
+  }
+  if (target.waitUntil === "finalized") {
+    return transactionStatusString === transactionsStatusNameToNumber[TransactionStatus.FINALIZED];
+  }
+  if (!target.legacyStatus) return false;
+  return transactionStatusString === transactionsStatusNameToNumber[target.legacyStatus];
+};
+
+export const isSuccessful = (transaction: GenLayerTransaction): boolean => {
+  const statusName = transaction.statusName ?? (
+    typeof transaction.status === "string" && transaction.status in TransactionStatus
+      ? transaction.status as TransactionStatus
+      : transaction.status === undefined
+        ? undefined
+        : transactionsStatusNumberToName[String(transaction.status) as keyof typeof transactionsStatusNumberToName]
+  );
+  const executionResultName = transaction.txExecutionResultName ?? (
+    transaction.txExecutionResult === undefined
+      ? undefined
+      : executionResultNumberToName[String(transaction.txExecutionResult) as keyof typeof executionResultNumberToName]
+  );
+
+  return (
+    (statusName === TransactionStatus.ACCEPTED || statusName === TransactionStatus.FINALIZED) &&
+    executionResultName === ExecutionResult.FINISHED_WITH_RETURN
+  );
+};
+
 export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => ({
   /** Polls until a transaction reaches the specified status. Returns the transaction receipt. */
   waitForTransactionReceipt: async ({
     hash,
-    status = TransactionStatus.ACCEPTED,
+    status,
+    waitUntil,
     interval = transactionsConfig.waitInterval,
     retries = transactionsConfig.retries,
     fullTransaction = false,
   }: {
     hash: TransactionHash;
-    status: TransactionStatus;
+    /** @deprecated Use waitUntil: "decided" or waitUntil: "finalized" instead. */
+    status?: TransactionStatus;
+    waitUntil?: TransactionReceiptWaitUntil;
     interval?: number;
     retries?: number;
     fullTransaction?: boolean;
   }): Promise<GenLayerTransaction> => {
+    const target = resolveWaitTarget(status, waitUntil);
     const transaction = await client.getTransaction({
       hash,
     });
@@ -37,11 +112,7 @@ export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClie
       throw new Error(`Transaction not found: ${hash}`);
     }
     const transactionStatusString = String(transaction.status);
-    const requestedStatus = transactionsStatusNameToNumber[status];
-    if (
-      transactionStatusString === requestedStatus ||
-      (status === TransactionStatus.ACCEPTED && isDecidedState(transactionStatusString))
-    ) {
+    if (hasReachedWaitTarget(transactionStatusString, target)) {
       let finalTransaction = transaction;
       if (client.chain.isStudio) {
         finalTransaction = decodeLocalnetTransaction(transaction as unknown as GenLayerTransaction);
@@ -53,13 +124,14 @@ export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClie
     }
 
     if (retries === 0) {
-      throw new Error(`Timed out waiting for transaction ${hash} to reach status "${status}" (current status: ${transactionStatusString}).`);
+      throw new Error(`Timed out waiting for transaction ${hash} to reach "${target.label}" (current status: ${transactionStatusString}).`);
     }
 
     await sleep(interval);
     return receiptActions(client, publicClient).waitForTransactionReceipt({
       hash,
-      status,
+      waitUntil: target.waitUntil,
+      status: target.legacyStatus,
       interval,
       retries: retries - 1,
       fullTransaction,

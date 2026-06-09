@@ -4,6 +4,8 @@ import {contractActions} from "../src/contracts/actions";
 import {
   CALL_KEY_DEPLOY,
   CALL_KEY_WILDCARD,
+  DEPLOY_CALL_KEY,
+  deployCallKey,
   deriveExternalMessageCallKey,
   deriveInternalMessageCallKey,
   encodeExternalMessageFeeParams,
@@ -433,7 +435,9 @@ describe("contractActions addTransaction ABI compatibility", () => {
     );
 
     expect(deriveInternalMessageCallKey()).toBe(CALL_KEY_WILDCARD);
-    expect(CALL_KEY_DEPLOY).toBe(CALL_KEY_WILDCARD);
+    expect(DEPLOY_CALL_KEY).toBe("0x0000000000000000000000000000000000000000000000000000000000000001");
+    expect(CALL_KEY_DEPLOY).toBe(DEPLOY_CALL_KEY);
+    expect(deployCallKey()).toBe(DEPLOY_CALL_KEY);
     expect(deriveExternalMessageCallKey("0xaabbccdd11223344")).toBe(
       `0xaabbccdd${"0".repeat(56)}`,
     );
@@ -700,6 +704,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
         if (functionName === "calculateRoundFees") return 77n;
         throw new Error(`unexpected readContract ${functionName}`);
       }),
+      getGasPrice: vi.fn().mockResolvedValue(1n),
     };
     const {actions} = setupWriteContractHarness({
       initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
@@ -709,18 +714,96 @@ describe("contractActions addTransaction ABI compatibility", () => {
 
     const fees = await actions.estimateTransactionFees({totalMessageFees: 5n});
 
+    // Effective floor = max(on-chain view (1,234 — reads ~0-priced quoteGasPrice under
+    // eth_call), local recompute at the effective receipt price). Local formula pins
+    // FeeManager.estimateProposeReceiptGas(MIN_RECEIPT_BYTES=512):
+    // 210,000 + 21,000 + 60,000 + 512*16 + 7*1,000 = 306,192 gas.
+    const expectedLocalFloor = 30n * (210_000n + 21_000n + 60_000n + 512n * 16n + 7n * 1_000n);
+    expect(expectedLocalFloor).toBe(30n * 306_192n);
     expect(fees.policy).toEqual({
       enabled: true,
       genPerTimeUnit: 10n,
       storageUnitPrice: 20n,
       receiptGasPrice: 30n,
-      executionBudgetFloor: 1_234n,
+      executionBudgetFloor: expectedLocalFloor,
     });
     expect(fees.distribution.maxPriceGenPerTimeUnit).toBe(12n);
     expect(fees.distribution.storageFeeMaxGasPrice).toBe(24n);
     expect(fees.distribution.receiptFeeMaxGasPrice).toBe(36n);
     expect(fees.distribution.executionBudgetPerRound).toBe(3_000_300_000n);
     expect(fees.feeValue).toBe(82n);
+  });
+
+  it("uses the network gas price when FeeManager quotes a lower receipt gas price", async () => {
+    const publicClient = {
+      readContract: vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
+        if (functionName === "GENPerTimeUnit") return 10n;
+        if (functionName === "storageUnitPrice") return 20n;
+        if (functionName === "quoteGasPrice") return 0n;
+        if (functionName === "messageFeeParamsBudgetFloor") return 1_234n;
+        if (functionName === "calculateRoundFees") return 77n;
+        throw new Error(`unexpected readContract ${functionName}`);
+      }),
+      getGasPrice: vi.fn().mockResolvedValue(25n),
+    };
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      publicClient,
+      feeManagerAddress: "0x00000000000000000000000000000000000000fe",
+    });
+
+    const fees = await actions.estimateTransactionFees({priceCapHeadroomBps: 10_000n});
+
+    expect(publicClient.getGasPrice).toHaveBeenCalledOnce();
+    expect(fees.policy.receiptGasPrice).toBe(25n);
+    expect(fees.distribution.receiptFeeMaxGasPrice).toBe(25n);
+  });
+
+  it("throws instead of building a zero receipt gas price cap when policy is enabled", async () => {
+    const publicClient = {
+      readContract: vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
+        if (functionName === "GENPerTimeUnit") return 10n;
+        if (functionName === "storageUnitPrice") return 0n;
+        if (functionName === "quoteGasPrice") return 0n;
+        if (functionName === "messageFeeParamsBudgetFloor") return 1_234n;
+        throw new Error(`unexpected readContract ${functionName}`);
+      }),
+      getGasPrice: vi.fn().mockResolvedValue(0n),
+    };
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      publicClient,
+      feeManagerAddress: "0x00000000000000000000000000000000000000fe",
+    });
+
+    await expect(actions.estimateTransactionFees()).rejects.toThrow(
+      "receipt gas price quoted as zero; refusing to build a zero price cap",
+    );
+  });
+
+  it("does not fetch network gas price when FeeManager policy is disabled", async () => {
+    const publicClient = {
+      readContract: vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
+        if (functionName === "GENPerTimeUnit") return 0n;
+        if (functionName === "storageUnitPrice") return 0n;
+        if (functionName === "quoteGasPrice") return 0n;
+        if (functionName === "messageFeeParamsBudgetFloor") return 0n;
+        if (functionName === "calculateRoundFees") return 0n;
+        throw new Error(`unexpected readContract ${functionName}`);
+      }),
+      getGasPrice: vi.fn().mockResolvedValue(0n),
+    };
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      publicClient,
+      feeManagerAddress: "0x00000000000000000000000000000000000000fe",
+    });
+
+    const fees = await actions.estimateTransactionFees();
+
+    expect(publicClient.getGasPrice).not.toHaveBeenCalled();
+    expect(fees.policy.enabled).toBe(false);
+    expect(fees.distribution.receiptFeeMaxGasPrice).toBe(0n);
   });
 
   it("defaults total message fees from root and external message allocation budgets", async () => {
@@ -733,6 +816,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
         if (functionName === "calculateRoundFees") return 77n;
         throw new Error(`unexpected readContract ${functionName}`);
       }),
+      getGasPrice: vi.fn().mockResolvedValue(1n),
     };
     const {actions} = setupWriteContractHarness({
       initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
@@ -946,10 +1030,17 @@ describe("contractActions addTransaction ABI compatibility", () => {
       priceCapHeadroomBps: 10_000n,
     });
 
+    const observedExecutionBudget = 100n + 501_664n;
+    const observedExecutionBudgetWithHeadroom = (observedExecutionBudget * 12_000n + 9_999n) / 10_000n;
+    const expectedExecutionBudgetPerRound = observedExecutionBudgetWithHeadroom > 400_000n
+      ? observedExecutionBudgetWithHeadroom
+      : 400_000n;
+    expect(expectedExecutionBudgetPerRound).toBe(602_117n);
+
     expect(fees.observed).toEqual({
       executionFeeConsumed: 100n,
       executionFeeReportTotal: 501_664n,
-      recommendedExecutionBudgetPerRound: 3_000_000_000n,
+      recommendedExecutionBudgetPerRound: expectedExecutionBudgetPerRound,
       genvmMessageFeeConsumed: 5n,
       messageFeeBudget: 10n,
       messageFeeConsumed: 5n,
@@ -960,9 +1051,47 @@ describe("contractActions addTransaction ABI compatibility", () => {
       externalMessageRemainder: 0n,
       recommendedTotalMessageFees: 6n,
     });
-    expect(fees.distribution.executionBudgetPerRound).toBe(3_000_000_000n);
+    expect(fees.distribution.executionBudgetPerRound).toBe(expectedExecutionBudgetPerRound);
     expect(fees.distribution.totalMessageFees).toBe(6n);
-    expect(fees.feeValue).toBe(3_000_011_006n);
+    expect(fees.feeValue).toBe(613_123n);
+  });
+
+  it("uses the execution budget floor for simulation recommendations when observed usage is lower", async () => {
+    const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "sim_getFeeConfig") {
+        return {
+          enabled: true,
+          policy: {
+            genPerTimeUnit: "10",
+            storageUnitPrice: "20",
+            receiptGasPrice: "30",
+            messageFeeParamsBudgetFloor: "400000",
+          },
+        };
+      }
+      throw new Error(`unexpected request ${method}`);
+    });
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    const fees = await actions.estimateTransactionFeesFromSimulation({
+      simulation: {
+        feeAccounting: {
+          execution_fee_consumed: "100",
+          execution_fee_report: {
+            totalEstimatedFee: "100",
+          },
+        },
+      },
+    });
+
+    const observedExecutionBudgetWithHeadroom = ((100n + 100n) * 12_000n + 9_999n) / 10_000n;
+    expect(observedExecutionBudgetWithHeadroom).toBe(240n);
+    expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(400_000n);
+    expect(fees.distribution.executionBudgetPerRound).toBe(400_000n);
   });
 
   it("builds a Studio trusted fee preset for a target write in one call", async () => {
@@ -1064,7 +1193,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(simCall.params[0].fees.feeValue).toBe("3000311110");
     expect(simCall.params[0].fees.distribution.totalMessageFees).toBe("110");
     expect(simCall.params[0].fees.messageAllocations[0].budget).toBe("110");
-    expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(3_000_000_000n);
+    expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(602_117n);
     expect(fees.observed?.messageFeeBudget).toBe(110n);
     expect(fees.observed?.messageFeeConsumed).toBe(50n);
     expect(fees.distribution.executionBudgetPerRound).toBe(3_000_000_000n);
@@ -1404,6 +1533,24 @@ describe("contractActions addTransaction ABI compatibility", () => {
     await expect(
       actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping", value: 0n}),
     ).rejects.toThrow("Transaction reverted");
+  });
+
+  it("decodes BudgetTooLow selector from gas estimation failures", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const signTransaction = vi.fn().mockResolvedValue("0xsigned");
+    const {actions, estimateTransactionGas, client} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      signTransactionMock: signTransaction,
+      publicClient: makeMockPublicClient({status: "reverted", logs: []}),
+    });
+    estimateTransactionGas.mockRejectedValueOnce(new Error("execution reverted: 0x305e533c"));
+    (client as any).sendRawTransaction = vi.fn().mockResolvedValue(MOCK_EVM_TX_HASH);
+
+    await expect(
+      actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping", value: 0n}),
+    ).rejects.toThrow(/BudgetTooLow/);
+
+    consoleError.mockRestore();
   });
 
   it("throws when external wallet receipt has no NewTransaction event", async () => {

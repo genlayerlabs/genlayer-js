@@ -10,5 +10,6 @@ export {
 export * as chains from "./chains";
 export * as abi from "./abi";
 export * from "./transactions/fees";
+export {isSuccessful} from "./transactions/actions";
 export {parseStakingAmount, formatStakingAmount} from "./staking";
 export {buildGenVmPositionalArgs} from "./contracts/schema";

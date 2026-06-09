@@ -21,6 +21,7 @@ export enum TransactionStatus {
   READY_TO_FINALIZE = "READY_TO_FINALIZE",
   VALIDATORS_TIMEOUT = "VALIDATORS_TIMEOUT",
   LEADER_TIMEOUT = "LEADER_TIMEOUT",
+  LEADER_REVEALING = "LEADER_REVEALING",
 }
 
 export enum TransactionResult {
@@ -37,6 +38,7 @@ export enum TransactionResult {
   NO_MAJORITY = "NO_MAJORITY",
   MAJORITY_AGREE = "MAJORITY_AGREE",
   MAJORITY_DISAGREE = "MAJORITY_DISAGREE",
+  MAJORITY_TIMEOUT = "MAJORITY_TIMEOUT",
 }
 
 export const transactionsStatusNumberToName = {
@@ -54,6 +56,7 @@ export const transactionsStatusNumberToName = {
   "11": TransactionStatus.READY_TO_FINALIZE,
   "12": TransactionStatus.VALIDATORS_TIMEOUT,
   "13": TransactionStatus.LEADER_TIMEOUT,
+  "14": TransactionStatus.LEADER_REVEALING,
 };
 
 export const transactionsStatusNameToNumber = {
@@ -71,6 +74,7 @@ export const transactionsStatusNameToNumber = {
   [TransactionStatus.READY_TO_FINALIZE]: "11",
   [TransactionStatus.VALIDATORS_TIMEOUT]: "12",
   [TransactionStatus.LEADER_TIMEOUT]: "13",
+  [TransactionStatus.LEADER_REVEALING]: "14",
 };
 
 export const DECIDED_STATES = [
@@ -90,36 +94,36 @@ export function isDecidedState(status: string): boolean {
 
 export const transactionResultNumberToName = {
   "0": TransactionResult.IDLE,
-  "1": TransactionResult.AGREE,
-  "2": TransactionResult.DISAGREE,
-  "3": TransactionResult.TIMEOUT,
+  "1": TransactionResult.MAJORITY_AGREE,
+  "2": TransactionResult.MAJORITY_DISAGREE,
+  "3": TransactionResult.MAJORITY_TIMEOUT,
   "4": TransactionResult.DETERMINISTIC_VIOLATION,
   "5": TransactionResult.NO_MAJORITY,
-  "6": TransactionResult.MAJORITY_AGREE,
-  "7": TransactionResult.MAJORITY_DISAGREE,
 };
 
 export const TransactionResultNameToNumber = {
   [TransactionResult.IDLE]: "0",
-  [TransactionResult.AGREE]: "1",
-  [TransactionResult.DISAGREE]: "2",
-  [TransactionResult.TIMEOUT]: "3",
+  [TransactionResult.MAJORITY_AGREE]: "1",
+  [TransactionResult.MAJORITY_DISAGREE]: "2",
+  [TransactionResult.MAJORITY_TIMEOUT]: "3",
   [TransactionResult.DETERMINISTIC_VIOLATION]: "4",
   [TransactionResult.NO_MAJORITY]: "5",
-  [TransactionResult.MAJORITY_AGREE]: "6",
-  [TransactionResult.MAJORITY_DISAGREE]: "7",
 };
 
 export enum ExecutionResult {
   NOT_VOTED = "NOT_VOTED",
   FINISHED_WITH_RETURN = "FINISHED_WITH_RETURN",
   FINISHED_WITH_ERROR = "FINISHED_WITH_ERROR",
+  TIMEOUT = "TIMEOUT",
+  NONDET_DISAGREE = "NONDET_DISAGREE",
 }
 
 export const executionResultNumberToName = {
   "0": ExecutionResult.NOT_VOTED,
   "1": ExecutionResult.FINISHED_WITH_RETURN,
   "2": ExecutionResult.FINISHED_WITH_ERROR,
+  "3": ExecutionResult.TIMEOUT,
+  "4": ExecutionResult.NONDET_DISAGREE,
 };
 
 export enum VoteType {
@@ -152,6 +156,8 @@ export enum TransactionHashVariant {
   LATEST_FINAL = "latest-final",
   LATEST_NONFINAL = "latest-nonfinal",
 }
+
+export type TransactionReceiptWaitUntil = "decided" | "finalized";
 
 export enum MessageType {
   External = 0,

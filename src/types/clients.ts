@@ -3,6 +3,7 @@ import {
   GenLayerTransaction,
   TransactionHash,
   TransactionStatus,
+  TransactionReceiptWaitUntil,
   TransactionHashVariant,
   DebugTraceResult,
   TransactionFeeOptions,
@@ -120,7 +121,9 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     }) => Promise<bigint>;
     waitForTransactionReceipt: (args: {
       hash: TransactionHash;
+      /** @deprecated Use waitUntil: "decided" or waitUntil: "finalized" instead. */
       status?: TransactionStatus;
+      waitUntil?: TransactionReceiptWaitUntil;
       interval?: number;
       retries?: number;
       fullTransaction?: boolean;
