@@ -13,9 +13,13 @@ import {
 } from "@/types";
 
 export const MESSAGE_ALLOCATION_ROOT_PARENT_INDEX = (1n << 256n) - 1n;
-export const CALL_KEY_WILDCARD = "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
-export const CALL_KEY_UNNAMED = CALL_KEY_WILDCARD;
-export const DEPLOY_CALL_KEY = "0x0000000000000000000000000000000000000000000000000000000000000001" as const;
+// Wildcard sentinel = keccak256 of empty bytes, untagged. Reserved: it can never be a
+// derived key — short names (<32B) are left-aligned with a zero tail byte, long names
+// get the low bit forced to 1, and this hash has neither.
+export const CALL_KEY_WILDCARD = "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470" as const;
+// Empty method name derives bytes32(0); GenVM emits it for deploy and emit_transfer.
+export const CALL_KEY_UNNAMED = "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
+export const DEPLOY_CALL_KEY = CALL_KEY_UNNAMED;
 export const CALL_KEY_DEPLOY = DEPLOY_CALL_KEY;
 
 export const deployCallKey = (): Hex => DEPLOY_CALL_KEY;

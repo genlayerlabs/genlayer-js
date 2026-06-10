@@ -3,6 +3,7 @@ import {decodeAbiParameters, decodeFunctionData, encodeFunctionData, keccak256, 
 import {contractActions} from "../src/contracts/actions";
 import {
   CALL_KEY_DEPLOY,
+  CALL_KEY_UNNAMED,
   CALL_KEY_WILDCARD,
   DEPLOY_CALL_KEY,
   deployCallKey,
@@ -434,14 +435,20 @@ describe("contractActions addTransaction ABI compatibility", () => {
       `${hashed.slice(0, -2)}${lastByte.toString(16).padStart(2, "0")}`,
     );
 
-    expect(deriveInternalMessageCallKey()).toBe(CALL_KEY_WILDCARD);
-    expect(DEPLOY_CALL_KEY).toBe("0x0000000000000000000000000000000000000000000000000000000000000001");
+    // Wildcard is the untagged hash of empty bytes — outside the derived-key space.
+    expect(CALL_KEY_WILDCARD).toBe(keccak256(new Uint8Array(0)));
+    expect(CALL_KEY_WILDCARD).toBe("0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
+
+    // Empty name derives bytes32(0): the natural key for deploy and emit_transfer.
+    expect(deriveInternalMessageCallKey()).toBe(CALL_KEY_UNNAMED);
+    expect(CALL_KEY_UNNAMED).toBe(`0x${"00".repeat(32)}`);
+    expect(DEPLOY_CALL_KEY).toBe(CALL_KEY_UNNAMED);
     expect(CALL_KEY_DEPLOY).toBe(DEPLOY_CALL_KEY);
     expect(deployCallKey()).toBe(DEPLOY_CALL_KEY);
     expect(deriveExternalMessageCallKey("0xaabbccdd11223344")).toBe(
       `0xaabbccdd${"0".repeat(56)}`,
     );
-    expect(deriveExternalMessageCallKey("0x123456")).toBe(CALL_KEY_WILDCARD);
+    expect(deriveExternalMessageCallKey("0x123456")).toBe(CALL_KEY_UNNAMED);
   });
 
   it("encodes addTransaction with 5 args when ABI has 5 inputs", async () => {
