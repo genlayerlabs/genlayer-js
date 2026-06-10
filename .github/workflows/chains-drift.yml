@@ -4,9 +4,13 @@ on:
   pull_request:
     branches:
       - v1
+      - v2-dev
+      - v2
   push:
     branches:
       - v1
+      - v2-dev
+      - v2
   schedule:
     # Daily at 07:00 UTC. Catches upstream contract deployments even when no
     # PRs are open against the SDK.

@@ -44,6 +44,12 @@ test("type checks", () => {
 
   void client.waitForTransactionReceipt({
     hash: "0x1234567890123456789012345678901234567890123456789012345678901234" as TransactionHash,
+    waitUntil: "decided",
+    fullTransaction: true,
+  });
+
+  void client.waitForTransactionReceipt({
+    hash: "0x1234567890123456789012345678901234567890123456789012345678901234" as TransactionHash,
     status: TransactionStatus.FINALIZED,
   });
 

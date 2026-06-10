@@ -1017,7 +1017,9 @@ const DEFAULT_PRICE_CAP_HEADROOM_BPS = 12_000n;
 const DEFAULT_LEADER_TIMEUNITS_ALLOCATION = 100n;
 const DEFAULT_VALIDATOR_TIMEUNITS_ALLOCATION = 200n;
 const DEFAULT_TRANSACTION_EXECUTION_BUDGET_PER_ROUND = 500_000n;
-const DEFAULT_TRANSACTION_EXECUTION_GAS = 100_000_000n;
+// Provisional heuristic sized ~20x observed dev-env consumption (~5M gas-equivalent).
+// TODO(data): replace with telemetry-derived default (p99 x margin) once fee consumption telemetry is collected.
+export const DEFAULT_TRANSACTION_EXECUTION_GAS = 100_000_000n;
 const DEFAULT_RECEIPT_SLOTS_CHANGED = 7n;
 const DEFAULT_INTRINSIC_GAS = 21_000n;
 const DEFAULT_BOOTLOADER_OVERHEAD = 60_000n;
@@ -1025,6 +1027,8 @@ const DEFAULT_GAS_PER_CHANGED_SLOT = 1_000n;
 const DEFAULT_CALLDATA_GAS_PER_BYTE = 16n;
 const DEFAULT_FIXED_PROPOSE_RECEIPT_GAS = 210_000n;
 const DEFAULT_FIXED_MESSAGE_REVEAL_GAS = 100_000n;
+// ConsensusHelpers.MIN_RECEIPT_BYTES — smallest receipt payload the on-chain budget floor prices.
+const DEFAULT_MIN_RECEIPT_BYTES = 512n;
 const DEFAULT_MESSAGE_REVEAL_LENGTH_SLOTS = 32n;
 const DEFAULT_NONDET_OUTPUT_LENGTH_BYTES = 32n;
 const TRANSACTION_GAS_HEADROOM_BPS = 20_000n;
@@ -1158,19 +1162,38 @@ const readCurrentFeePolicy = async (
 
   const address = client.chain.feeManagerContract.address as `0x${string}`;
   const abi = FEE_MANAGER_CALCULATE_ROUND_FEES_ABI as any;
-  const [genPerTimeUnit, storageUnitPrice, receiptGasPrice, executionBudgetFloor] = await Promise.all([
+  const [genPerTimeUnit, storageUnitPrice, quotedReceiptGasPrice, executionBudgetFloor] = await Promise.all([
     publicClient.readContract({address, abi, functionName: "GENPerTimeUnit", args: []}) as Promise<bigint>,
     publicClient.readContract({address, abi, functionName: "storageUnitPrice", args: []}) as Promise<bigint>,
     publicClient.readContract({address, abi, functionName: "quoteGasPrice", args: []}) as Promise<bigint>,
     publicClient.readContract({address, abi, functionName: "messageFeeParamsBudgetFloor", args: []}) as Promise<bigint>,
   ]);
+  const enabled = genPerTimeUnit > 0n || storageUnitPrice > 0n || quotedReceiptGasPrice > 0n;
+  const networkReceiptGasPrice = enabled ? await publicClient.getGasPrice() : 0n;
+  const receiptGasPrice = maxBigint(quotedReceiptGasPrice, networkReceiptGasPrice);
+  if (enabled && receiptGasPrice === 0n) {
+    throw new Error("receipt gas price quoted as zero; refusing to build a zero price cap");
+  }
+
+  // messageFeeParamsBudgetFloor() multiplies by quoteGasPrice() on-chain, which reads
+  // tx.gasprice ~ 0 under a plain eth_call — so the view can report a zero floor on
+  // chain-derived networks while the real submission-time floor is non-zero. Recompute
+  // the floor locally at the effective receipt price (FeeManager.estimateProposeReceiptGas
+  // at ConsensusHelpers.MIN_RECEIPT_BYTES) and take the max.
+  const localExecutionBudgetFloor = receiptGasPrice * (
+    DEFAULT_FIXED_PROPOSE_RECEIPT_GAS +
+    DEFAULT_INTRINSIC_GAS +
+    DEFAULT_BOOTLOADER_OVERHEAD +
+    (DEFAULT_MIN_RECEIPT_BYTES * DEFAULT_CALLDATA_GAS_PER_BYTE) +
+    (DEFAULT_RECEIPT_SLOTS_CHANGED * DEFAULT_GAS_PER_CHANGED_SLOT)
+  );
 
   return {
-    enabled: genPerTimeUnit > 0n || storageUnitPrice > 0n || receiptGasPrice > 0n,
+    enabled,
     genPerTimeUnit,
     storageUnitPrice,
     receiptGasPrice,
-    executionBudgetFloor,
+    executionBudgetFloor: maxBigint(executionBudgetFloor, localExecutionBudgetFloor),
   };
 };
 
@@ -1330,7 +1353,7 @@ const observedSimulationFeeUsage = (
   const observedExecutionBudget = executionFeeConsumed + executionFeeReportTotal;
   const recommendedExecutionBudgetPerRound = observedExecutionBudget > 0n
     ? maxBigint(
-        defaultExecutionBudgetPerRound(policy),
+        policy.executionBudgetFloor,
         withCapHeadroom(observedExecutionBudget, executionHeadroomBps),
       )
     : 0n;
@@ -1985,6 +2008,9 @@ const _sendTransaction = async ({
     "0x8d53e553": "InsufficientFees",
     "0xb4132db3": "MaxPriceExceeded",
     "0x57df8523": "ExecutionBudgetExceeded",
+    "0x305e533c": "BudgetTooLow",
+    "0xa70732ee": "RollupBudgetBelowFloor",
+    "0x632be5a1": "FeeValueMustBeNonZero",
   };
 
   const stringifyRpcError = (error: unknown): string => {

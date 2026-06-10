@@ -15,7 +15,10 @@ import {
 export const MESSAGE_ALLOCATION_ROOT_PARENT_INDEX = (1n << 256n) - 1n;
 export const CALL_KEY_WILDCARD = "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
 export const CALL_KEY_UNNAMED = CALL_KEY_WILDCARD;
-export const CALL_KEY_DEPLOY = CALL_KEY_WILDCARD;
+export const DEPLOY_CALL_KEY = "0x0000000000000000000000000000000000000000000000000000000000000001" as const;
+export const CALL_KEY_DEPLOY = DEPLOY_CALL_KEY;
+
+export const deployCallKey = (): Hex => DEPLOY_CALL_KEY;
 
 const bytesToPaddedCallKey = (bytes: Uint8Array): Hex => {
   if (bytes.length > 32) {

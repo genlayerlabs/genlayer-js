@@ -1,6 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { TransactionStatus, DECIDED_STATES, isDecidedState } from "../src/types/transactions";
-import { receiptActions, transactionActions } from "../src/transactions/actions";
+import {
+  TransactionStatus,
+  TransactionResult,
+  ExecutionResult,
+  DECIDED_STATES,
+  isDecidedState,
+  transactionsStatusNumberToName,
+  transactionResultNumberToName,
+  executionResultNumberToName,
+} from "../src/types/transactions";
+import { receiptActions, transactionActions, isSuccessful } from "../src/transactions/actions";
 import { decodeTransaction, simplifyTransactionReceipt } from "../src/transactions/decoders";
 import { localnet } from "../src/chains/localnet";
 import type { GenLayerRawTransaction } from "../src/types/transactions";
@@ -33,7 +42,7 @@ describe("isDecidedState utility function", () => {
   });
 
   it("should return false for non-decided states", () => {
-    const nonDecidedStatusNumbers = ["0", "1", "2", "3", "4", "9", "10", "11"]; // UNINITIALIZED, PENDING, PROPOSING, COMMITTING, REVEALING, APPEAL_REVEALING, APPEAL_COMMITTING, READY_TO_FINALIZE
+    const nonDecidedStatusNumbers = ["0", "1", "2", "3", "4", "9", "10", "11", "14"]; // transient states
     
     nonDecidedStatusNumbers.forEach(statusNum => {
       expect(isDecidedState(statusNum)).toBe(false);
@@ -49,9 +58,96 @@ describe("isDecidedState utility function", () => {
   });
 });
 
+describe("transaction enum maps", () => {
+  it("maps v0.6 transaction status, vote type, and result type values", () => {
+    expect(transactionsStatusNumberToName["14"]).toBe(TransactionStatus.LEADER_REVEALING);
+    expect(isDecidedState("14")).toBe(false);
+    expect(executionResultNumberToName["3"]).toBe(ExecutionResult.TIMEOUT);
+    expect(executionResultNumberToName["4"]).toBe(ExecutionResult.NONDET_DISAGREE);
+    expect(transactionResultNumberToName).toEqual({
+      "0": TransactionResult.IDLE,
+      "1": TransactionResult.MAJORITY_AGREE,
+      "2": TransactionResult.MAJORITY_DISAGREE,
+      "3": TransactionResult.MAJORITY_TIMEOUT,
+      "4": TransactionResult.DETERMINISTIC_VIOLATION,
+      "5": TransactionResult.NO_MAJORITY,
+    });
+  });
+});
+
+describe("isSuccessful", () => {
+  it("returns true only for accepted/finalized transactions that finished with return", () => {
+    expect(isSuccessful({
+      statusName: TransactionStatus.ACCEPTED,
+      txExecutionResultName: ExecutionResult.FINISHED_WITH_RETURN,
+    } as any)).toBe(true);
+    expect(isSuccessful({
+      status: 7,
+      txExecutionResult: 1,
+    } as any)).toBe(true);
+    expect(isSuccessful({
+      statusName: TransactionStatus.UNDETERMINED,
+      txExecutionResultName: ExecutionResult.FINISHED_WITH_RETURN,
+    } as any)).toBe(false);
+    expect(isSuccessful({
+      statusName: TransactionStatus.ACCEPTED,
+      txExecutionResultName: ExecutionResult.FINISHED_WITH_ERROR,
+    } as any)).toBe(false);
+    expect(isSuccessful({
+      statusName: TransactionStatus.CANCELED,
+      txExecutionResultName: ExecutionResult.FINISHED_WITH_RETURN,
+    } as any)).toBe(false);
+  });
+});
+
 describe("waitForTransactionReceipt with DECIDED_STATES", () => {
   beforeEach(() => {
     mockFetch.mockReset();
+  });
+
+  it("resolves waitUntil decided on UNDETERMINED", async () => {
+    const mockTransaction = {
+      hash: "0x4b8037744adab7ea8335b4f839979d20031d83a8ccdf706e0ae61312930335f6",
+      status: "6",
+    };
+    const mockClient = {
+      chain: localnet,
+      getTransaction: vi.fn().mockResolvedValue(mockTransaction)
+    };
+
+    const actions = receiptActions(mockClient as any, {} as any);
+    const result = await actions.waitForTransactionReceipt({
+      hash: "0x4b8037744adab7ea8335b4f839979d20031d83a8ccdf706e0ae61312930335f6" as any,
+      waitUntil: "decided",
+    });
+
+    expect(result).toEqual(mockTransaction);
+  });
+
+  it("keeps legacy ACCEPTED status behavior and warns once", async () => {
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const mockTransaction = {
+      hash: "0x4b8037744adab7ea8335b4f839979d20031d83a8ccdf706e0ae61312930335f6",
+      status: "6",
+    };
+    const mockClient = {
+      chain: localnet,
+      getTransaction: vi.fn().mockResolvedValue(mockTransaction)
+    };
+    const actions = receiptActions(mockClient as any, {} as any);
+
+    await actions.waitForTransactionReceipt({
+      hash: "0x4b8037744adab7ea8335b4f839979d20031d83a8ccdf706e0ae61312930335f6" as any,
+      status: TransactionStatus.ACCEPTED,
+    });
+    await actions.waitForTransactionReceipt({
+      hash: "0x4b8037744adab7ea8335b4f839979d20031d83a8ccdf706e0ae61312930335f6" as any,
+      status: TransactionStatus.ACCEPTED,
+    });
+
+    expect(consoleWarn).toHaveBeenCalledTimes(1);
+    expect(consoleWarn.mock.calls[0][0]).toContain("waitForTransactionReceipt({ status }) is deprecated");
+    consoleWarn.mockRestore();
   });
 
   it("should accept all decided states when waiting for ACCEPTED", async () => {
@@ -270,7 +366,7 @@ describe("decodeTransaction", () => {
     expect(decoded.numOfInitialValidators).toBe("3");
     expect(decoded.txSlot).toBe("5");
     expect(decoded.statusName).toBe("ACCEPTED");
-    expect(decoded.resultName).toBe("AGREE");
+    expect(decoded.resultName).toBe("MAJORITY_AGREE");
   });
 
   it("should handle Bradbury field: initialRotations instead of numOfInitialValidators", () => {
