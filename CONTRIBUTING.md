@@ -30,19 +30,11 @@ Have ideas for new features or use cases? We're eager to hear them! But first:
 
 ## Branch model
 
-This repo uses a branch-per-major release model. There is no `main`.
-
-- **`v1`** — current stable major. PRs for bug fixes / non-breaking features target this branch. Releases are cut from here (see `scripts/release.sh`).
-- **`v<next>-dev`** — when a major bump is in progress (e.g. `v2-dev`), this branch is open for the new major's work. PRs introducing breaking changes target this branch, not `v1`.
-- **Older majors** (`v0`, etc.) stay on the repo for back-ports and security patches. Default branch on github.com is whichever major is current stable.
-
-When you fork or clone, the default branch is `v1` today. If you have a `main` branch from a previous checkout, delete it locally:
-
-```sh
-git checkout v1
-git branch -D main
-git remote prune origin
-```
+See [docs/BRANCHING.md](docs/BRANCHING.md) for the current release-train model.
+In short: independently releasable work may target the stable branch directly;
+multi-feature or cross-repo train work uses the active `*-dev` integration
+branch and is promoted to the matching stable branch when ready. `main` is only
+the default/static GitHub branch.
 
 ## Releases
 
