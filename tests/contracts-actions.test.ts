@@ -1,6 +1,7 @@
 import {describe, it, expect, vi} from "vitest";
 import {decodeAbiParameters, decodeFunctionData, encodeFunctionData, keccak256, toHex} from "viem";
 import {contractActions} from "../src/contracts/actions";
+import {NFT_MINTER_ABI} from "../src/abi/nftMinter";
 import {
   CALL_KEY_DEPLOY,
   CALL_KEY_UNNAMED,
@@ -17,6 +18,8 @@ import {
 const MAIN_CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000001";
 const SENDER_ADDRESS = "0x0000000000000000000000000000000000000002";
 const RECIPIENT_ADDRESS = "0x0000000000000000000000000000000000000003";
+const ADDRESS_MANAGER_ADDRESS = "0x0000000000000000000000000000000000000004";
+const NFT_MINTER_ADDRESS = "0x0000000000000000000000000000000000000005";
 const MOCK_GENLAYER_TX_ID = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const MOCK_EVM_TX_HASH = "0x1234000000000000000000000000000000000000000000000000000000001234";
 
@@ -33,6 +36,16 @@ const NEW_TRANSACTION_EVENT_ABI = {
 const NEW_TRANSACTION_EVENT_TOPIC = keccak256(
   toHex(new TextEncoder().encode("NewTransaction(bytes32,address,address)")),
 );
+
+const CONSENSUS_ADDRESS_MANAGER_ABI = [
+  {
+    type: "function",
+    name: "getAddressManager",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{name: "", type: "address"}],
+  },
+] as const;
 
 const makeMockReceiptWithNewTxEvent = (txId: string = MOCK_GENLAYER_TX_ID) => ({
   status: "success" as const,
@@ -264,6 +277,188 @@ const setupWriteContractHarness = ({
 
   return {actions, estimateTransactionGas, client, signTransaction, publicClient};
 };
+
+const setupDeveloperNftHarness = ({
+  readContractMock,
+  signTransactionMock,
+}: {
+  readContractMock?: ReturnType<typeof vi.fn>;
+  signTransactionMock?: ReturnType<typeof vi.fn>;
+} = {}) => {
+  const estimateTransactionGas = vi.fn().mockResolvedValue(21_000n);
+  const signTransaction = signTransactionMock ?? vi.fn().mockRejectedValue(new Error("stop_after_encoding"));
+  const readContract = readContractMock ?? vi.fn().mockImplementation(async ({
+    functionName,
+    args,
+  }: {
+    functionName: string;
+    args?: readonly unknown[];
+  }) => {
+    if (functionName === "getAddressManager") return ADDRESS_MANAGER_ADDRESS;
+    if (functionName === "getAddressNonZero") {
+      expect(args).toEqual(["NFTMinter"]);
+      return NFT_MINTER_ADDRESS;
+    }
+    if (functionName === "developerToNFT") return 7n;
+    if (functionName === "nfts") return [SENDER_ADDRESS, 123n, 5n];
+    if (functionName === "getGhostsForNFT") return [RECIPIENT_ADDRESS];
+    if (functionName === "getClaimableRewardsFromFees") return 123n;
+    if (functionName === "getClaimableRewardsFromInflation") return 456n;
+    throw new Error(`Unexpected readContract ${functionName}`);
+  });
+
+  const publicClient = {
+    readContract,
+    waitForTransactionReceipt: vi.fn().mockResolvedValue({status: "success"}),
+  };
+  const client = {
+    chain: {
+      id: 61_127,
+      isStudio: false,
+      consensusMainContract: {
+        address: MAIN_CONTRACT_ADDRESS,
+        abi: CONSENSUS_ADDRESS_MANAGER_ABI,
+        bytecode: "0x",
+      },
+    },
+    account: {
+      address: SENDER_ADDRESS,
+      type: "local",
+      signTransaction,
+    },
+    getCurrentNonce: vi.fn().mockResolvedValue(0n),
+    estimateTransactionGas,
+    request: vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "eth_gasPrice") {
+        return "0x1";
+      }
+      throw new Error(`Unexpected RPC method: ${method}`);
+    }),
+    sendRawTransaction: vi.fn().mockResolvedValue(MOCK_EVM_TX_HASH),
+  };
+
+  const actions = contractActions(client as any, publicClient as any);
+
+  return {actions, client, estimateTransactionGas, publicClient, readContract, signTransaction};
+};
+
+describe("contractActions developer NFT actions", () => {
+  it("returns developer NFT data from the AddressManager-resolved NFTMinter", async () => {
+    const {actions, readContract} = setupDeveloperNftHarness();
+
+    const nft = await actions.getDeveloperNft({developer: SENDER_ADDRESS});
+
+    expect(nft).toEqual({
+      nftId: 7n,
+      developer: SENDER_ADDRESS,
+      claimableRewards: 123n,
+      lastClaimedEpoch: 5n,
+      ghosts: [RECIPIENT_ADDRESS],
+    });
+    expect(readContract).toHaveBeenCalledWith(expect.objectContaining({
+      address: MAIN_CONTRACT_ADDRESS,
+      functionName: "getAddressManager",
+      args: [],
+    }));
+    expect(readContract).toHaveBeenCalledWith(expect.objectContaining({
+      address: ADDRESS_MANAGER_ADDRESS,
+      functionName: "getAddressNonZero",
+      args: ["NFTMinter"],
+    }));
+    expect(readContract).toHaveBeenCalledWith(expect.objectContaining({
+      address: NFT_MINTER_ADDRESS,
+      functionName: "developerToNFT",
+      args: [SENDER_ADDRESS],
+    }));
+    expect(readContract).toHaveBeenCalledWith(expect.objectContaining({
+      address: NFT_MINTER_ADDRESS,
+      functionName: "nfts",
+      args: [7n],
+    }));
+    expect(readContract).toHaveBeenCalledWith(expect.objectContaining({
+      address: NFT_MINTER_ADDRESS,
+      functionName: "getGhostsForNFT",
+      args: [7n],
+    }));
+  });
+
+  it("returns null when a developer has no NFT", async () => {
+    const readContract = vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
+      if (functionName === "getAddressManager") return ADDRESS_MANAGER_ADDRESS;
+      if (functionName === "getAddressNonZero") return NFT_MINTER_ADDRESS;
+      if (functionName === "developerToNFT") return 0n;
+      throw new Error(`Unexpected readContract ${functionName}`);
+    });
+    const {actions} = setupDeveloperNftHarness({readContractMock: readContract});
+
+    await expect(actions.getDeveloperNft({developer: SENDER_ADDRESS})).resolves.toBeNull();
+    expect(readContract).not.toHaveBeenCalledWith(expect.objectContaining({
+      functionName: "nfts",
+    }));
+  });
+
+  it("reads claimable rewards from fees and inflation on NFTMinter", async () => {
+    const {actions, readContract} = setupDeveloperNftHarness();
+
+    await expect(actions.getClaimableRewardsFromFees({nftId: 7n})).resolves.toBe(123n);
+    await expect(
+      actions.getClaimableRewardsFromInflation({
+        nftId: 7n,
+        numberOfEpochsToClaim: 3n,
+      }),
+    ).resolves.toBe(456n);
+
+    expect(readContract).toHaveBeenCalledWith(expect.objectContaining({
+      address: NFT_MINTER_ADDRESS,
+      functionName: "getClaimableRewardsFromFees",
+      args: [7n],
+    }));
+    expect(readContract).toHaveBeenCalledWith(expect.objectContaining({
+      address: NFT_MINTER_ADDRESS,
+      functionName: "getClaimableRewardsFromInflation",
+      args: [7n, 3n],
+    }));
+  });
+
+  it("encodes claimNftRewards to the AddressManager-resolved NFTMinter", async () => {
+    const {actions, estimateTransactionGas} = setupDeveloperNftHarness();
+
+    await expect(actions.claimNftRewards({nftId: 7n})).rejects.toThrow("stop_after_encoding");
+
+    const expectedData = encodeFunctionData({
+      abi: NFT_MINTER_ABI,
+      functionName: "claim",
+      args: [7n],
+    });
+    expect(estimateTransactionGas).toHaveBeenCalledWith(expect.objectContaining({
+      to: NFT_MINTER_ADDRESS,
+      data: expectedData,
+      value: 0n,
+    }));
+  });
+
+  it("encodes claimNftEpochs to the AddressManager-resolved NFTMinter", async () => {
+    const {actions, estimateTransactionGas} = setupDeveloperNftHarness();
+
+    await expect(
+      actions.claimNftEpochs({
+        nftId: 7n,
+        numberOfEpochsToClaim: 3n,
+      }),
+    ).rejects.toThrow("stop_after_encoding");
+
+    const expectedData = encodeFunctionData({
+      abi: NFT_MINTER_ABI,
+      functionName: "claimEpochs",
+      args: [7n, 3n],
+    });
+    expect(estimateTransactionGas).toHaveBeenCalledWith(expect.objectContaining({
+      to: NFT_MINTER_ADDRESS,
+      data: expectedData,
+      value: 0n,
+    }));
+  });
+});
 
 describe("contractActions addTransaction ABI compatibility", () => {
   it("passes trusted fees and user value through Studio simulateWriteContract sim_call", async () => {

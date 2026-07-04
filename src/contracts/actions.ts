@@ -1,9 +1,11 @@
 import * as calldata from "@/abi/calldata";
 import {serialize} from "@/abi/transactions";
+import {ADDRESS_MANAGER_ABI, NFT_MINTER_ABI} from "@/abi/nftMinter";
 
 import {
   Account,
   ContractSchema,
+  DeveloperNft,
   GenLayerChain,
   GenLayerClient,
   CalldataEncodable,
@@ -672,6 +674,124 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         args: [args.txId],
       }) as Promise<boolean>;
     },
+    /** Returns a developer's NFT reward record, or null when no NFT is registered. */
+    getDeveloperNft: async (args: {developer: Address}): Promise<DeveloperNft | null> => {
+      const nftMinterAddress = await _resolveNftMinterAddress({client, publicClient});
+      const nftId = await publicClient.readContract({
+        address: nftMinterAddress,
+        abi: NFT_MINTER_ABI,
+        functionName: "developerToNFT",
+        args: [args.developer],
+      }) as bigint;
+
+      if (nftId === 0n) {
+        return null;
+      }
+
+      const [nftData, ghosts] = await Promise.all([
+        publicClient.readContract({
+          address: nftMinterAddress,
+          abi: NFT_MINTER_ABI,
+          functionName: "nfts",
+          args: [nftId],
+        }),
+        publicClient.readContract({
+          address: nftMinterAddress,
+          abi: NFT_MINTER_ABI,
+          functionName: "getGhostsForNFT",
+          args: [nftId],
+        }),
+      ]) as [
+        readonly [Address, bigint, bigint] & {
+          developer?: Address;
+          claimableRewards?: bigint;
+          lastClaimedEpoch?: bigint;
+        },
+        Address[],
+      ];
+
+      return {
+        nftId,
+        developer: nftData.developer ?? nftData[0],
+        claimableRewards: nftData.claimableRewards ?? nftData[1],
+        lastClaimedEpoch: nftData.lastClaimedEpoch ?? nftData[2],
+        ghosts,
+      };
+    },
+    /** Returns claimable developer-NFT rewards accrued from transaction fees. */
+    getClaimableRewardsFromFees: async (args: {nftId: BigNumberish}): Promise<bigint> => {
+      const nftMinterAddress = await _resolveNftMinterAddress({client, publicClient});
+      const nftId = toUInt(args.nftId, "nftId", 0n);
+      return publicClient.readContract({
+        address: nftMinterAddress,
+        abi: NFT_MINTER_ABI,
+        functionName: "getClaimableRewardsFromFees",
+        args: [nftId],
+      }) as Promise<bigint>;
+    },
+    /** Returns claimable developer-NFT rewards accrued from inflation. */
+    getClaimableRewardsFromInflation: async (args: {
+      nftId: BigNumberish;
+      numberOfEpochsToClaim: BigNumberish;
+    }): Promise<bigint> => {
+      const nftMinterAddress = await _resolveNftMinterAddress({client, publicClient});
+      const nftId = toUInt(args.nftId, "nftId", 0n);
+      const numberOfEpochsToClaim = toUInt(
+        args.numberOfEpochsToClaim,
+        "numberOfEpochsToClaim",
+        0n,
+      );
+      return publicClient.readContract({
+        address: nftMinterAddress,
+        abi: NFT_MINTER_ABI,
+        functionName: "getClaimableRewardsFromInflation",
+        args: [nftId, numberOfEpochsToClaim],
+      }) as Promise<bigint>;
+    },
+    /** Claims all currently available rewards for a developer NFT. Returns the EVM transaction hash. */
+    claimNftRewards: async (args: {
+      account?: Account;
+      nftId: BigNumberish;
+    }): Promise<`0x${string}`> => {
+      const nftMinterAddress = await _resolveNftMinterAddress({client, publicClient});
+      const encodedData = encodeFunctionData({
+        abi: NFT_MINTER_ABI,
+        functionName: "claim",
+        args: [toUInt(args.nftId, "nftId", 0n)],
+      });
+      return _sendEvmContractCall({
+        client,
+        publicClient,
+        to: nftMinterAddress,
+        encodedData,
+        senderAccount: args.account || client.account,
+        operationName: "Claim NFT rewards",
+      });
+    },
+    /** Claims a bounded number of reward epochs for a developer NFT. Returns the EVM transaction hash. */
+    claimNftEpochs: async (args: {
+      account?: Account;
+      nftId: BigNumberish;
+      numberOfEpochsToClaim: BigNumberish;
+    }): Promise<`0x${string}`> => {
+      const nftMinterAddress = await _resolveNftMinterAddress({client, publicClient});
+      const encodedData = encodeFunctionData({
+        abi: NFT_MINTER_ABI,
+        functionName: "claimEpochs",
+        args: [
+          toUInt(args.nftId, "nftId", 0n),
+          toUInt(args.numberOfEpochsToClaim, "numberOfEpochsToClaim", 0n),
+        ],
+      });
+      return _sendEvmContractCall({
+        client,
+        publicClient,
+        to: nftMinterAddress,
+        encodedData,
+        senderAccount: args.account || client.account,
+        operationName: "Claim NFT epochs",
+      });
+    },
     /** Appeals a consensus transaction to trigger a new round of validation. */
     appealTransaction: async (args: {
       account?: Account;
@@ -1002,6 +1122,77 @@ const toUInt = (value: BigNumberish | undefined, fieldName: string, fallback: bi
     throw new Error(`${fieldName} must be greater than or equal to zero.`);
   }
   return normalized;
+};
+
+const hasAbiFunction = (abi: readonly unknown[] | undefined, functionName: string): boolean => {
+  if (!Array.isArray(abi)) {
+    return false;
+  }
+  return abi.some(item => {
+    if (!item || typeof item !== "object") {
+      return false;
+    }
+    const candidate = item as {type?: string; name?: string};
+    return candidate.type === "function" && candidate.name === functionName;
+  });
+};
+
+const _resolveAddressManagerAddress = async ({
+  client,
+  publicClient,
+}: {
+  client: GenLayerClient<GenLayerChain>;
+  publicClient: PublicClient;
+}): Promise<`0x${string}`> => {
+  const consensusMainContract = client.chain.consensusMainContract;
+  if (!consensusMainContract?.address) {
+    throw new Error("NFTMinter address resolution not supported on this chain (missing consensusMainContract).");
+  }
+
+  const functionName = hasAbiFunction(consensusMainContract.abi, "getAddressManager")
+    ? "getAddressManager"
+    : hasAbiFunction(consensusMainContract.abi, "addressManager")
+      ? "addressManager"
+      : undefined;
+
+  if (!functionName) {
+    throw new Error("NFTMinter address resolution not supported on this chain (missing AddressManager getter).");
+  }
+
+  const addressManagerAddress = await publicClient.readContract({
+    address: consensusMainContract.address as `0x${string}`,
+    abi: consensusMainContract.abi as Abi,
+    functionName,
+    args: [],
+  }) as Address;
+
+  if (addressManagerAddress.toLowerCase() === zeroAddress) {
+    throw new Error("NFTMinter address resolution failed: AddressManager is zero.");
+  }
+
+  return addressManagerAddress as `0x${string}`;
+};
+
+const _resolveNftMinterAddress = async ({
+  client,
+  publicClient,
+}: {
+  client: GenLayerClient<GenLayerChain>;
+  publicClient: PublicClient;
+}): Promise<`0x${string}`> => {
+  const addressManagerAddress = await _resolveAddressManagerAddress({client, publicClient});
+  const nftMinterAddress = await publicClient.readContract({
+    address: addressManagerAddress,
+    abi: ADDRESS_MANAGER_ABI,
+    functionName: "getAddressNonZero",
+    args: ["NFTMinter"],
+  }) as Address;
+
+  if (nftMinterAddress.toLowerCase() === zeroAddress) {
+    throw new Error("NFTMinter address resolution failed: AddressManager returned zero.");
+  }
+
+  return nftMinterAddress as `0x${string}`;
 };
 
 const getDefaultValidUntil = () => BigInt(Math.floor(Date.now() / 1000) + 3600);
@@ -1820,6 +2011,89 @@ const _encodeTopUpAndSubmitAppealData = ({
     functionName: "topUpAndSubmitAppeal",
     args: [txId, createFeesDistribution(distribution)],
   });
+};
+
+const _sendEvmContractCall = async ({
+  client,
+  publicClient,
+  to,
+  encodedData,
+  senderAccount,
+  value = 0n,
+  operationName = "Contract call",
+}: {
+  client: GenLayerClient<GenLayerChain>;
+  publicClient: PublicClient;
+  to: Address;
+  encodedData: `0x${string}`;
+  senderAccount?: Account;
+  value?: bigint;
+  operationName?: string;
+}): Promise<`0x${string}`> => {
+  const validatedAccount = validateAccount(senderAccount);
+  const nonce = await client.getCurrentNonce({address: validatedAccount.address});
+
+  let estimatedGas: bigint;
+  try {
+    estimatedGas = await client.estimateTransactionGas({
+      from: validatedAccount.address,
+      to,
+      data: encodedData,
+      value,
+    });
+  } catch (err) {
+    console.error("Gas estimation failed, using default 200_000:", err);
+    estimatedGas = 200_000n;
+  }
+
+  const gasPriceHex = (await client.request({method: "eth_gasPrice"})) as string;
+
+  if (validatedAccount.type === "local") {
+    if (!validatedAccount.signTransaction) {
+      throw new Error("Local account does not support signTransaction.");
+    }
+    const txRequest = {
+      account: validatedAccount,
+      to,
+      data: encodedData,
+      value,
+      gas: estimatedGas,
+      gasPrice: BigInt(gasPriceHex),
+      nonce,
+      chainId: client.chain.id,
+    };
+    const serializedTransaction = await validatedAccount.signTransaction(txRequest);
+    const evmHash = await client.sendRawTransaction({serializedTransaction});
+    if (client.chain.isStudio) {
+      return evmHash;
+    }
+    const receipt = await publicClient.waitForTransactionReceipt({hash: evmHash});
+    if (receipt.status === "reverted") {
+      throw new Error(`${operationName} reverted: EVM tx ${evmHash}`);
+    }
+    return evmHash;
+  }
+
+  const evmHash = (await client.request({
+    method: "eth_sendTransaction",
+    params: [{
+      from: validatedAccount.address,
+      to,
+      data: encodedData,
+      value: value ? (`0x${value.toString(16)}` as `0x${string}`) : undefined,
+      gas: `0x${estimatedGas.toString(16)}` as `0x${string}`,
+      nonce: `0x${BigInt(nonce).toString(16)}` as `0x${string}`,
+      gasPrice: gasPriceHex as `0x${string}`,
+    }],
+  })) as `0x${string}`;
+  if (client.chain.isStudio) {
+    return evmHash;
+  }
+  const receipt = await publicClient.waitForTransactionReceipt({hash: evmHash});
+  if (receipt.status === "reverted") {
+    throw new Error(`${operationName} reverted: EVM tx ${evmHash}`);
+  }
+  return evmHash;
 };
 
 /**
