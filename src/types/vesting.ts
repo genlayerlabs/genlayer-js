@@ -45,6 +45,62 @@ export interface VestingDelegatorClaimOptions {
   validator: Address;
 }
 
+export interface VestingValidatorJoinOptions {
+  vesting: Address;
+  operator: Address;
+  amount: bigint | string;
+}
+
+export interface VestingValidatorJoinResult extends VestingTransactionResult {
+  vesting: Address;
+  operator: Address;
+  beneficiary: Address;
+  amount: string;
+  amountRaw: bigint;
+}
+
+export interface VestingValidatorDepositOptions {
+  vesting: Address;
+  wallet: Address;
+  amount: bigint | string;
+}
+
+export interface VestingValidatorExitOptions {
+  vesting: Address;
+  wallet: Address;
+  shares: bigint | string;
+}
+
+export interface VestingValidatorClaimOptions {
+  vesting: Address;
+  wallet: Address;
+}
+
+export interface VestingValidatorInitiateOperatorTransferOptions {
+  vesting: Address;
+  wallet: Address;
+  newOperator: Address;
+}
+
+export interface VestingValidatorWalletOptions {
+  vesting: Address;
+  wallet: Address;
+}
+
+export interface VestingValidatorSetIdentityOptions {
+  vesting: Address;
+  wallet: Address;
+  moniker: string;
+  logoUri?: string;
+  website?: string;
+  description?: string;
+  email?: string;
+  twitter?: string;
+  telegram?: string;
+  github?: string;
+  extraCid?: string;
+}
+
 export interface VestingWithdrawOptions {
   vesting: Address;
   amount: bigint | string;
@@ -116,6 +172,14 @@ export interface VestingActions {
   vestingDelegatorJoin: (options: VestingDelegatorJoinOptions) => Promise<VestingDelegatorJoinResult>;
   vestingDelegatorExit: (options: VestingDelegatorExitOptions) => Promise<VestingTransactionResult>;
   vestingDelegatorClaim: (options: VestingDelegatorClaimOptions) => Promise<VestingTransactionResult>;
+  vestingValidatorJoin: (options: VestingValidatorJoinOptions) => Promise<VestingValidatorJoinResult>;
+  vestingValidatorDeposit: (options: VestingValidatorDepositOptions) => Promise<VestingTransactionResult>;
+  vestingValidatorExit: (options: VestingValidatorExitOptions) => Promise<VestingTransactionResult>;
+  vestingValidatorClaim: (options: VestingValidatorClaimOptions) => Promise<VestingTransactionResult>;
+  vestingValidatorInitiateOperatorTransfer: (options: VestingValidatorInitiateOperatorTransferOptions) => Promise<VestingTransactionResult>;
+  vestingValidatorCompleteOperatorTransfer: (options: VestingValidatorWalletOptions) => Promise<VestingTransactionResult>;
+  vestingValidatorCancelOperatorTransfer: (options: VestingValidatorWalletOptions) => Promise<VestingTransactionResult>;
+  vestingValidatorSetIdentity: (options: VestingValidatorSetIdentityOptions) => Promise<VestingTransactionResult>;
   vestingWithdraw: (options: VestingWithdrawOptions) => Promise<VestingWithdrawResult>;
 
   getVestingFactoryAddress: (options?: Omit<VestingFactoryLookupOptions, "factory">) => Promise<Address>;
@@ -158,6 +222,10 @@ export interface VestingActions {
   vestingPostRevocationBeneficiaryLosses: (vesting: Address) => Promise<bigint>;
   vestingDepositedPerValidator: (vesting: Address, validator: Address) => Promise<bigint>;
   vestingPendingExitDeposited: (vesting: Address, validator: Address) => Promise<bigint>;
+  getValidatorWallets: (vesting: Address) => Promise<Address[]>;
+  validatorWalletCount: (vesting: Address) => Promise<bigint>;
+  validatorDeposited: (vesting: Address, wallet: Address) => Promise<bigint>;
+  isValidatorWallet: (vesting: Address, wallet: Address) => Promise<boolean>;
   vestingAccumulatedRewards: (vesting: Address) => Promise<bigint>;
   vestingAccumulatedLosses: (vesting: Address) => Promise<bigint>;
 }

@@ -1,5 +1,5 @@
 import {describe, expect, it, vi} from "vitest";
-import {decodeFunctionData, parseEther, zeroAddress} from "viem";
+import {decodeFunctionData, parseEther, toHex, zeroAddress} from "viem";
 import {VESTING_ABI} from "../src/abi/vesting";
 import {vestingActions} from "../src/vesting/actions";
 
@@ -7,6 +7,9 @@ const ACCOUNT_ADDRESS = "0x0000000000000000000000000000000000000011";
 const BENEFICIARY_ADDRESS = ACCOUNT_ADDRESS;
 const VESTING_ADDRESS = "0x0000000000000000000000000000000000000022";
 const VALIDATOR_ADDRESS = "0x0000000000000000000000000000000000000033";
+const VALIDATOR_WALLET_ADDRESS = "0x0000000000000000000000000000000000000099";
+const OPERATOR_ADDRESS = "0x00000000000000000000000000000000000000AA";
+const NEW_OPERATOR_ADDRESS = "0x00000000000000000000000000000000000000bb";
 const CONSENSUS_MAIN_ADDRESS = "0x0000000000000000000000000000000000000044";
 const ADDRESS_MANAGER_ADDRESS = "0x0000000000000000000000000000000000000055";
 const FACTORY_ADDRESS = "0x0000000000000000000000000000000000000066";
@@ -127,6 +130,113 @@ describe("vestingActions", () => {
     });
   });
 
+  it("encodes vesting validator join and deposit without caller value", async () => {
+    const {actions, publicClient} = makeHarness();
+
+    const result = await actions.vestingValidatorJoin({
+      vesting: VESTING_ADDRESS,
+      operator: OPERATOR_ADDRESS,
+      amount: "3gen",
+    });
+
+    expect(publicClient.call.mock.calls[0][0].to).toBe(VESTING_ADDRESS);
+    expect(publicClient.call.mock.calls[0][0].value).toBeUndefined();
+    expect(decodedWrite(publicClient)).toEqual({
+      functionName: "vestingValidatorJoin",
+      args: [OPERATOR_ADDRESS, parseEther("3")],
+    });
+    expect(result).toMatchObject({
+      vesting: VESTING_ADDRESS,
+      operator: OPERATOR_ADDRESS,
+      beneficiary: ACCOUNT_ADDRESS,
+      amount: "3 GEN",
+      amountRaw: parseEther("3"),
+    });
+
+    publicClient.call.mockClear();
+    await actions.vestingValidatorDeposit({
+      vesting: VESTING_ADDRESS,
+      wallet: VALIDATOR_WALLET_ADDRESS,
+      amount: "4gen",
+    });
+    expect(publicClient.call.mock.calls[0][0].value).toBeUndefined();
+    expect(decodedWrite(publicClient)).toEqual({
+      functionName: "vestingValidatorDeposit",
+      args: [VALIDATOR_WALLET_ADDRESS, parseEther("4")],
+    });
+  });
+
+  it("encodes vesting validator exit, claim, and operator transfer calls", async () => {
+    const {actions, publicClient} = makeHarness();
+
+    await actions.vestingValidatorExit({vesting: VESTING_ADDRESS, wallet: VALIDATOR_WALLET_ADDRESS, shares: "42"});
+    expect(decodedWrite(publicClient)).toEqual({
+      functionName: "vestingValidatorExit",
+      args: [VALIDATOR_WALLET_ADDRESS, 42n],
+    });
+
+    publicClient.call.mockClear();
+    await actions.vestingValidatorClaim({vesting: VESTING_ADDRESS, wallet: VALIDATOR_WALLET_ADDRESS});
+    expect(decodedWrite(publicClient)).toEqual({
+      functionName: "vestingValidatorClaim",
+      args: [VALIDATOR_WALLET_ADDRESS],
+    });
+
+    publicClient.call.mockClear();
+    await actions.vestingValidatorInitiateOperatorTransfer({
+      vesting: VESTING_ADDRESS,
+      wallet: VALIDATOR_WALLET_ADDRESS,
+      newOperator: NEW_OPERATOR_ADDRESS,
+    });
+    expect(decodedWrite(publicClient)).toEqual({
+      functionName: "vestingValidatorInitiateOperatorTransfer",
+      args: [VALIDATOR_WALLET_ADDRESS, NEW_OPERATOR_ADDRESS],
+    });
+
+    publicClient.call.mockClear();
+    await actions.vestingValidatorCompleteOperatorTransfer({vesting: VESTING_ADDRESS, wallet: VALIDATOR_WALLET_ADDRESS});
+    expect(decodedWrite(publicClient)).toEqual({
+      functionName: "vestingValidatorCompleteOperatorTransfer",
+      args: [VALIDATOR_WALLET_ADDRESS],
+    });
+
+    publicClient.call.mockClear();
+    await actions.vestingValidatorCancelOperatorTransfer({vesting: VESTING_ADDRESS, wallet: VALIDATOR_WALLET_ADDRESS});
+    expect(decodedWrite(publicClient)).toEqual({
+      functionName: "vestingValidatorCancelOperatorTransfer",
+      args: [VALIDATOR_WALLET_ADDRESS],
+    });
+  });
+
+  it("encodes vesting validator identity with optional fields and bytes extraCid", async () => {
+    const {actions, publicClient} = makeHarness();
+
+    await actions.vestingValidatorSetIdentity({
+      vesting: VESTING_ADDRESS,
+      wallet: VALIDATOR_WALLET_ADDRESS,
+      moniker: "validator-one",
+      website: "https://example.com",
+      twitter: "@genlayer",
+      extraCid: "cid-bytes",
+    });
+
+    expect(decodedWrite(publicClient)).toEqual({
+      functionName: "vestingValidatorSetIdentity",
+      args: [
+        VALIDATOR_WALLET_ADDRESS,
+        "validator-one",
+        "",
+        "https://example.com",
+        "",
+        "",
+        "@genlayer",
+        "",
+        "",
+        toHex(new TextEncoder().encode("cid-bytes")),
+      ],
+    });
+  });
+
   it("discovers a beneficiary vesting contract through AddressManager and VestingFactory", async () => {
     const {actions, publicClient} = makeHarness();
     publicClient.readContract.mockImplementation(async ({functionName, args}: any) => {
@@ -196,12 +306,20 @@ describe("vestingActions", () => {
       withdrawableAmount: parseEther("9"),
       depositedPerValidator: parseEther("25"),
       pendingExitDeposited: parseEther("5"),
+      getValidatorWallets: [VALIDATOR_WALLET_ADDRESS],
+      validatorWalletCount: 1n,
+      validatorDeposited: parseEther("30"),
+      isValidatorWallet: true,
     };
     publicClient.readContract.mockImplementation(async ({functionName}: any) => values[functionName]);
 
     await expect(actions.vestedAmount(VESTING_ADDRESS)).resolves.toBe(parseEther("10"));
     await expect(actions.vestingDepositedPerValidator(VESTING_ADDRESS, VALIDATOR_ADDRESS)).resolves.toBe(parseEther("25"));
     await expect(actions.vestingPendingExitDeposited(VESTING_ADDRESS, VALIDATOR_ADDRESS)).resolves.toBe(parseEther("5"));
+    await expect(actions.getValidatorWallets(VESTING_ADDRESS)).resolves.toEqual([VALIDATOR_WALLET_ADDRESS]);
+    await expect(actions.validatorWalletCount(VESTING_ADDRESS)).resolves.toBe(1n);
+    await expect(actions.validatorDeposited(VESTING_ADDRESS, VALIDATOR_WALLET_ADDRESS)).resolves.toBe(parseEther("30"));
+    await expect(actions.isValidatorWallet(VESTING_ADDRESS, VALIDATOR_WALLET_ADDRESS)).resolves.toBe(true);
     await expect(actions.getVestingSchedule(VESTING_ADDRESS)).resolves.toEqual({
       startDate: 1000n,
       cliffDuration: 200n,

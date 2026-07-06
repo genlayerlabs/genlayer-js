@@ -10,6 +10,7 @@ import {
   getContract,
   PublicClient,
   RawContractError,
+  toHex,
   Transport,
   zeroAddress,
 } from "viem";
@@ -28,6 +29,14 @@ import {
   VestingSchedule,
   VestingState,
   VestingTransactionResult,
+  VestingValidatorClaimOptions,
+  VestingValidatorDepositOptions,
+  VestingValidatorExitOptions,
+  VestingValidatorInitiateOperatorTransferOptions,
+  VestingValidatorJoinOptions,
+  VestingValidatorJoinResult,
+  VestingValidatorSetIdentityOptions,
+  VestingValidatorWalletOptions,
   VestingWithdrawOptions,
   VestingWithdrawResult,
 } from "@/types/vesting";
@@ -81,6 +90,12 @@ function extractRevertReason(err: unknown): string {
   }
   if (err instanceof Error) return err.message;
   return "Unknown reason";
+}
+
+function encodeExtraCid(extraCid?: string): `0x${string}` {
+  if (!extraCid) return "0x";
+  if (extraCid.startsWith("0x")) return extraCid as `0x${string}`;
+  return toHex(new TextEncoder().encode(extraCid));
 }
 
 export const vestingActions = (
@@ -279,6 +294,109 @@ export const vestingActions = (
         abi: VESTING_ABI,
         functionName: "vestingDelegatorClaim",
         args: [options.validator as ViemAddress],
+      });
+      return executeWrite({to: options.vesting as ViemAddress, data});
+    },
+
+    /** Creates a validator wallet and self-stakes vesting-held tokens. Must be called by the vesting beneficiary. */
+    vestingValidatorJoin: async (options: VestingValidatorJoinOptions): Promise<VestingValidatorJoinResult> => {
+      const amount = parseStakingAmount(options.amount);
+      const data = encodeFunctionData({
+        abi: VESTING_ABI,
+        functionName: "vestingValidatorJoin",
+        args: [options.operator as ViemAddress, amount],
+      });
+      const result = await executeWrite({to: options.vesting as ViemAddress, data});
+
+      return {
+        ...result,
+        vesting: options.vesting,
+        operator: options.operator,
+        beneficiary: client.account!.address as Address,
+        amount: formatStakingAmount(amount),
+        amountRaw: amount,
+      };
+    },
+
+    /** Adds more vesting-held self-stake to one of the vesting's validator wallets. */
+    vestingValidatorDeposit: async (options: VestingValidatorDepositOptions): Promise<VestingTransactionResult> => {
+      const amount = parseStakingAmount(options.amount);
+      const data = encodeFunctionData({
+        abi: VESTING_ABI,
+        functionName: "vestingValidatorDeposit",
+        args: [options.wallet as ViemAddress, amount],
+      });
+      return executeWrite({to: options.vesting as ViemAddress, data});
+    },
+
+    /** Exits validator self-stake by burning shares from a vesting-owned validator wallet. */
+    vestingValidatorExit: async (options: VestingValidatorExitOptions): Promise<VestingTransactionResult> => {
+      const shares = typeof options.shares === "string" ? BigInt(options.shares) : options.shares;
+      const data = encodeFunctionData({
+        abi: VESTING_ABI,
+        functionName: "vestingValidatorExit",
+        args: [options.wallet as ViemAddress, shares],
+      });
+      return executeWrite({to: options.vesting as ViemAddress, data});
+    },
+
+    /** Claims exited validator self-stake back into the vesting contract. */
+    vestingValidatorClaim: async (options: VestingValidatorClaimOptions): Promise<VestingTransactionResult> => {
+      const data = encodeFunctionData({
+        abi: VESTING_ABI,
+        functionName: "vestingValidatorClaim",
+        args: [options.wallet as ViemAddress],
+      });
+      return executeWrite({to: options.vesting as ViemAddress, data});
+    },
+
+    /** Begins a two-step operator transfer for a vesting-owned validator wallet. */
+    vestingValidatorInitiateOperatorTransfer: async (options: VestingValidatorInitiateOperatorTransferOptions): Promise<VestingTransactionResult> => {
+      const data = encodeFunctionData({
+        abi: VESTING_ABI,
+        functionName: "vestingValidatorInitiateOperatorTransfer",
+        args: [options.wallet as ViemAddress, options.newOperator as ViemAddress],
+      });
+      return executeWrite({to: options.vesting as ViemAddress, data});
+    },
+
+    /** Completes a pending operator transfer for a vesting-owned validator wallet. */
+    vestingValidatorCompleteOperatorTransfer: async (options: VestingValidatorWalletOptions): Promise<VestingTransactionResult> => {
+      const data = encodeFunctionData({
+        abi: VESTING_ABI,
+        functionName: "vestingValidatorCompleteOperatorTransfer",
+        args: [options.wallet as ViemAddress],
+      });
+      return executeWrite({to: options.vesting as ViemAddress, data});
+    },
+
+    /** Cancels a pending operator transfer for a vesting-owned validator wallet. */
+    vestingValidatorCancelOperatorTransfer: async (options: VestingValidatorWalletOptions): Promise<VestingTransactionResult> => {
+      const data = encodeFunctionData({
+        abi: VESTING_ABI,
+        functionName: "vestingValidatorCancelOperatorTransfer",
+        args: [options.wallet as ViemAddress],
+      });
+      return executeWrite({to: options.vesting as ViemAddress, data});
+    },
+
+    /** Sets validator identity metadata on a vesting-owned validator wallet. */
+    vestingValidatorSetIdentity: async (options: VestingValidatorSetIdentityOptions): Promise<VestingTransactionResult> => {
+      const data = encodeFunctionData({
+        abi: VESTING_ABI,
+        functionName: "vestingValidatorSetIdentity",
+        args: [
+          options.wallet as ViemAddress,
+          options.moniker,
+          options.logoUri || "",
+          options.website || "",
+          options.description || "",
+          options.email || "",
+          options.twitter || "",
+          options.telegram || "",
+          options.github || "",
+          encodeExtraCid(options.extraCid),
+        ],
       });
       return executeWrite({to: options.vesting as ViemAddress, data});
     },
@@ -484,6 +602,10 @@ export const vestingActions = (
     vestingPostRevocationBeneficiaryLosses: (vesting: Address): Promise<bigint> => readVesting<bigint>(vesting, "postRevocationBeneficiaryLosses"),
     vestingDepositedPerValidator: (vesting: Address, validator: Address): Promise<bigint> => readVesting<bigint>(vesting, "depositedPerValidator", [validator as ViemAddress]),
     vestingPendingExitDeposited: (vesting: Address, validator: Address): Promise<bigint> => readVesting<bigint>(vesting, "pendingExitDeposited", [validator as ViemAddress]),
+    getValidatorWallets: (vesting: Address): Promise<Address[]> => readVesting<Address[]>(vesting, "getValidatorWallets"),
+    validatorWalletCount: (vesting: Address): Promise<bigint> => readVesting<bigint>(vesting, "validatorWalletCount"),
+    validatorDeposited: (vesting: Address, wallet: Address): Promise<bigint> => readVesting<bigint>(vesting, "validatorDeposited", [wallet as ViemAddress]),
+    isValidatorWallet: (vesting: Address, wallet: Address): Promise<boolean> => readVesting<boolean>(vesting, "isValidatorWallet", [wallet as ViemAddress]),
     vestingAccumulatedRewards: (vesting: Address): Promise<bigint> => readVesting<bigint>(vesting, "accumulatedRewards"),
     vestingAccumulatedLosses: (vesting: Address): Promise<bigint> => readVesting<bigint>(vesting, "accumulatedLosses"),
   };
