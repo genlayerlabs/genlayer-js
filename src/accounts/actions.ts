@@ -36,10 +36,14 @@ export function accountActions(client: GenLayerClient<GenLayerChain>) {
       if (!addressToUse) {
         throw new Error("No address provided and no account is connected");
       }
-      return client.request({
+      const count = await client.request({
         method: "eth_getTransactionCount",
         params: [addressToUse, block],
-      }) as Promise<number>;
+      });
+      // The RPC returns a hex quantity string; callers (and the declared return
+      // type) expect a number. Passing the raw string into viem's transaction
+      // serializer encodes the ASCII characters as the nonce bytes.
+      return Number(count);
     },
   };
 }
