@@ -61,6 +61,10 @@ export interface ValidatorInfo {
   banned: boolean;
   bannedEpoch?: bigint;
   needsPriming: boolean;
+  currentEpoch: bigint;
+  validatorMinStake: string;
+  validatorMinStakeRaw: bigint;
+  belowMin: boolean;
   identity?: ValidatorIdentity;
   pendingDeposits: PendingDeposit[];
   pendingWithdrawals: PendingWithdrawal[];
