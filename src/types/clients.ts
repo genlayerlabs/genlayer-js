@@ -19,7 +19,7 @@ import {
 import {GenLayerChain} from "./chains";
 import {Address, Account} from "./accounts";
 import {CalldataEncodable} from "./calldata";
-import {ContractSchema} from "./contracts";
+import {ContractSchema, DeveloperNft} from "./contracts";
 import {Network} from "./network";
 import {SnapSource} from "@/types/snapSource";
 import {MetaMaskClientResult} from "@/types/metamaskClientResult";
@@ -144,6 +144,21 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     getRoundData: (args: {txId: `0x${string}`; round: bigint}) => Promise<any>;
     getLastRoundData: (args: {txId: `0x${string}`}) => Promise<any>;
     canAppeal: (args: {txId: `0x${string}`}) => Promise<boolean>;
+    getDeveloperNft: (args: {developer: Address}) => Promise<DeveloperNft | null>;
+    getClaimableRewardsFromFees: (args: {nftId: BigNumberish}) => Promise<bigint>;
+    getClaimableRewardsFromInflation: (args: {
+      nftId: BigNumberish;
+      numberOfEpochsToClaim: BigNumberish;
+    }) => Promise<bigint>;
+    claimNftRewards: (args: {
+      account?: Account;
+      nftId: BigNumberish;
+    }) => Promise<`0x${string}`>;
+    claimNftEpochs: (args: {
+      account?: Account;
+      nftId: BigNumberish;
+      numberOfEpochsToClaim: BigNumberish;
+    }) => Promise<`0x${string}`>;
     appealTransaction: (args: {
       account?: Account;
       txId: `0x${string}`;
