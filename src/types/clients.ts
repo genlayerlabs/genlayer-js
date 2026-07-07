@@ -24,6 +24,7 @@ import {Network} from "./network";
 import {SnapSource} from "@/types/snapSource";
 import {MetaMaskClientResult} from "@/types/metamaskClientResult";
 import {StakingActions} from "./staking";
+import {VestingActions} from "./vesting";
 
 export type GenLayerMethod =
   | {method: "sim_fundAccount"; params: [address: Address, amount: number]}
@@ -189,4 +190,4 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     estimateTransactionFees: (args?: FeeEstimateOptions) => Promise<TransactionFeeEstimate>;
     estimateTransactionFeesFromSimulation: (args: SimulationFeeEstimateOptions) => Promise<TransactionFeeEstimate>;
     estimateTransactionFeesForWrite: (args: WriteFeeEstimateOptions) => Promise<TransactionFeeEstimate>;
-  } & StakingActions;
+  } & StakingActions & VestingActions;
