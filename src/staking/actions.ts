@@ -421,12 +421,13 @@ export const stakingActions = (
       });
 
       // Fetch all data in parallel
-      const [view, owner, operator, identityRaw, currentEpoch] = await Promise.all([
+      const [view, owner, operator, identityRaw, currentEpoch, validatorMinStake] = await Promise.all([
         contract.read.validatorView([validator as ViemAddress]) as Promise<any>,
         walletContract.read.owner() as Promise<Address>,
         walletContract.read.operator() as Promise<Address>,
         walletContract.read.getIdentity().catch(() => null) as Promise<any>,
         contract.read.epoch() as Promise<bigint>,
+        contract.read.validatorMinStake() as Promise<bigint>,
       ]);
 
       // Parse identity if available
@@ -501,10 +502,30 @@ export const stakingActions = (
         banned: view.eBanned > 0n,
         bannedEpoch: view.eBanned > 0n ? view.eBanned : undefined,
         needsPriming,
+        currentEpoch,
+        validatorMinStake: formatStakingAmount(validatorMinStake),
+        validatorMinStakeRaw: validatorMinStake,
+        belowMin: view.vStake < validatorMinStake,
         identity,
         pendingDeposits,
         pendingWithdrawals,
       };
+    },
+
+    /** Returns the current epoch number. */
+    getCurrentEpoch: async (): Promise<bigint> => {
+      const contract = getReadOnlyStakingContract();
+      return (await contract.read.epoch()) as bigint;
+    },
+
+    /** Checks whether a validator's self-stake is below the configured validator minimum. */
+    isValidatorBelowMin: async (validator: Address): Promise<boolean> => {
+      const contract = getReadOnlyStakingContract();
+      const [view, minStake] = await Promise.all([
+        contract.read.validatorView([validator as ViemAddress]) as Promise<{vStake: bigint}>,
+        contract.read.validatorMinStake() as Promise<bigint>,
+      ]);
+      return view.vStake < minStake;
     },
 
     /** Returns delegation stake information for a delegator-validator pair. */
