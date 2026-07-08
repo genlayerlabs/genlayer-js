@@ -11,6 +11,7 @@
     "LICENSE"
   ],
   "scripts": {
+    "prepare": "npm run build",
     "prepack": "npm run build",
     "build": "node scripts/run-tsup-build.mjs",
     "build:watch": "node scripts/run-tsup-build.mjs --watch",
