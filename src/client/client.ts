@@ -148,7 +148,7 @@ export const createClient = (config: ClientConfig = {chain: localnet}): GenLayer
   const clientWithBasicActions = baseClient
     .extend(publicActions)
     .extend(walletActions)
-    .extend(client => accountActions(client as unknown as GenLayerClient<GenLayerChain>));
+    .extend(client => accountActions(client as unknown as GenLayerClient<GenLayerChain>, publicClient));
 
   const clientWithTransactionActions = {
     ...clientWithBasicActions,

@@ -131,25 +131,53 @@ export const stakingActions = (
       }
     }
 
-    const nonce = await publicClient.getTransactionCount({address: account.address as ViemAddress});
+    let hash: `0x${string}`;
+    if (account.type === "local") {
+      const nonce = await publicClient.getTransactionCount({address: account.address as ViemAddress});
 
-    const txRequest = await publicClient.prepareTransactionRequest({
-      account,
-      to: options.to,
-      data: options.data,
-      value: options.value,
-      type: "legacy",
-      nonce,
-      gas: gasLimit,
-      chain: client.chain,
-    });
+      const txRequest = await publicClient.prepareTransactionRequest({
+        account,
+        to: options.to,
+        data: options.data,
+        value: options.value,
+        type: "legacy",
+        nonce,
+        gas: gasLimit,
+        chain: client.chain,
+      });
 
-    const signTransaction = account.signTransaction;
-    if (!signTransaction) {
-      throw new Error("Account does not support signing transactions");
+      const signTransaction = account.signTransaction;
+      if (!signTransaction) {
+        throw new Error("Account does not support signing transactions");
+      }
+      const serializedTx = await signTransaction(txRequest as Parameters<typeof signTransaction>[0]);
+      hash = await publicClient.sendRawTransaction({serializedTransaction: serializedTx});
+    } else {
+      // Address-only / injected-provider lane: the connected wallet manages
+      // nonce and signing. Mirrors the proven IC provider lane in
+      // src/contracts/actions.ts (~:2169-2178 and :2412-2422).
+      let gasPrice: `0x${string}` | undefined;
+      try {
+        gasPrice = (await client.request({method: "eth_gasPrice"})) as `0x${string}`;
+      } catch {
+        // Best-effort: omit gasPrice and let the wallet choose it.
+      }
+      hash = (await client.request({
+        method: "eth_sendTransaction",
+        params: [
+          {
+            from: account.address,
+            to: options.to,
+            data: options.data,
+            value: options.value ? (`0x${options.value.toString(16)}` as `0x${string}`) : undefined,
+            gas: `0x${gasLimit.toString(16)}` as `0x${string}`,
+            type: "0x0",
+            ...(gasPrice ? {gasPrice} : {}),
+          },
+        ],
+      })) as `0x${string}`;
     }
-    const serializedTx = await signTransaction(txRequest as Parameters<typeof signTransaction>[0]);
-    const hash = await publicClient.sendRawTransaction({serializedTransaction: serializedTx});
+
     const receipt = await publicClient.waitForTransactionReceipt({hash});
 
     if (receipt.status === "reverted") {

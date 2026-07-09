@@ -1,4 +1,4 @@
-import {Transport, Client, PublicActions, WalletActions} from "viem";
+import {Transport, Client, PublicActions, WalletActions, TransactionReceipt} from "viem";
 import {
   GenLayerTransaction,
   TransactionHash,
@@ -114,6 +114,7 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     }) => Promise<`0x${string}`>;
     getTransaction: (args: {hash: TransactionHash}) => Promise<GenLayerTransaction>;
     getCurrentNonce: (args: {address: Address}) => Promise<number>;
+    transfer: (args: {to: Address; value: bigint}) => Promise<TransactionReceipt>;
     estimateTransactionGas: (transactionParams: {
       from?: Address;
       to: Address;

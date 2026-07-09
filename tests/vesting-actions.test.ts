@@ -343,3 +343,130 @@ describe("vestingActions", () => {
     });
   });
 });
+
+// Provider lane: Address-only account (type: "json-rpc"). The connected wallet
+// manages nonce + signing, so writes route through client.request
+// eth_sendTransaction instead of the local sign+sendRaw path.
+const GAS_PRICE_HEX = "0x3b9aca00";
+
+const makeProviderHarness = () => {
+  // signTransaction is attached but MUST be ignored: the discriminator is
+  // account.type === "local", never presence of signTransaction.
+  const signTransaction = vi.fn().mockResolvedValue("0xsigned");
+  const request = vi.fn().mockImplementation(async ({method}: any) => {
+    if (method === "eth_gasPrice") return GAS_PRICE_HEX;
+    if (method === "eth_sendTransaction") return MOCK_TX_HASH;
+    throw new Error(`Unexpected request: ${method}`);
+  });
+  const client = {
+    account: {address: ACCOUNT_ADDRESS, type: "json-rpc", signTransaction},
+    chain: {
+      id: 1,
+      name: "test",
+      nativeCurrency: {name: "GEN", symbol: "GEN", decimals: 18},
+      rpcUrls: {default: {http: ["http://127.0.0.1"]}},
+      isStudio: false,
+      consensusMainContract: {address: CONSENSUS_MAIN_ADDRESS, abi: [], bytecode: "0x"},
+    },
+    request,
+  };
+  const publicClient = {
+    call: vi.fn().mockResolvedValue("0x"),
+    estimateGas: vi.fn().mockResolvedValue(21000n),
+    getTransactionCount: vi.fn().mockResolvedValue(7),
+    prepareTransactionRequest: vi.fn().mockImplementation(async (r: any) => r),
+    sendRawTransaction: vi.fn().mockResolvedValue(MOCK_TX_HASH),
+    waitForTransactionReceipt: vi.fn().mockResolvedValue(makeReceipt()),
+    readContract: vi.fn(),
+  };
+
+  return {
+    actions: vestingActions(client as any, publicClient as any),
+    client,
+    publicClient,
+    request,
+    signTransaction,
+  };
+};
+
+const sentTxParams = (request: ReturnType<typeof makeProviderHarness>["request"]) => {
+  const call = request.mock.calls.find(([args]: any) => args.method === "eth_sendTransaction");
+  return call![0].params[0];
+};
+
+describe("vestingActions provider lane (Address-only)", () => {
+  it("routes writes through eth_sendTransaction with the expected params", async () => {
+    const {actions, request, publicClient, signTransaction} = makeProviderHarness();
+
+    await actions.vestingDelegatorExit({vesting: VESTING_ADDRESS, validator: VALIDATOR_ADDRESS, shares: "42"});
+
+    const params = sentTxParams(request);
+    expect(params.from).toBe(ACCOUNT_ADDRESS);
+    expect(params.to).toBe(VESTING_ADDRESS);
+    expect(decodeFunctionData({abi: VESTING_ABI, data: params.data})).toEqual({
+      functionName: "vestingDelegatorExit",
+      args: [VALIDATOR_ADDRESS, 42n],
+    });
+    expect(params.type).toBe("0x0");
+    // gasLimit = estimateGas(21000) * 2 buffer = 42000 = 0xa410
+    expect(params.gas).toBe(`0x${(42000).toString(16)}`);
+    expect(params.gasPrice).toBe(GAS_PRICE_HEX);
+    // Vesting writes carry no msg.value (amounts are ABI args), so value is omitted.
+    expect(params.value).toBeUndefined();
+
+    // Local-lane primitives must NOT be touched on the provider path.
+    expect(signTransaction).not.toHaveBeenCalled();
+    expect(publicClient.sendRawTransaction).not.toHaveBeenCalled();
+    expect(publicClient.getTransactionCount).not.toHaveBeenCalled();
+    expect(publicClient.prepareTransactionRequest).not.toHaveBeenCalled();
+  });
+
+  it("returns the same receipt-derived shape as the local lane", async () => {
+    const {actions} = makeProviderHarness();
+
+    const result = await actions.vestingWithdraw({vesting: VESTING_ADDRESS, amount: "1gen"});
+
+    expect(result).toMatchObject({
+      transactionHash: MOCK_TX_HASH,
+      blockNumber: 12n,
+      gasUsed: 345n,
+      vesting: VESTING_ADDRESS,
+      beneficiary: ACCOUNT_ADDRESS,
+      amount: "1 GEN",
+      amountRaw: parseEther("1"),
+    });
+  });
+
+  it("still runs the preflight and throws before sending on a would-revert", async () => {
+    const {actions, publicClient, request} = makeProviderHarness();
+    publicClient.call.mockRejectedValueOnce(new Error("boom"));
+
+    await expect(
+      actions.vestingDelegatorClaim({vesting: VESTING_ADDRESS, validator: VALIDATOR_ADDRESS}),
+    ).rejects.toThrow(/Transaction would revert/);
+
+    expect(request).not.toHaveBeenCalledWith(expect.objectContaining({method: "eth_sendTransaction"}));
+  });
+
+  it("throws when the mined receipt is reverted", async () => {
+    const {actions, publicClient} = makeProviderHarness();
+    publicClient.waitForTransactionReceipt.mockResolvedValueOnce({...makeReceipt(), status: "reverted"});
+
+    await expect(
+      actions.vestingDelegatorClaim({vesting: VESTING_ADDRESS, validator: VALIDATOR_ADDRESS}),
+    ).rejects.toThrow(/Transaction reverted/);
+  });
+
+  it("sends without gasPrice when eth_gasPrice rejects", async () => {
+    const {actions, request} = makeProviderHarness();
+    request.mockImplementation(async ({method}: any) => {
+      if (method === "eth_gasPrice") throw new Error("no gas price");
+      if (method === "eth_sendTransaction") return MOCK_TX_HASH;
+      throw new Error(`Unexpected request: ${method}`);
+    });
+
+    await actions.vestingDelegatorClaim({vesting: VESTING_ADDRESS, validator: VALIDATOR_ADDRESS});
+
+    expect(sentTxParams(request).gasPrice).toBeUndefined();
+  });
+});
