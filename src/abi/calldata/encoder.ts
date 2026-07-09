@@ -87,7 +87,15 @@ function encodeImpl(to: number[], data: CalldataEncodable) {
   switch (typeof data) {
     case "number": {
       if (!Number.isInteger(data)) {
-        reportError("floats are not supported", data);
+        if (Number.isFinite(data) && Math.floor(data) === data) {
+          // Safe: float with no fractional part (e.g. 1.0 → 1)
+          encodeNum(to, BigInt(Math.trunc(data)));
+          return;
+        }
+        throw new Error(
+          `calldata encoding error: float value '${data}' is not supported. ` +
+          `Convert to an integer or pass as a string instead.`
+        );
       }
       encodeNum(to, BigInt(data));
       return;
