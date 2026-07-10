@@ -34,6 +34,14 @@ test("type checks", () => {
     params: [exampleAddress, "from"],
   });
 
+  void client.transfer({
+    to: exampleAddress,
+    value: 1n,
+  });
+
+  // @ts-expect-error value must be a bigint
+  void client.transfer({to: exampleAddress, value: 1});
+
   void client.getContractSchema(exampleAddress);
 
   void client.getContractSchemaForCode("class SomeContract...");
