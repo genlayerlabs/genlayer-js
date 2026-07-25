@@ -87,38 +87,44 @@ function _toJsonSafeDeep(value: CalldataEncodable, seen: WeakSet<object>): any {
 
   // Objects and structured values
   if (typeof value === "object") {
-    if (seen.has(value as object)) {
-      // Prevent potential cycles; represent as null
-      return null;
-    }
-    seen.add(value as object);
-
     if (value instanceof Uint8Array) {
       return toHex(value);
-    }
-
-    if (value instanceof Array) {
-      return value.map((v) => _toJsonSafeDeep(v as CalldataEncodable, seen));
-    }
-
-    if (value instanceof Map) {
-      const obj: Record<string, any> = {};
-      for (const [k, v] of value.entries()) {
-        obj[k] = _toJsonSafeDeep(v as CalldataEncodable, seen);
-      }
-      return obj;
     }
 
     if (value instanceof CalldataAddress) {
       return toHex(value.bytes);
     }
 
-    if (Object.getPrototypeOf(value) === Object.prototype) {
-      const obj: Record<string, any> = {};
-      for (const [k, v] of Object.entries(value)) {
-        obj[k] = _toJsonSafeDeep(v as CalldataEncodable, seen);
+    if (seen.has(value as object)) {
+      // Prevent potential cycles; represent as null
+      return null;
+    }
+    seen.add(value as object);
+
+    try {
+      if (value instanceof Array) {
+        return value.map((v) => _toJsonSafeDeep(v as CalldataEncodable, seen));
       }
-      return obj;
+
+      if (value instanceof Map) {
+        const obj: Record<string, any> = {};
+        for (const [k, v] of value.entries()) {
+          obj[k] = _toJsonSafeDeep(v as CalldataEncodable, seen);
+        }
+        return obj;
+      }
+
+      if (Object.getPrototypeOf(value) === Object.prototype) {
+        const obj: Record<string, any> = {};
+        for (const [k, v] of Object.entries(value)) {
+          obj[k] = _toJsonSafeDeep(v as CalldataEncodable, seen);
+        }
+        return obj;
+      }
+    } finally {
+      // Track only the active recursion path. Shared references in an acyclic
+      // object graph must be serialized each time they occur.
+      seen.delete(value as object);
     }
   }
 

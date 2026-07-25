@@ -8,6 +8,7 @@ import {
   decodeErrorResult,
   encodeFunctionData,
   getContract,
+  isHex,
   PublicClient,
   RawContractError,
   toHex,
@@ -94,8 +95,24 @@ function extractRevertReason(err: unknown): string {
 
 function encodeExtraCid(extraCid?: string): `0x${string}` {
   if (!extraCid) return "0x";
-  if (extraCid.startsWith("0x")) return extraCid as `0x${string}`;
+  if (extraCid.startsWith("0x")) {
+    if (!isHex(extraCid, {strict: true}) || extraCid.length % 2 !== 0) {
+      throw new Error("extraCid must be a valid even-length hex string");
+    }
+    return extraCid;
+  }
   return toHex(new TextEncoder().encode(extraCid));
+}
+
+function parseExitShares(shares: bigint | string): bigint {
+  if (typeof shares === "string" && shares.trim() === "") {
+    throw new Error("shares must not be empty");
+  }
+  const parsed = typeof shares === "string" ? BigInt(shares) : shares;
+  if (parsed <= 0n) {
+    throw new Error("shares must be greater than zero");
+  }
+  return parsed;
 }
 
 export const vestingActions = (
@@ -307,7 +324,7 @@ export const vestingActions = (
 
     /** Exits a vesting contract's delegation by burning shares. Must be called by the vesting beneficiary. */
     vestingDelegatorExit: async (options: VestingDelegatorExitOptions): Promise<VestingTransactionResult> => {
-      const shares = typeof options.shares === "string" ? BigInt(options.shares) : options.shares;
+      const shares = parseExitShares(options.shares);
       const data = encodeFunctionData({
         abi: VESTING_ABI,
         functionName: "vestingDelegatorExit",
@@ -359,7 +376,7 @@ export const vestingActions = (
 
     /** Exits validator self-stake by burning shares from a vesting-owned validator wallet. */
     vestingValidatorExit: async (options: VestingValidatorExitOptions): Promise<VestingTransactionResult> => {
-      const shares = typeof options.shares === "string" ? BigInt(options.shares) : options.shares;
+      const shares = parseExitShares(options.shares);
       const data = encodeFunctionData({
         abi: VESTING_ABI,
         functionName: "vestingValidatorExit",

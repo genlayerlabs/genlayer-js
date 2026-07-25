@@ -78,10 +78,18 @@ export const isSuccessful = (transaction: GenLayerTransaction): boolean => {
       ? undefined
       : executionResultNumberToName[String(transaction.txExecutionResult) as keyof typeof executionResultNumberToName]
   );
+  const studioExecutionSucceeded =
+    executionResultName === undefined &&
+    transaction.consensus_data?.leader_receipt?.some(
+      receipt => receipt.execution_result === "SUCCESS",
+    ) === true;
 
   return (
     (statusName === TransactionStatus.ACCEPTED || statusName === TransactionStatus.FINALIZED) &&
-    executionResultName === ExecutionResult.FINISHED_WITH_RETURN
+    (
+      executionResultName === ExecutionResult.FINISHED_WITH_RETURN ||
+      studioExecutionSucceeded
+    )
   );
 };
 

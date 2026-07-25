@@ -7,7 +7,6 @@
  * root cause of the bug it pins down.
  */
 import {describe, it, expect, vi} from "vitest";
-import {decodeFunctionData} from "viem";
 
 import {toString} from "@/abi/calldata/string";
 import {decode} from "@/abi/calldata/decoder";
@@ -19,7 +18,6 @@ import {buildGenVmPositionalArgs} from "@/contracts/schema";
 import {stakingActions} from "@/staking/actions";
 import {vestingActions} from "@/vesting/actions";
 import {isSuccessful} from "@/transactions/actions";
-import {VESTING_ABI} from "@/abi/vesting";
 
 // ---------------------------------------------------------------------------
 // calldata/string.ts — human-readable rendering (used for decoded-tx `readable`)
@@ -274,14 +272,12 @@ describe("BUG: vesting input handling", () => {
   // padded by viem's encoder, writing a corrupted identity on-chain with no error.
   it("does not silently corrupt an odd-length hex extraCid", async () => {
     const {actions, publicClient} = makeHarness();
-    await actions.vestingValidatorSetIdentity({
-      vesting: VESTING, wallet: WALLET, moniker: "m", extraCid: "0x123",
-    } as any);
-
-    const data = publicClient.call.mock.calls[0][0].data;
-    const decoded = decodeFunctionData({abi: VESTING_ABI, data});
-    expect((decoded.args as any)[9]).toBe("0x123");
-    // Actual: "0x1230" — a trailing zero nibble was appended.
+    await expect(
+      actions.vestingValidatorSetIdentity({
+        vesting: VESTING, wallet: WALLET, moniker: "m", extraCid: "0x123",
+      } as any),
+    ).rejects.toThrow(/even-length hex/);
+    expect(publicClient.call).not.toHaveBeenCalled();
   });
 
   // src/vesting/actions.ts:310 — `BigInt(options.shares)` turns "" into 0n, so an

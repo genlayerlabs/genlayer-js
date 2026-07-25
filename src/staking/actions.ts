@@ -1,4 +1,4 @@
-import {getContract, decodeEventLog, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress, GetContractReturnType, toHex, encodeFunctionData, BaseError, ContractFunctionRevertedError, decodeErrorResult, RawContractError} from "viem";
+import {getContract, decodeEventLog, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress, GetContractReturnType, toHex, isHex, encodeFunctionData, BaseError, ContractFunctionRevertedError, decodeErrorResult, RawContractError} from "viem";
 import {GenLayerClient, GenLayerChain, Address} from "@/types";
 import {STAKING_ABI, VALIDATOR_WALLET_ABI} from "@/abi/staking";
 import {parseStakingAmount, formatStakingAmount} from "./utils";
@@ -470,7 +470,9 @@ export const stakingActions = (
           twitter: identityRaw.twitter,
           telegram: identityRaw.telegram,
           github: identityRaw.github,
-          extraCid: identityRaw.extraCid ? toHex(identityRaw.extraCid) : "",
+          extraCid: identityRaw.extraCid
+            ? (isHex(identityRaw.extraCid) ? identityRaw.extraCid : toHex(identityRaw.extraCid))
+            : "",
         };
       }
 
@@ -547,7 +549,7 @@ export const stakingActions = (
     },
 
     /** Checks whether a validator's self-stake is below the configured validator minimum. */
-    isValidatorBelowMin: async (validator: Address): Promise<boolean> => {
+    isValidatorBelowMinStake: async (validator: Address): Promise<boolean> => {
       const contract = getReadOnlyStakingContract();
       const [view, minStake] = await Promise.all([
         contract.read.validatorView([validator as ViemAddress]) as Promise<{vStake: bigint}>,
