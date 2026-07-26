@@ -13,6 +13,7 @@ import { receiptActions, transactionActions, isSuccessful } from "../src/transac
 import { decodeTransaction, simplifyTransactionReceipt } from "../src/transactions/decoders";
 import { localnet } from "../src/chains/localnet";
 import type { GenLayerRawTransaction } from "../src/types/transactions";
+import {keccak256, stringToBytes} from "viem";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -357,6 +358,53 @@ const makeRawTx = (overrides: Record<string, unknown> = {}): GenLayerRawTransact
     validatorVotes: [1, 1, 1],
   },
   ...overrides,
+});
+
+describe("getTriggeredTransactionIds", () => {
+  it("finds child transaction IDs in the parent decision receipt", async () => {
+    const parentHash = ("0x" + "11".repeat(32)) as any;
+    const childHash = ("0x" + "22".repeat(32)) as any;
+    const decisionHash = ("0x" + "33".repeat(32)) as any;
+    const consensusAddress = "0x0000000000000000000000000000000000000010";
+    const internalMessageTopic = keccak256(
+      stringToBytes("InternalMessageProcessed(bytes32,address,address)"),
+    );
+    const readContract = vi
+      .fn()
+      .mockResolvedValueOnce(makeRawTx({readStateBlockRange: {proposalBlock: 100n}}))
+      .mockResolvedValueOnce([{txExecutionResult: 1n}, []]);
+    const getLogs = vi.fn().mockResolvedValue([{transactionHash: decisionHash}]);
+    const getTransactionReceipt = vi.fn().mockResolvedValue({
+      logs: [
+        {
+          address: consensusAddress,
+          topics: [internalMessageTopic, childHash],
+        },
+      ],
+    });
+    const publicClient = {
+      readContract,
+      getBlockNumber: vi.fn().mockResolvedValue(200n),
+      getLogs,
+      getTransactionReceipt,
+    } as any;
+    const client = {
+      chain: {
+        isStudio: false,
+        consensusDataContract: {address: consensusAddress, abi: []},
+        consensusMainContract: {address: consensusAddress, abi: []},
+      },
+    } as any;
+
+    const result = await transactionActions(client, publicClient).getTriggeredTransactionIds({
+      hash: parentHash,
+    });
+
+    expect(result).toEqual([childHash]);
+    expect(getLogs.mock.calls[0][0].topics[1]).toBe(parentHash);
+    expect(Array.isArray(getLogs.mock.calls[0][0].topics[0])).toBe(true);
+    expect(getTransactionReceipt).toHaveBeenCalledWith({hash: decisionHash});
+  });
 });
 
 describe("decodeTransaction", () => {
