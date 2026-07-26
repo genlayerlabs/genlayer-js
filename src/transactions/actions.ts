@@ -189,22 +189,51 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
     const proposalBlock = BigInt(tx.readStateBlockRange?.proposalBlock ?? "0");
     if (proposalBlock === BigInt(0)) return [];
 
-    const scanRange = BigInt(100);
+    const scanRange = BigInt(10_000);
     const latestBlock = await publicClient.getBlockNumber();
     const toBlock = proposalBlock + scanRange < latestBlock ? proposalBlock + scanRange : latestBlock;
 
     const consensusAddress = client.chain.consensusMainContract?.address as Address;
     const internalMessageProcessedTopic = keccak256(stringToBytes("InternalMessageProcessed(bytes32,address,address)"));
+    const transactionAcceptedTopic = keccak256(stringToBytes("TransactionAccepted(bytes32)"));
+    const transactionFinalizedTopic = keccak256(stringToBytes("TransactionFinalized(bytes32)"));
 
-    const logs = await publicClient.getLogs({
+    // InternalMessageProcessed indexes the child transaction ID, not its
+    // parent. Find the EVM transactions that decided the parent first, then
+    // inspect their receipts for the child-message events emitted alongside
+    // that decision.
+    const decisionLogs = await publicClient.getLogs({
       address: consensusAddress,
       event: undefined,
       fromBlock: proposalBlock,
       toBlock,
-      topics: [internalMessageProcessedTopic, hash],
+      topics: [[transactionAcceptedTopic, transactionFinalizedTopic], hash],
     } as any);
 
-    return logs.map(log => log.topics[1] as TransactionHash).filter(Boolean);
+    const decisionTransactionHashes = [
+      ...new Set(decisionLogs.map(log => log.transactionHash).filter(Boolean)),
+    ];
+    const receipts = await Promise.all(
+      decisionTransactionHashes.map(transactionHash =>
+        publicClient.getTransactionReceipt({hash: transactionHash!}),
+      ),
+    );
+    const normalizedConsensusAddress = consensusAddress.toLowerCase();
+
+    return [
+      ...new Set(
+        receipts.flatMap(receipt =>
+          receipt.logs
+            .filter(
+              log =>
+                log.address.toLowerCase() === normalizedConsensusAddress &&
+                log.topics[0] === internalMessageProcessedTopic,
+            )
+            .map(log => log.topics[1] as TransactionHash)
+            .filter(Boolean),
+        ),
+      ),
+    ];
   },
   /** Fetches the full execution trace including return data, stdout, stderr, and GenVM logs. */
   debugTraceTransaction: async ({hash, round = 0}: {hash: TransactionHash; round?: number}): Promise<DebugTraceResult> => {
