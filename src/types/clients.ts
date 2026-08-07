@@ -82,6 +82,14 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       consensusMaxRotations?: number;
       validUntil?: BigNumberish;
       fees?: TransactionFeeOptions;
+      /**
+       * Explicit outer EVM gas limit for the `addTransaction` call, bypassing
+       * `eth_estimateGas` and the automatic safety headroom entirely. Useful
+       * when gas estimation is unreliable for a given RPC/network and the
+       * estimated-but-exact limit reverts the outer transaction before GenVM
+       * even sees it.
+       */
+      gas?: bigint;
     }) => Promise<any>;
     simulateWriteContract: <
       RawReturn extends boolean | undefined = undefined,
@@ -110,6 +118,8 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       consensusMaxRotations?: number;
       validUntil?: BigNumberish;
       fees?: TransactionFeeOptions;
+      /** Explicit outer EVM gas limit, bypassing `eth_estimateGas`. See `writeContract`'s `gas` option. */
+      gas?: bigint;
     }) => Promise<`0x${string}`>;
     getTransaction: (args: {hash: TransactionHash}) => Promise<GenLayerTransaction>;
     getCurrentNonce: (args: {address: Address}) => Promise<number>;

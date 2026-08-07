@@ -461,6 +461,76 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(encodedData.slice(0, 10)).toBe(selectorForV5);
   });
 
+  it("uses the explicit gas override as-is, bypassing eth_estimateGas entirely (#402)", async () => {
+    const signTransaction = vi.fn().mockRejectedValue(new Error("stop_after_encoding"));
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_V5,
+      signTransactionMock: signTransaction,
+    });
+
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        value: 0n,
+        gas: 2_000_000n,
+      }),
+    ).rejects.toThrow("stop_after_encoding");
+
+    // eth_estimateGas must not be called at all when an override is supplied —
+    // an exact estimate is exactly the failure mode #402 reports, so the
+    // override path must not go anywhere near it.
+    expect(estimateTransactionGas).not.toHaveBeenCalled();
+
+    const txRequest = signTransaction.mock.calls[0][0];
+    expect(txRequest.gas).toBe(2_000_000n);
+  });
+
+  it("still estimates and applies headroom when no gas override is given (#402)", async () => {
+    const signTransaction = vi.fn().mockRejectedValue(new Error("stop_after_encoding"));
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_V5,
+      signTransactionMock: signTransaction,
+    });
+    estimateTransactionGas.mockResolvedValue(1_319_997n);
+
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        value: 0n,
+      }),
+    ).rejects.toThrow("stop_after_encoding");
+
+    expect(estimateTransactionGas).toHaveBeenCalledTimes(1);
+
+    const txRequest = signTransaction.mock.calls[0][0];
+    // 1_319_997 * 20_000bps / 10_000 = 2_639_994 — well above the 2_000_000
+    // that #402 confirmed succeeds against the exact 1_319_997 estimate that
+    // reverted twice.
+    expect(txRequest.gas).toBe(2_639_994n);
+  });
+
+  it("threads the gas override through deployContract the same way as writeContract (#402)", async () => {
+    const signTransaction = vi.fn().mockRejectedValue(new Error("stop_after_encoding"));
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_V5,
+      signTransactionMock: signTransaction,
+    });
+
+    await expect(
+      actions.deployContract({
+        code: "0x1234",
+        args: [],
+        gas: 3_000_000n,
+      }),
+    ).rejects.toThrow("stop_after_encoding");
+
+    expect(estimateTransactionGas).not.toHaveBeenCalled();
+    const txRequest = signTransaction.mock.calls[0][0];
+    expect(txRequest.gas).toBe(3_000_000n);
+  });
+
   it("encodes addTransaction with 6 args when ABI has 6 inputs", async () => {
     const {actions, estimateTransactionGas} = setupWriteContractHarness({
       initialAbi: ADD_TRANSACTION_ABI_V6,
