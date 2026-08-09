@@ -1,6 +1,7 @@
 import {Address} from "./accounts";
 import {GetContractReturnType, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress} from "viem";
 import {STAKING_ABI} from "@/abi/staking";
+import type {OperatorRegistrationContext, OperatorRegistrationProof} from "./vesting";
 
 type WalletClientWithAccount = Client<Transport, Chain, Account>;
 
@@ -155,7 +156,7 @@ export interface DelegatorJoinResult extends StakingTransactionResult {
 
 export interface ValidatorJoinOptions {
   amount: bigint | string;
-  operator?: Address;
+  registration: OperatorRegistrationProof;
 }
 
 export interface ValidatorDepositOptions {
@@ -211,6 +212,7 @@ export interface DelegatorClaimOptions {
 
 export interface StakingActions {
   validatorJoin: (options: ValidatorJoinOptions) => Promise<ValidatorJoinResult>;
+  getValidatorRegistrationContext: () => Promise<OperatorRegistrationContext>;
   validatorDeposit: (options: ValidatorDepositOptions) => Promise<StakingTransactionResult>;
   validatorExit: (options: ValidatorExitOptions) => Promise<StakingTransactionResult>;
   validatorClaim: (options?: ValidatorClaimOptions) => Promise<StakingTransactionResult & {claimedAmount: bigint}>;

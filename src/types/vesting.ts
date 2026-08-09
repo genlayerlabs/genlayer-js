@@ -1,4 +1,4 @@
-import {Account, Address as ViemAddress, Chain, Client, GetContractReturnType, PublicClient, Transport} from "viem";
+import {Account, Address as ViemAddress, Chain, Client, GetContractReturnType, Hex, PublicClient, Transport} from "viem";
 import {Address} from "./accounts";
 import {VESTING_ABI, VESTING_FACTORY_ABI} from "@/abi/vesting";
 
@@ -13,6 +13,24 @@ export type VestingContract = GetContractReturnType<typeof VESTING_ABI, VestingK
 export type VestingFactoryContract = GetContractReturnType<typeof VESTING_FACTORY_ABI, PublicClient, ViemAddress>;
 
 export type VestingCategory = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+export type OperatorPublicKey = readonly [bigint, bigint];
+
+export interface OperatorRegistrationContext {
+  registrar: Address;
+  owner: Address;
+  chainId: bigint;
+}
+
+export interface OperatorRegistrationProof {
+  operator: Address;
+  operatorPubKey: OperatorPublicKey;
+  possessionProof: Hex;
+}
+
+export interface CreateOperatorRegistrationOptions extends OperatorRegistrationContext {
+  privateKey: Hex;
+}
 
 export interface VestingTransactionResult {
   transactionHash: `0x${string}`;
@@ -47,7 +65,7 @@ export interface VestingDelegatorClaimOptions {
 
 export interface VestingValidatorJoinOptions {
   vesting: Address;
-  operator: Address;
+  registration: OperatorRegistrationProof;
   amount: bigint | string;
 }
 
@@ -202,6 +220,7 @@ export interface VestingActions {
   vestingRevoker: (vesting: Address) => Promise<Address>;
   vestingFactory: (vesting: Address) => Promise<Address>;
   vestingAddressManager: (vesting: Address) => Promise<Address>;
+  getVestingValidatorRegistrationContext: (vesting: Address) => Promise<OperatorRegistrationContext>;
   vestingTotalAmount: (vesting: Address) => Promise<bigint>;
   vestingStartDate: (vesting: Address) => Promise<bigint>;
   vestingCliffDuration: (vesting: Address) => Promise<bigint>;
