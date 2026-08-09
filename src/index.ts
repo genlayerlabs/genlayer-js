@@ -12,5 +12,18 @@ export * as abi from "./abi";
 export * from "./transactions/fees";
 export {isSuccessful} from "./transactions/actions";
 export {parseStakingAmount, formatStakingAmount} from "./staking";
-export {vestingActions} from "./vesting";
+export {
+  OPERATOR_REGISTRATION_DOMAIN,
+  createOperatorRegistration,
+  operatorAddressFromPublicKey,
+  operatorPossessionMessage,
+  verifyOperatorRegistration,
+  vestingActions,
+} from "./vesting";
+export type {
+  CreateOperatorRegistrationOptions,
+  OperatorPublicKey,
+  OperatorRegistrationContext,
+  OperatorRegistrationProof,
+} from "./vesting";
 export {buildGenVmPositionalArgs} from "./contracts/schema";
