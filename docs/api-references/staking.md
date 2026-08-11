@@ -9,7 +9,7 @@ Joins as a validator with the specified stake amount.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | amount | `bigint \| string` | yes |  |
-| registration | `OperatorRegistrationProof` | yes |  |
+| operator | `Address` | no |  |
 
 **Returns:** `ValidatorJoinResult`
 

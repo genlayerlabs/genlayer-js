@@ -2,19 +2,17 @@ import {describe, expect, it, vi} from "vitest";
 import {decodeFunctionData, parseEther, toHex, zeroAddress} from "viem";
 import {VESTING_ABI} from "../src/abi/vesting";
 import {vestingActions} from "../src/vesting/actions";
-import {createOperatorRegistration} from "../src/vesting/operatorRegistration";
 
 const ACCOUNT_ADDRESS = "0x0000000000000000000000000000000000000011";
 const BENEFICIARY_ADDRESS = ACCOUNT_ADDRESS;
 const VESTING_ADDRESS = "0x0000000000000000000000000000000000000022";
 const VALIDATOR_ADDRESS = "0x0000000000000000000000000000000000000033";
 const VALIDATOR_WALLET_ADDRESS = "0x0000000000000000000000000000000000000099";
+const OPERATOR_ADDRESS = "0x00000000000000000000000000000000000000AA";
 const NEW_OPERATOR_ADDRESS = "0x00000000000000000000000000000000000000bb";
 const CONSENSUS_MAIN_ADDRESS = "0x0000000000000000000000000000000000000044";
 const ADDRESS_MANAGER_ADDRESS = "0x0000000000000000000000000000000000000055";
 const FACTORY_ADDRESS = "0x0000000000000000000000000000000000000066";
-const VALIDATOR_WALLET_FACTORY_ADDRESS = "0x0000000000000000000000000000000000000077";
-const OPERATOR_KEY = "0x0000000000000000000000000000000000000000000000000000000000000002";
 const MOCK_TX_HASH = "0x1234000000000000000000000000000000000000000000000000000000001234";
 
 const makeReceipt = () => ({
@@ -56,7 +54,6 @@ const makeHarness = () => {
     prepareTransactionRequest: vi.fn().mockImplementation(async request => request),
     sendRawTransaction: vi.fn().mockResolvedValue(MOCK_TX_HASH),
     waitForTransactionReceipt: vi.fn().mockResolvedValue(makeReceipt()),
-    getChainId: vi.fn().mockResolvedValue(1),
     readContract: vi.fn(),
   };
 
@@ -134,39 +131,23 @@ describe("vestingActions", () => {
   });
 
   it("encodes vesting validator join and deposit without caller value", async () => {
-    const {actions, client, publicClient} = makeHarness();
-    client.chain.id = 999;
-    publicClient.readContract.mockImplementation(async ({address, functionName, args}: any) => {
-      if (address === VESTING_ADDRESS && functionName === "addressManager") return ADDRESS_MANAGER_ADDRESS;
-      if (address === ADDRESS_MANAGER_ADDRESS && functionName === "getAddress") {
-        expect(args).toEqual(["ValidatorWalletFactory"]);
-        return VALIDATOR_WALLET_FACTORY_ADDRESS;
-      }
-      throw new Error(`Unexpected read: ${functionName}`);
-    });
-    const registration = await createOperatorRegistration({
-      privateKey: OPERATOR_KEY,
-      registrar: VALIDATOR_WALLET_FACTORY_ADDRESS,
-      owner: VESTING_ADDRESS,
-      chainId: 1n,
-    });
+    const {actions, publicClient} = makeHarness();
 
     const result = await actions.vestingValidatorJoin({
       vesting: VESTING_ADDRESS,
-      registration,
+      operator: OPERATOR_ADDRESS,
       amount: "3gen",
     });
 
     expect(publicClient.call.mock.calls[0][0].to).toBe(VESTING_ADDRESS);
-    expect(publicClient.getChainId).toHaveBeenCalledTimes(1);
     expect(publicClient.call.mock.calls[0][0].value).toBeUndefined();
     expect(decodedWrite(publicClient)).toEqual({
       functionName: "vestingValidatorJoin",
-      args: [registration.operatorPubKey, registration.possessionProof, parseEther("3")],
+      args: [OPERATOR_ADDRESS, parseEther("3")],
     });
     expect(result).toMatchObject({
       vesting: VESTING_ADDRESS,
-      operator: registration.operator,
+      operator: OPERATOR_ADDRESS,
       beneficiary: ACCOUNT_ADDRESS,
       amount: "3 GEN",
       amountRaw: parseEther("3"),
@@ -396,7 +377,6 @@ const makeProviderHarness = () => {
     prepareTransactionRequest: vi.fn().mockImplementation(async (r: any) => r),
     sendRawTransaction: vi.fn().mockResolvedValue(MOCK_TX_HASH),
     waitForTransactionReceipt: vi.fn().mockResolvedValue(makeReceipt()),
-    getChainId: vi.fn().mockResolvedValue(1),
     readContract: vi.fn(),
   };
 

@@ -1,9 +1,7 @@
-import {getContract, decodeEventLog, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress, GetContractReturnType, toHex, encodeFunctionData, BaseError, ContractFunctionRevertedError, decodeErrorResult, RawContractError, zeroAddress} from "viem";
+import {getContract, decodeEventLog, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress, GetContractReturnType, toHex, encodeFunctionData, BaseError, ContractFunctionRevertedError, decodeErrorResult, RawContractError} from "viem";
 import {GenLayerClient, GenLayerChain, Address} from "@/types";
 import {STAKING_ABI, VALIDATOR_WALLET_ABI} from "@/abi/staking";
-import {ADDRESS_MANAGER_ABI, CONSENSUS_ADDRESS_MANAGER_ABI} from "@/abi/vesting";
 import {parseStakingAmount, formatStakingAmount} from "./utils";
-import {operatorAddressFromPublicKey, verifyOperatorRegistration} from "@/vesting/operatorRegistration";
 import {
   ValidatorInfo,
   ValidatorIdentity,
@@ -34,7 +32,6 @@ type WalletClientWithAccount = Client<Transport, Chain, Account>;
 
 const FALLBACK_GAS = 1000000n;
 const GAS_BUFFER_MULTIPLIER = 2n;
-const VALIDATOR_WALLET_FACTORY_KEY = "ValidatorWalletFactory";
 
 // Combined ABI for error decoding (both staking and validator wallet errors)
 const COMBINED_ERROR_ABI = [...STAKING_ABI, ...VALIDATOR_WALLET_ABI];
@@ -239,59 +236,22 @@ export const stakingActions = (
     });
   };
 
-  const getValidatorRegistrationContext = async () => {
-    if (!client.account) {
-      throw new Error("Account is required to resolve validator registration context.");
-    }
-
-    const consensusMain = client.chain.consensusMainContract;
-    if (!consensusMain?.address || consensusMain.address === zeroAddress) {
-      throw new Error("Cannot resolve ValidatorWalletFactory without a consensus main contract.");
-    }
-
-    const [addressManager, chainId] = await Promise.all([
-      publicClient.readContract({
-        address: consensusMain.address as ViemAddress,
-        abi: CONSENSUS_ADDRESS_MANAGER_ABI,
-        functionName: "getAddressManager",
-      }) as Promise<Address>,
-      publicClient.getChainId(),
-    ]);
-    const registrar = await publicClient.readContract({
-      address: addressManager as ViemAddress,
-      abi: ADDRESS_MANAGER_ABI,
-      functionName: "getAddress",
-      args: [VALIDATOR_WALLET_FACTORY_KEY],
-    }) as Address;
-
-    if (!registrar || registrar === zeroAddress) {
-      throw new Error(
-        `ValidatorWalletFactory is not registered in AddressManager under key ${VALIDATOR_WALLET_FACTORY_KEY}.`,
-      );
-    }
-
-    return {
-      registrar,
-      owner: client.account.address as Address,
-      chainId: BigInt(chainId),
-    };
-  };
-
   return {
     /** Joins as a validator with the specified stake amount. */
     validatorJoin: async (options: ValidatorJoinOptions): Promise<ValidatorJoinResult> => {
       const amount = parseStakingAmount(options.amount);
       const stakingAddress = getStakingAddress();
-      const context = await getValidatorRegistrationContext();
-      if (!await verifyOperatorRegistration(options.registration, context)) {
-        throw new Error("Operator registration proof does not match the owner, registrar, chain, or public key.");
-      }
-      const operator = operatorAddressFromPublicKey(options.registration.operatorPubKey);
-      const data = encodeFunctionData({
-        abi: STAKING_ABI,
-        functionName: "validatorJoin",
-        args: [options.registration.operatorPubKey, options.registration.possessionProof],
-      });
+
+      const data = options.operator
+        ? encodeFunctionData({
+            abi: STAKING_ABI,
+            functionName: "validatorJoin",
+            args: [options.operator as ViemAddress],
+          })
+        : encodeFunctionData({
+            abi: STAKING_ABI,
+            functionName: "validatorJoin",
+          });
 
       const result = await executeWrite({to: stakingAddress, data, value: amount});
       const receipt = await publicClient.getTransactionReceipt({hash: result.transactionHash});
@@ -323,13 +283,11 @@ export const stakingActions = (
         blockNumber: receipt.blockNumber,
         gasUsed: receipt.gasUsed,
         validatorWallet: validatorWallet!,
-        operator,
+        operator: options.operator || (client.account!.address as Address),
         amount: formatStakingAmount(amount),
         amountRaw: amount,
       };
     },
-    /** Resolves the registrar, owner, and chain binding required to create an operator proof. */
-    getValidatorRegistrationContext,
 
     /**
      * Adds additional self-stake to an active validator position. The

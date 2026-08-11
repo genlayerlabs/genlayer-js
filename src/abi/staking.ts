@@ -1249,10 +1249,14 @@ export const STAKING_ABI = [
     name: "validatorJoin",
     type: "function",
     stateMutability: "payable",
-    inputs: [
-      {name: "_operatorPubKey", type: "uint256[2]"},
-      {name: "_possessionProof", type: "bytes"},
-    ],
+    inputs: [{name: "_operator", type: "address"}],
+    outputs: [{name: "", type: "address"}],
+  },
+  {
+    name: "validatorJoin",
+    type: "function",
+    stateMutability: "payable",
+    inputs: [],
     outputs: [{name: "", type: "address"}],
   },
   {
