@@ -41,17 +41,12 @@ import {
   VestingWithdrawResult,
 } from "@/types/vesting";
 import {formatStakingAmount, parseStakingAmount} from "@/staking/utils";
-import {
-  operatorAddressFromPublicKey,
-  verifyOperatorRegistration,
-} from "./operatorRegistration";
 
 type WalletClientWithAccount = Client<Transport, Chain, Account>;
 
 const FALLBACK_GAS = 1000000n;
 const GAS_BUFFER_MULTIPLIER = 2n;
 const VESTING_FACTORY_KEY = "VestingFactory";
-const VALIDATOR_WALLET_FACTORY_KEY = "ValidatorWalletFactory";
 const COMBINED_ERROR_ABI = [...VESTING_ABI, ...VESTING_FACTORY_ABI, ...ADDRESS_MANAGER_ABI, ...STAKING_ABI] as const;
 
 function extractRevertReason(err: unknown): string {
@@ -273,31 +268,6 @@ export const vestingActions = (
     return factory;
   };
 
-  const getVestingValidatorRegistrationContext = async (vesting: Address) => {
-    const [addressManager, chainId] = await Promise.all([
-      readVesting<Address>(vesting, "addressManager"),
-      publicClient.getChainId(),
-    ]);
-    const registrar = await publicClient.readContract({
-      address: addressManager as ViemAddress,
-      abi: ADDRESS_MANAGER_ABI,
-      functionName: "getAddress",
-      args: [VALIDATOR_WALLET_FACTORY_KEY],
-    }) as Address;
-
-    if (!registrar || registrar === zeroAddress) {
-      throw new Error(
-        `ValidatorWalletFactory is not registered in AddressManager under key ${VALIDATOR_WALLET_FACTORY_KEY}.`,
-      );
-    }
-
-    return {
-      registrar,
-      owner: vesting,
-      chainId: BigInt(chainId),
-    };
-  };
-
   const getVestingContract = (vesting: Address): VestingContract => {
     return getContract({
       address: vesting as ViemAddress,
@@ -359,22 +329,17 @@ export const vestingActions = (
     /** Creates a validator wallet and self-stakes vesting-held tokens. Must be called by the vesting beneficiary. */
     vestingValidatorJoin: async (options: VestingValidatorJoinOptions): Promise<VestingValidatorJoinResult> => {
       const amount = parseStakingAmount(options.amount);
-      const context = await getVestingValidatorRegistrationContext(options.vesting);
-      if (!await verifyOperatorRegistration(options.registration, context)) {
-        throw new Error("Operator registration proof does not match the vesting, registrar, chain, or public key.");
-      }
-      const operator = operatorAddressFromPublicKey(options.registration.operatorPubKey);
       const data = encodeFunctionData({
         abi: VESTING_ABI,
         functionName: "vestingValidatorJoin",
-        args: [options.registration.operatorPubKey, options.registration.possessionProof, amount],
+        args: [options.operator as ViemAddress, amount],
       });
       const result = await executeWrite({to: options.vesting as ViemAddress, data});
 
       return {
         ...result,
         vesting: options.vesting,
-        operator,
+        operator: options.operator,
         beneficiary: client.account!.address as Address,
         amount: formatStakingAmount(amount),
         amountRaw: amount,
@@ -645,7 +610,6 @@ export const vestingActions = (
     vestingRevoker: (vesting: Address): Promise<Address> => readVesting<Address>(vesting, "revoker"),
     vestingFactory: (vesting: Address): Promise<Address> => readVesting<Address>(vesting, "factory"),
     vestingAddressManager: (vesting: Address): Promise<Address> => readVesting<Address>(vesting, "addressManager"),
-    getVestingValidatorRegistrationContext,
     vestingTotalAmount: (vesting: Address): Promise<bigint> => readVesting<bigint>(vesting, "totalAmount"),
     vestingStartDate: (vesting: Address): Promise<bigint> => readVesting<bigint>(vesting, "startDate"),
     vestingCliffDuration: (vesting: Address): Promise<bigint> => readVesting<bigint>(vesting, "cliffDuration"),
