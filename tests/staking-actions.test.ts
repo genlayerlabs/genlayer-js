@@ -2,11 +2,16 @@ import {describe, expect, it, vi} from "vitest";
 import {decodeFunctionData, encodeAbiParameters, encodeEventTopics, getAbiItem, parseEther} from "viem";
 import {STAKING_ABI, VALIDATOR_WALLET_ABI} from "../src/abi/staking";
 import {stakingActions} from "../src/staking/actions";
+import {createOperatorRegistration} from "../src/vesting/operatorRegistration";
 
 const ACCOUNT_ADDRESS = "0x0000000000000000000000000000000000000011";
 const STAKING_ADDRESS = "0x0000000000000000000000000000000000000044";
 const VALIDATOR_WALLET_ADDRESS = "0x0000000000000000000000000000000000000099";
-const OPERATOR_ADDRESS = "0x00000000000000000000000000000000000000AA";
+const CONSENSUS_MAIN_ADDRESS = "0x0000000000000000000000000000000000000066";
+const ADDRESS_MANAGER_ADDRESS = "0x0000000000000000000000000000000000000077";
+const VALIDATOR_WALLET_FACTORY_ADDRESS = "0x0000000000000000000000000000000000000088";
+const OPERATOR_PRIVATE_KEY = "0x0000000000000000000000000000000000000000000000000000000000000002";
+const OPERATOR_ADDRESS = "0x2B5AD5c4795c026514f8317c7a215E218DcCD6cF";
 const GAS_PRICE_HEX = "0x3b9aca00";
 const MOCK_TX_HASH = "0x1234000000000000000000000000000000000000000000000000000000001234";
 
@@ -35,7 +40,21 @@ const baseChain = {
   rpcUrls: {default: {http: ["http://127.0.0.1"]}},
   isStudio: false,
   stakingContract: {address: STAKING_ADDRESS},
+  consensusMainContract: {address: CONSENSUS_MAIN_ADDRESS},
 };
+
+const makeRegistration = () => createOperatorRegistration({
+  privateKey: OPERATOR_PRIVATE_KEY,
+  registrar: VALIDATOR_WALLET_FACTORY_ADDRESS,
+  owner: ACCOUNT_ADDRESS,
+  chainId: BigInt(baseChain.id),
+});
+
+const readRegistrationContract = vi.fn().mockImplementation(async ({functionName}: any) => {
+  if (functionName === "getAddressManager") return ADDRESS_MANAGER_ADDRESS;
+  if (functionName === "getAddress") return VALIDATOR_WALLET_FACTORY_ADDRESS;
+  throw new Error(`Unexpected read: ${functionName}`);
+});
 
 // Local-key harness (byte-for-byte regression anchor for the sign+sendRaw lane).
 const makeLocalHarness = () => {
@@ -52,7 +71,8 @@ const makeLocalHarness = () => {
     sendRawTransaction: vi.fn().mockResolvedValue(MOCK_TX_HASH),
     waitForTransactionReceipt: vi.fn().mockResolvedValue(makeReceipt()),
     getTransactionReceipt: vi.fn().mockResolvedValue(makeReceipt()),
-    readContract: vi.fn(),
+    readContract: readRegistrationContract,
+    getChainId: vi.fn().mockResolvedValue(baseChain.id),
   };
   return {actions: stakingActions(client as any, publicClient as any), client, publicClient, signTransaction};
 };
@@ -79,7 +99,8 @@ const makeProviderHarness = () => {
     sendRawTransaction: vi.fn().mockResolvedValue(MOCK_TX_HASH),
     waitForTransactionReceipt: vi.fn().mockResolvedValue(makeReceipt()),
     getTransactionReceipt: vi.fn().mockResolvedValue(makeReceipt()),
-    readContract: vi.fn(),
+    readContract: readRegistrationContract,
+    getChainId: vi.fn().mockResolvedValue(baseChain.id),
   };
   return {actions: stakingActions(client as any, publicClient as any), client, publicClient, request, signTransaction};
 };
@@ -93,14 +114,15 @@ describe("stakingActions local lane", () => {
   it("validatorJoin encodes the call, decodes the ValidatorJoin event, and returns the full shape", async () => {
     const {actions, publicClient, signTransaction} = makeLocalHarness();
 
-    const result = await actions.validatorJoin({amount: "2gen", operator: OPERATOR_ADDRESS});
+    const registration = await makeRegistration();
+    const result = await actions.validatorJoin({amount: "2gen", registration});
 
     // Encoding routed to the staking contract with msg.value = stake amount.
     expect(publicClient.call.mock.calls[0][0].to).toBe(STAKING_ADDRESS);
     expect(publicClient.call.mock.calls[0][0].value).toBe(parseEther("2"));
     expect(decodeFunctionData({abi: STAKING_ABI, data: publicClient.call.mock.calls[0][0].data})).toEqual({
       functionName: "validatorJoin",
-      args: [OPERATOR_ADDRESS],
+      args: [registration.operatorPubKey, registration.possessionProof],
     });
 
     // Local sign+sendRaw path.
@@ -116,6 +138,17 @@ describe("stakingActions local lane", () => {
       amount: "2 GEN",
       amountRaw: parseEther("2"),
     });
+  });
+
+  it("rejects a registration proof that is not bound to the joining owner and registrar", async () => {
+    const {actions, publicClient} = makeLocalHarness();
+    const registration = await makeRegistration();
+
+    await expect(actions.validatorJoin({
+      amount: "2gen",
+      registration: {...registration, possessionProof: "0x1234"},
+    })).rejects.toThrow(/registration proof does not match/i);
+    expect(publicClient.call).not.toHaveBeenCalled();
   });
 });
 
@@ -168,7 +201,7 @@ describe("stakingActions provider lane (Address-only)", () => {
   it("validatorJoin decodes the ValidatorJoin event off the provider-returned hash", async () => {
     const {actions, request, signTransaction} = makeProviderHarness();
 
-    const result = await actions.validatorJoin({amount: "2gen", operator: OPERATOR_ADDRESS});
+    const result = await actions.validatorJoin({amount: "2gen", registration: await makeRegistration()});
 
     // Sent via the provider lane, not signed locally.
     expect(sentTxParams(request).to).toBe(STAKING_ADDRESS);
