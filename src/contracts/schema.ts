@@ -52,7 +52,10 @@ function validateValueAgainstType(
     return typeof value === 'string' || value instanceof Uint8Array;
   }
   if (type === 'address') return typeof value === 'string';
-  if (type === 'int') return typeof value === 'number' || typeof value === 'bigint';
+  if (type === 'int') {
+    return typeof value === 'bigint' ||
+      (typeof value === 'number' && Number.isFinite(value) && Number.isInteger(value));
+  }
   if (type === 'array') return Array.isArray(value);
   if (type === 'dict') return isPlainObject(value) || value instanceof Map;
 
@@ -99,15 +102,14 @@ function validateValueAgainstType(
     }
 
     // Struct-like dict schema: validate each provided key that exists in schema.
-    if (isPlainObject(value)) {
-      return Object.entries(type).every(([key, keyType]) => {
-        if (!(key in value)) return true;
-        return validateValueAgainstType(
-          value[key],
-          keyType as ContractParamsSchema,
-        );
-      });
-    }
+    if (!isPlainObject(value)) return false;
+    return Object.entries(type).every(([key, keyType]) => {
+      if (!(key in value)) return true;
+      return validateValueAgainstType(
+        value[key],
+        keyType as ContractParamsSchema,
+      );
+    });
   }
 
   return true;

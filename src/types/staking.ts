@@ -218,6 +218,7 @@ export interface StakingActions {
   delegatorExit: (options: DelegatorExitOptions) => Promise<StakingTransactionResult>;
   delegatorClaim: (options: DelegatorClaimOptions) => Promise<StakingTransactionResult>;
   isValidator: (address: Address) => Promise<boolean>;
+  isValidatorBelowMinStake: (validator: Address) => Promise<boolean>;
   getValidatorInfo: (validator: Address) => Promise<ValidatorInfo>;
   getStakeInfo: (delegator: Address, validator: Address) => Promise<StakeInfo>;
   getEpochInfo: () => Promise<EpochInfo>;
