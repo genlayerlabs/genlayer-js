@@ -204,8 +204,12 @@ const isValidator = await client.isValidator("0x...");
 // Get validator info
 const validatorInfo = await client.getValidatorInfo("0x...");
 
-// Join as validator (requires account with funds)
-const result = await client.validatorJoin({ amount: "42000gen" });
+// Join as validator (requires an owner account with funds and the operator key)
+const registration = await createOperatorRegistration({
+  privateKey: operatorPrivateKey,
+  ...(await client.getValidatorRegistrationContext()),
+});
+const result = await client.validatorJoin({ amount: "42000gen", registration });
 
 // Join as delegator
 const delegateResult = await client.delegatorJoin({

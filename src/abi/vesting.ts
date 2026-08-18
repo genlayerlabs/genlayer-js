@@ -135,7 +135,17 @@ export const VESTING_ABI = [
   {name: "vestingDelegatorJoin", type: "function", stateMutability: "nonpayable", inputs: [{name: "validator", type: "address"}, {name: "amount", type: "uint256"}], outputs: []},
   {name: "vestingDelegatorExit", type: "function", stateMutability: "nonpayable", inputs: [{name: "validator", type: "address"}, {name: "shares", type: "uint256"}], outputs: []},
   {name: "vestingDelegatorClaim", type: "function", stateMutability: "nonpayable", inputs: [{name: "validator", type: "address"}], outputs: []},
-  {name: "vestingValidatorJoin", type: "function", stateMutability: "nonpayable", inputs: [{name: "operator", type: "address"}, {name: "amount", type: "uint256"}], outputs: []},
+  {
+    name: "vestingValidatorJoin",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      {name: "operatorPubKey", type: "uint256[2]"},
+      {name: "possessionProof", type: "bytes"},
+      {name: "amount", type: "uint256"},
+    ],
+    outputs: [],
+  },
   {name: "vestingValidatorDeposit", type: "function", stateMutability: "nonpayable", inputs: [{name: "wallet", type: "address"}, {name: "amount", type: "uint256"}], outputs: []},
   {name: "vestingValidatorExit", type: "function", stateMutability: "nonpayable", inputs: [{name: "wallet", type: "address"}, {name: "shares", type: "uint256"}], outputs: []},
   {name: "vestingValidatorClaim", type: "function", stateMutability: "nonpayable", inputs: [{name: "wallet", type: "address"}], outputs: []},

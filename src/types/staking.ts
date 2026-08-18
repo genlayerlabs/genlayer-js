@@ -1,6 +1,7 @@
 import {Address} from "./accounts";
 import {GetContractReturnType, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress} from "viem";
 import {STAKING_ABI} from "@/abi/staking";
+import type {OperatorRegistrationContext, OperatorRegistrationProof} from "./vesting";
 
 type WalletClientWithAccount = Client<Transport, Chain, Account>;
 
@@ -155,7 +156,7 @@ export interface DelegatorJoinResult extends StakingTransactionResult {
 
 export interface ValidatorJoinOptions {
   amount: bigint | string;
-  operator?: Address;
+  registration: OperatorRegistrationProof;
 }
 
 export interface ValidatorDepositOptions {
@@ -179,6 +180,30 @@ export interface ValidatorPrimeOptions {
 export interface SetOperatorOptions {
   validator: Address;
   operator: Address;
+}
+
+/**
+ * Starts the two-step operator rotation. `registration` must be built with the
+ * validator wallet as its registrar — the wallet verifies the possession proof
+ * itself, unlike validatorJoin where the factory does.
+ */
+export interface InitiateOperatorTransferOptions {
+  validator: Address;
+  registration: OperatorRegistrationProof;
+}
+
+export interface CompleteOperatorTransferOptions {
+  validator: Address;
+}
+
+export interface CancelOperatorTransferOptions {
+  validator: Address;
+}
+
+/** Pending operator and the timestamp its transfer was initiated (0 when none). */
+export interface PendingOperatorInfo {
+  operator: Address;
+  initiatedAt: bigint;
 }
 
 export interface SetIdentityOptions {
@@ -211,6 +236,12 @@ export interface DelegatorClaimOptions {
 
 export interface StakingActions {
   validatorJoin: (options: ValidatorJoinOptions) => Promise<ValidatorJoinResult>;
+  getValidatorRegistrationContext: () => Promise<OperatorRegistrationContext>;
+  getOperatorTransferContext: (validator: Address) => Promise<OperatorRegistrationContext>;
+  initiateOperatorTransfer: (options: InitiateOperatorTransferOptions) => Promise<StakingTransactionResult>;
+  completeOperatorTransfer: (options: CompleteOperatorTransferOptions) => Promise<StakingTransactionResult>;
+  cancelOperatorTransfer: (options: CancelOperatorTransferOptions) => Promise<StakingTransactionResult>;
+  getPendingOperator: (validator: Address) => Promise<PendingOperatorInfo>;
   validatorDeposit: (options: ValidatorDepositOptions) => Promise<StakingTransactionResult>;
   validatorExit: (options: ValidatorExitOptions) => Promise<StakingTransactionResult>;
   validatorClaim: (options?: ValidatorClaimOptions) => Promise<StakingTransactionResult & {claimedAmount: bigint}>;

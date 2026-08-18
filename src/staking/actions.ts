@@ -1,7 +1,9 @@
-import {getContract, decodeEventLog, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress, GetContractReturnType, toHex, encodeFunctionData, BaseError, ContractFunctionRevertedError, decodeErrorResult, RawContractError} from "viem";
+import {getContract, decodeEventLog, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress, GetContractReturnType, toHex, encodeFunctionData, BaseError, ContractFunctionRevertedError, decodeErrorResult, RawContractError, zeroAddress} from "viem";
 import {GenLayerClient, GenLayerChain, Address} from "@/types";
-import {STAKING_ABI, VALIDATOR_WALLET_ABI} from "@/abi/staking";
+import {STAKING_ABI, VALIDATOR_WALLET_ABI, STAKING_COMMIT_VIEWS_CURRENT_ABI} from "@/abi/staking";
+import {ADDRESS_MANAGER_ABI, CONSENSUS_ADDRESS_MANAGER_ABI} from "@/abi/vesting";
 import {parseStakingAmount, formatStakingAmount} from "./utils";
+import {operatorAddressFromPublicKey, verifyOperatorRegistration} from "@/vesting/operatorRegistration";
 import {
   ValidatorInfo,
   ValidatorIdentity,
@@ -18,6 +20,10 @@ import {
   ValidatorClaimOptions,
   ValidatorPrimeOptions,
   SetOperatorOptions,
+  InitiateOperatorTransferOptions,
+  CompleteOperatorTransferOptions,
+  CancelOperatorTransferOptions,
+  PendingOperatorInfo,
   SetIdentityOptions,
   DelegatorJoinOptions,
   DelegatorExitOptions,
@@ -26,12 +32,14 @@ import {
   PendingDeposit,
   PendingWithdrawal,
 } from "@/types/staking";
+import type {OperatorRegistrationContext} from "@/types/vesting";
 
 type ReadOnlyStakingContract = GetContractReturnType<typeof STAKING_ABI, PublicClient, ViemAddress>;
 type WalletClientWithAccount = Client<Transport, Chain, Account>;
 
 const FALLBACK_GAS = 1000000n;
 const GAS_BUFFER_MULTIPLIER = 2n;
+const VALIDATOR_WALLET_FACTORY_KEY = "ValidatorWalletFactory";
 
 // Combined ABI for error decoding (both staking and validator wallet errors)
 const COMBINED_ERROR_ABI = [...STAKING_ABI, ...VALIDATOR_WALLET_ABI];
@@ -236,22 +244,134 @@ export const stakingActions = (
     });
   };
 
+  const getValidatorRegistrationContext = async () => {
+    if (!client.account) {
+      throw new Error("Account is required to resolve validator registration context.");
+    }
+
+    const consensusMain = client.chain.consensusMainContract;
+    if (!consensusMain?.address || consensusMain.address === zeroAddress) {
+      throw new Error("Cannot resolve ValidatorWalletFactory without a consensus main contract.");
+    }
+
+    const [addressManager, chainId] = await Promise.all([
+      publicClient.readContract({
+        address: consensusMain.address as ViemAddress,
+        abi: CONSENSUS_ADDRESS_MANAGER_ABI,
+        functionName: "getAddressManager",
+      }) as Promise<Address>,
+      publicClient.getChainId(),
+    ]);
+    const registrar = await publicClient.readContract({
+      address: addressManager as ViemAddress,
+      abi: ADDRESS_MANAGER_ABI,
+      functionName: "getAddress",
+      args: [VALIDATOR_WALLET_FACTORY_KEY],
+    }) as Address;
+
+    if (!registrar || registrar === zeroAddress) {
+      throw new Error(
+        `ValidatorWalletFactory is not registered in AddressManager under key ${VALIDATOR_WALLET_FACTORY_KEY}.`,
+      );
+    }
+
+    return {
+      registrar,
+      owner: client.account.address as Address,
+      chainId: BigInt(chainId),
+    };
+  };
+
+  /**
+   * Which Claim/Commit layout the deployed staking contract uses.
+   *
+   * CON-715 widened both structs without renaming anything, and static tuples
+   * decode positionally, so the wrong shape does not fail — it silently returns
+   * neighbouring words (commit.input picks up claim.commit, i.e. an index where
+   * an amount belongs). Both shapes are deployed in the wild, so the layout is
+   * resolved from the chain rather than assumed, then cached for the client:
+   * getStakeInfo loops over every pending entry and must not re-probe each time.
+   *
+   * The probe only works in one direction. Reading the OLD layout with the
+   * CURRENT shape throws, because the response is shorter than the decoder
+   * expects; reading the CURRENT layout with the OLD shape succeeds and lies.
+   * So the current shape is always attempted first, and a decode failure — not
+   * a success — is what identifies a legacy chain.
+   */
+  let commitLayout: "current" | "legacy" | null = null;
+
+  const readCommitView = async (
+    functionName: "delegatorDeposit" | "delegatorWithdrawal" | "validatorDeposit" | "validatorWithdrawal",
+    args: readonly unknown[],
+  ): Promise<any> => {
+    const read = (layout: "current" | "legacy") =>
+      publicClient.readContract({
+        address: getStakingAddress(),
+        abi: (layout === "current" ? STAKING_COMMIT_VIEWS_CURRENT_ABI : STAKING_ABI) as any,
+        functionName,
+        args: args as any,
+      });
+
+    if (commitLayout) {
+      return read(commitLayout);
+    }
+
+    try {
+      const result = await read("current");
+      commitLayout = "current";
+      return result;
+    } catch (currentError) {
+      // Could be a legacy layout, or a genuine failure (bad index, RPC error).
+      // Only a successful legacy decode distinguishes them; otherwise surface
+      // the original error, which describes the current-shape attempt.
+      try {
+        const result = await read("legacy");
+        commitLayout = "legacy";
+        return result;
+      } catch {
+        throw currentError;
+      }
+    }
+  };
+
+  /**
+   * Rotation is verified by the wallet, not the factory, so the registrar is the
+   * wallet's own address. The owner is read from the wallet rather than assumed
+   * to be the caller: the proof is bound to whoever `owner()` returns, and a
+   * mismatch is far easier to diagnose here than as an onlyOwner revert.
+   */
+  const getOperatorTransferContext = async (validator: Address): Promise<OperatorRegistrationContext> => {
+    const [owner, chainId] = await Promise.all([
+      publicClient.readContract({
+        address: validator as ViemAddress,
+        abi: VALIDATOR_WALLET_ABI,
+        functionName: "owner",
+      }) as Promise<Address>,
+      publicClient.getChainId(),
+    ]);
+
+    return {
+      registrar: validator,
+      owner,
+      chainId: BigInt(chainId),
+    };
+  };
+
   return {
     /** Joins as a validator with the specified stake amount. */
     validatorJoin: async (options: ValidatorJoinOptions): Promise<ValidatorJoinResult> => {
       const amount = parseStakingAmount(options.amount);
       const stakingAddress = getStakingAddress();
-
-      const data = options.operator
-        ? encodeFunctionData({
-            abi: STAKING_ABI,
-            functionName: "validatorJoin",
-            args: [options.operator as ViemAddress],
-          })
-        : encodeFunctionData({
-            abi: STAKING_ABI,
-            functionName: "validatorJoin",
-          });
+      const context = await getValidatorRegistrationContext();
+      if (!await verifyOperatorRegistration(options.registration, context)) {
+        throw new Error("Operator registration proof does not match the owner, registrar, chain, or public key.");
+      }
+      const operator = operatorAddressFromPublicKey(options.registration.operatorPubKey);
+      const data = encodeFunctionData({
+        abi: STAKING_ABI,
+        functionName: "validatorJoin",
+        args: [options.registration.operatorPubKey, options.registration.possessionProof],
+      });
 
       const result = await executeWrite({to: stakingAddress, data, value: amount});
       const receipt = await publicClient.getTransactionReceipt({hash: result.transactionHash});
@@ -283,11 +403,13 @@ export const stakingActions = (
         blockNumber: receipt.blockNumber,
         gasUsed: receipt.gasUsed,
         validatorWallet: validatorWallet!,
-        operator: options.operator || (client.account!.address as Address),
+        operator,
         amount: formatStakingAmount(amount),
         amountRaw: amount,
       };
     },
+    /** Resolves the registrar, owner, and chain binding required to create an operator proof. */
+    getValidatorRegistrationContext,
 
     /**
      * Adds additional self-stake to an active validator position. The
@@ -344,7 +466,14 @@ export const stakingActions = (
       return executeWrite({to: getStakingAddress(), data});
     },
 
-    /** Sets the operator address for a validator wallet. */
+    /**
+     * Sets the operator address for a validator wallet in one call.
+     *
+     * Removed from consensus by CON-715 in favour of the two-step rotation
+     * below; against a deployment that dropped it this reverts with no reason,
+     * because the selector simply does not exist. Prefer
+     * initiateOperatorTransfer + completeOperatorTransfer.
+     */
     setOperator: async (options: SetOperatorOptions): Promise<StakingTransactionResult> => {
       const data = encodeFunctionData({
         abi: VALIDATOR_WALLET_ABI,
@@ -352,6 +481,69 @@ export const stakingActions = (
         args: [options.operator as ViemAddress],
       });
       return executeWrite({to: options.validator as ViemAddress, data});
+    },
+
+    getOperatorTransferContext,
+
+    /**
+     * Starts the two-step operator rotation. The proof is checked against the
+     * wallet-bound context before submission so a registration built for the
+     * wrong registrar fails locally instead of as an opaque on-chain revert.
+     */
+    initiateOperatorTransfer: async (
+      options: InitiateOperatorTransferOptions,
+    ): Promise<StakingTransactionResult> => {
+      const context = await getOperatorTransferContext(options.validator);
+      if (!await verifyOperatorRegistration(options.registration, context)) {
+        throw new Error(
+          "Operator registration proof does not match the wallet, owner, chain, or public key. " +
+            "Rotation proofs must use the validator wallet as their registrar.",
+        );
+      }
+      const data = encodeFunctionData({
+        abi: VALIDATOR_WALLET_ABI,
+        functionName: "initiateOperatorTransfer",
+        args: [options.registration.operatorPubKey, options.registration.possessionProof],
+      });
+      return executeWrite({to: options.validator as ViemAddress, data});
+    },
+
+    /**
+     * Completes a pending rotation. Callable by the wallet owner or the pending
+     * operator, and only once the factory's operatorTransferDelay has elapsed.
+     */
+    completeOperatorTransfer: async (
+      options: CompleteOperatorTransferOptions,
+    ): Promise<StakingTransactionResult> => {
+      const data = encodeFunctionData({
+        abi: VALIDATOR_WALLET_ABI,
+        functionName: "completeOperatorTransfer",
+        args: [],
+      });
+      return executeWrite({to: options.validator as ViemAddress, data});
+    },
+
+    /** Abandons a pending rotation, leaving the current operator in place. */
+    cancelOperatorTransfer: async (
+      options: CancelOperatorTransferOptions,
+    ): Promise<StakingTransactionResult> => {
+      const data = encodeFunctionData({
+        abi: VALIDATOR_WALLET_ABI,
+        functionName: "cancelOperatorTransfer",
+        args: [],
+      });
+      return executeWrite({to: options.validator as ViemAddress, data});
+    },
+
+    /** Reads the pending operator and when its transfer was initiated. */
+    getPendingOperator: async (validator: Address): Promise<PendingOperatorInfo> => {
+      const [operator, initiatedAt] = await publicClient.readContract({
+        address: validator as ViemAddress,
+        abi: VALIDATOR_WALLET_ABI,
+        functionName: "getPendingOperator",
+      }) as [Address, bigint];
+
+      return {operator, initiatedAt};
     },
 
     /** Sets validator identity information (name, website, social links). */
@@ -482,7 +674,7 @@ export const stakingActions = (
       const pendingDeposits: PendingDeposit[] = [];
 
       for (let i = 0n; i < depositLen; i++) {
-        const [epoch, commit] = (await contract.read.validatorDeposit([validator as ViemAddress, i])) as [
+        const [epoch, commit] = (await readCommitView("validatorDeposit", [validator as ViemAddress, i])) as [
           bigint,
           {input: bigint; output: bigint; epoch: bigint; linkToNextCommit: bigint},
         ];
@@ -499,7 +691,7 @@ export const stakingActions = (
       const pendingWithdrawals: PendingWithdrawal[] = [];
 
       for (let i = 0n; i < withdrawalLen; i++) {
-        const [epoch, commit] = (await contract.read.validatorWithdrawal([validator as ViemAddress, i])) as [
+        const [epoch, commit] = (await readCommitView("validatorWithdrawal", [validator as ViemAddress, i])) as [
           bigint,
           {input: bigint; output: bigint; epoch: bigint; linkToNextCommit: bigint},
         ];
@@ -575,7 +767,7 @@ export const stakingActions = (
       const pendingDeposits: PendingDeposit[] = [];
 
       for (let i = 0n; i < depositLen; i++) {
-        const [claim, commit] = (await contract.read.delegatorDeposit([
+        const [claim, commit] = (await readCommitView("delegatorDeposit", [
           delegator as ViemAddress,
           validator as ViemAddress,
           i,
@@ -599,7 +791,7 @@ export const stakingActions = (
       const pendingWithdrawals: PendingWithdrawal[] = [];
 
       for (let i = 0n; i < withdrawalLen; i++) {
-        const [claim, commit] = (await contract.read.delegatorWithdrawal([
+        const [claim, commit] = (await readCommitView("delegatorWithdrawal", [
           delegator as ViemAddress,
           validator as ViemAddress,
           i,
