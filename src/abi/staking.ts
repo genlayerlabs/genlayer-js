@@ -55,6 +55,45 @@ export const VALIDATOR_WALLET_ABI = [
     inputs: [{name: "_operator", type: "address"}],
     outputs: [],
   },
+  // Two-step operator rotation (CON-715). setOperator above is the single-call
+  // predecessor and is absent from newer consensus deployments, so callers pick
+  // whichever the deployed wallet exposes. Unlike validatorJoin, the possession
+  // proof here is verified by the wallet itself, so its registrar is the wallet
+  // address rather than the ValidatorWalletFactory.
+  {
+    name: "initiateOperatorTransfer",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      {name: "_newOperatorPubKey", type: "uint256[2]"},
+      {name: "_possessionProof", type: "bytes"},
+    ],
+    outputs: [],
+  },
+  {
+    name: "completeOperatorTransfer",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    name: "cancelOperatorTransfer",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    name: "getPendingOperator",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      {name: "", type: "address"},
+      {name: "", type: "uint256"},
+    ],
+  },
   {
     name: "setIdentity",
     type: "function",

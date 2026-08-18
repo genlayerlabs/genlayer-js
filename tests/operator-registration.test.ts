@@ -70,4 +70,37 @@ describe("operator registration", () => {
       verifyOperatorRegistration(registration, {...CONTEXT, chainId: CONTEXT.chainId + 1n}),
     ).resolves.toBe(false);
   });
+
+  // The two proof-bearing flows differ only in who verifies, and therefore in
+  // the registrar the proof is bound to: validatorJoin is checked by the
+  // ValidatorWalletFactory, while initiateOperatorTransfer is checked by the
+  // wallet itself (PubKeyUtils.validateWithPossession(pubKey, address(this),
+  // owner(), proof)). Reusing a join proof to rotate is the easy mistake, so
+  // pin that it does not verify.
+  it("binds rotation proofs to the wallet, not the factory", async () => {
+    const factory = "0x1111111111111111111111111111111111111111";
+    const wallet = "0x5555555555555555555555555555555555555555";
+    const owner = "0x2222222222222222222222222222222222222222";
+    const chainId = 61999n;
+
+    const joinRegistration = await createOperatorRegistration({
+      privateKey: OPERATOR_KEY,
+      registrar: factory,
+      owner,
+      chainId,
+    });
+    const rotationRegistration = await createOperatorRegistration({
+      privateKey: OPERATOR_KEY,
+      registrar: wallet,
+      owner,
+      chainId,
+    });
+
+    const rotationContext: OperatorRegistrationContext = {registrar: wallet, owner, chainId};
+
+    await expect(verifyOperatorRegistration(rotationRegistration, rotationContext)).resolves.toBe(true);
+    await expect(verifyOperatorRegistration(joinRegistration, rotationContext)).resolves.toBe(false);
+    expect(rotationRegistration.possessionProof).not.toBe(joinRegistration.possessionProof);
+    expect(rotationRegistration.operator).toBe(joinRegistration.operator);
+  });
 });

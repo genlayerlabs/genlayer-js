@@ -20,6 +20,10 @@ import {
   ValidatorClaimOptions,
   ValidatorPrimeOptions,
   SetOperatorOptions,
+  InitiateOperatorTransferOptions,
+  CompleteOperatorTransferOptions,
+  CancelOperatorTransferOptions,
+  PendingOperatorInfo,
   SetIdentityOptions,
   DelegatorJoinOptions,
   DelegatorExitOptions,
@@ -28,6 +32,7 @@ import {
   PendingDeposit,
   PendingWithdrawal,
 } from "@/types/staking";
+import type {OperatorRegistrationContext} from "@/types/vesting";
 
 type ReadOnlyStakingContract = GetContractReturnType<typeof STAKING_ABI, PublicClient, ViemAddress>;
 type WalletClientWithAccount = Client<Transport, Chain, Account>;
@@ -277,6 +282,29 @@ export const stakingActions = (
     };
   };
 
+  /**
+   * Rotation is verified by the wallet, not the factory, so the registrar is the
+   * wallet's own address. The owner is read from the wallet rather than assumed
+   * to be the caller: the proof is bound to whoever `owner()` returns, and a
+   * mismatch is far easier to diagnose here than as an onlyOwner revert.
+   */
+  const getOperatorTransferContext = async (validator: Address): Promise<OperatorRegistrationContext> => {
+    const [owner, chainId] = await Promise.all([
+      publicClient.readContract({
+        address: validator as ViemAddress,
+        abi: VALIDATOR_WALLET_ABI,
+        functionName: "owner",
+      }) as Promise<Address>,
+      publicClient.getChainId(),
+    ]);
+
+    return {
+      registrar: validator,
+      owner,
+      chainId: BigInt(chainId),
+    };
+  };
+
   return {
     /** Joins as a validator with the specified stake amount. */
     validatorJoin: async (options: ValidatorJoinOptions): Promise<ValidatorJoinResult> => {
@@ -386,7 +414,14 @@ export const stakingActions = (
       return executeWrite({to: getStakingAddress(), data});
     },
 
-    /** Sets the operator address for a validator wallet. */
+    /**
+     * Sets the operator address for a validator wallet in one call.
+     *
+     * Removed from consensus by CON-715 in favour of the two-step rotation
+     * below; against a deployment that dropped it this reverts with no reason,
+     * because the selector simply does not exist. Prefer
+     * initiateOperatorTransfer + completeOperatorTransfer.
+     */
     setOperator: async (options: SetOperatorOptions): Promise<StakingTransactionResult> => {
       const data = encodeFunctionData({
         abi: VALIDATOR_WALLET_ABI,
@@ -394,6 +429,69 @@ export const stakingActions = (
         args: [options.operator as ViemAddress],
       });
       return executeWrite({to: options.validator as ViemAddress, data});
+    },
+
+    getOperatorTransferContext,
+
+    /**
+     * Starts the two-step operator rotation. The proof is checked against the
+     * wallet-bound context before submission so a registration built for the
+     * wrong registrar fails locally instead of as an opaque on-chain revert.
+     */
+    initiateOperatorTransfer: async (
+      options: InitiateOperatorTransferOptions,
+    ): Promise<StakingTransactionResult> => {
+      const context = await getOperatorTransferContext(options.validator);
+      if (!await verifyOperatorRegistration(options.registration, context)) {
+        throw new Error(
+          "Operator registration proof does not match the wallet, owner, chain, or public key. " +
+            "Rotation proofs must use the validator wallet as their registrar.",
+        );
+      }
+      const data = encodeFunctionData({
+        abi: VALIDATOR_WALLET_ABI,
+        functionName: "initiateOperatorTransfer",
+        args: [options.registration.operatorPubKey, options.registration.possessionProof],
+      });
+      return executeWrite({to: options.validator as ViemAddress, data});
+    },
+
+    /**
+     * Completes a pending rotation. Callable by the wallet owner or the pending
+     * operator, and only once the factory's operatorTransferDelay has elapsed.
+     */
+    completeOperatorTransfer: async (
+      options: CompleteOperatorTransferOptions,
+    ): Promise<StakingTransactionResult> => {
+      const data = encodeFunctionData({
+        abi: VALIDATOR_WALLET_ABI,
+        functionName: "completeOperatorTransfer",
+        args: [],
+      });
+      return executeWrite({to: options.validator as ViemAddress, data});
+    },
+
+    /** Abandons a pending rotation, leaving the current operator in place. */
+    cancelOperatorTransfer: async (
+      options: CancelOperatorTransferOptions,
+    ): Promise<StakingTransactionResult> => {
+      const data = encodeFunctionData({
+        abi: VALIDATOR_WALLET_ABI,
+        functionName: "cancelOperatorTransfer",
+        args: [],
+      });
+      return executeWrite({to: options.validator as ViemAddress, data});
+    },
+
+    /** Reads the pending operator and when its transfer was initiated. */
+    getPendingOperator: async (validator: Address): Promise<PendingOperatorInfo> => {
+      const [operator, initiatedAt] = await publicClient.readContract({
+        address: validator as ViemAddress,
+        abi: VALIDATOR_WALLET_ABI,
+        functionName: "getPendingOperator",
+      }) as [Address, bigint];
+
+      return {operator, initiatedAt};
     },
 
     /** Sets validator identity information (name, website, social links). */
