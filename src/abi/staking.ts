@@ -133,38 +133,6 @@ export const VALIDATOR_WALLET_ABI = [
     inputs: [],
     outputs: [],
   },
-  // Two-step operator transfer
-  {
-    name: "initiateOperatorTransfer",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{name: "_newOperator", type: "address"}],
-    outputs: [],
-  },
-  {
-    name: "completeOperatorTransfer",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [],
-    outputs: [],
-  },
-  {
-    name: "cancelOperatorTransfer",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [],
-    outputs: [],
-  },
-  {
-    name: "getPendingOperator",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [
-      {name: "", type: "address"},
-      {name: "", type: "uint256"},
-    ],
-  },
   {
     name: "getOperator",
     type: "function",
@@ -1545,6 +1513,96 @@ export const SLASH_ABI = [
     inputs: [
       {name: "validator", type: "address", indexed: true},
       {name: "epoch", type: "uint256", indexed: false},
+    ],
+  },
+] as const;
+
+/**
+ * The staking Claim/Commit views as consensus exposes them after CON-715.
+ *
+ * That change widened both structs — Claim gained `offset`, Commit gained
+ * `outstanding`/`priced`/`fragmented` and narrowed several members — while
+ * keeping the same function names and argument lists. Static tuples decode
+ * positionally, so reading a post-CON-715 chain with the older shape in
+ * STAKING_ABI silently returns the wrong words rather than failing: `commit.input`
+ * picks up `claim.commit`, which is why pending deposits read back as small
+ * indices instead of amounts.
+ *
+ * Both shapes are still in the wild, so neither can simply replace the other.
+ * stakingActions probes once per client and then reads with whichever matches.
+ * Decoding the OLD layout with this one throws (the response is too short),
+ * which is what makes the probe possible; the reverse direction is the silent
+ * one, so the current shape must always be tried first.
+ */
+const CURRENT_CLAIM_COMPONENTS = [
+  {name: "quantity", type: "uint96"},
+  {name: "offset", type: "uint96"},
+  {name: "commit", type: "uint256"},
+] as const;
+
+const CURRENT_COMMIT_COMPONENTS = [
+  {name: "input", type: "uint256"},
+  {name: "output", type: "uint256"},
+  {name: "outstanding", type: "uint120"},
+  {name: "epoch", type: "uint64"},
+  {name: "linkToNextCommit", type: "uint56"},
+  {name: "priced", type: "bool"},
+  {name: "fragmented", type: "bool"},
+] as const;
+
+export const STAKING_COMMIT_VIEWS_CURRENT_ABI = [
+  {
+    name: "delegatorDeposit",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      {name: "_delegator", type: "address"},
+      {name: "_validator", type: "address"},
+      {name: "_index", type: "uint256"},
+    ],
+    outputs: [
+      {name: "claim_", type: "tuple", components: CURRENT_CLAIM_COMPONENTS},
+      {name: "commit_", type: "tuple", components: CURRENT_COMMIT_COMPONENTS},
+    ],
+  },
+  {
+    name: "delegatorWithdrawal",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      {name: "_delegator", type: "address"},
+      {name: "_validator", type: "address"},
+      {name: "_index", type: "uint256"},
+    ],
+    outputs: [
+      {name: "claim_", type: "tuple", components: CURRENT_CLAIM_COMPONENTS},
+      {name: "commit_", type: "tuple", components: CURRENT_COMMIT_COMPONENTS},
+    ],
+  },
+  {
+    name: "validatorDeposit",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      {name: "_validator", type: "address"},
+      {name: "_index", type: "uint256"},
+    ],
+    outputs: [
+      {name: "epoch_", type: "uint256"},
+      {name: "commit_", type: "tuple", components: CURRENT_COMMIT_COMPONENTS},
+    ],
+  },
+  {
+    name: "validatorWithdrawal",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      {name: "_validator", type: "address"},
+      {name: "_index", type: "uint256"},
+    ],
+    outputs: [
+      {name: "epoch_", type: "uint256"},
+      {name: "commit_", type: "tuple", components: CURRENT_COMMIT_COMPONENTS},
     ],
   },
 ] as const;

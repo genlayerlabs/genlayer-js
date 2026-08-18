@@ -1,6 +1,6 @@
 import {getContract, decodeEventLog, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress, GetContractReturnType, toHex, encodeFunctionData, BaseError, ContractFunctionRevertedError, decodeErrorResult, RawContractError, zeroAddress} from "viem";
 import {GenLayerClient, GenLayerChain, Address} from "@/types";
-import {STAKING_ABI, VALIDATOR_WALLET_ABI} from "@/abi/staking";
+import {STAKING_ABI, VALIDATOR_WALLET_ABI, STAKING_COMMIT_VIEWS_CURRENT_ABI} from "@/abi/staking";
 import {ADDRESS_MANAGER_ABI, CONSENSUS_ADDRESS_MANAGER_ABI} from "@/abi/vesting";
 import {parseStakingAmount, formatStakingAmount} from "./utils";
 import {operatorAddressFromPublicKey, verifyOperatorRegistration} from "@/vesting/operatorRegistration";
@@ -280,6 +280,58 @@ export const stakingActions = (
       owner: client.account.address as Address,
       chainId: BigInt(chainId),
     };
+  };
+
+  /**
+   * Which Claim/Commit layout the deployed staking contract uses.
+   *
+   * CON-715 widened both structs without renaming anything, and static tuples
+   * decode positionally, so the wrong shape does not fail — it silently returns
+   * neighbouring words (commit.input picks up claim.commit, i.e. an index where
+   * an amount belongs). Both shapes are deployed in the wild, so the layout is
+   * resolved from the chain rather than assumed, then cached for the client:
+   * getStakeInfo loops over every pending entry and must not re-probe each time.
+   *
+   * The probe only works in one direction. Reading the OLD layout with the
+   * CURRENT shape throws, because the response is shorter than the decoder
+   * expects; reading the CURRENT layout with the OLD shape succeeds and lies.
+   * So the current shape is always attempted first, and a decode failure — not
+   * a success — is what identifies a legacy chain.
+   */
+  let commitLayout: "current" | "legacy" | null = null;
+
+  const readCommitView = async (
+    functionName: "delegatorDeposit" | "delegatorWithdrawal" | "validatorDeposit" | "validatorWithdrawal",
+    args: readonly unknown[],
+  ): Promise<any> => {
+    const read = (layout: "current" | "legacy") =>
+      publicClient.readContract({
+        address: getStakingAddress(),
+        abi: (layout === "current" ? STAKING_COMMIT_VIEWS_CURRENT_ABI : STAKING_ABI) as any,
+        functionName,
+        args: args as any,
+      });
+
+    if (commitLayout) {
+      return read(commitLayout);
+    }
+
+    try {
+      const result = await read("current");
+      commitLayout = "current";
+      return result;
+    } catch (currentError) {
+      // Could be a legacy layout, or a genuine failure (bad index, RPC error).
+      // Only a successful legacy decode distinguishes them; otherwise surface
+      // the original error, which describes the current-shape attempt.
+      try {
+        const result = await read("legacy");
+        commitLayout = "legacy";
+        return result;
+      } catch {
+        throw currentError;
+      }
+    }
   };
 
   /**
@@ -622,7 +674,7 @@ export const stakingActions = (
       const pendingDeposits: PendingDeposit[] = [];
 
       for (let i = 0n; i < depositLen; i++) {
-        const [epoch, commit] = (await contract.read.validatorDeposit([validator as ViemAddress, i])) as [
+        const [epoch, commit] = (await readCommitView("validatorDeposit", [validator as ViemAddress, i])) as [
           bigint,
           {input: bigint; output: bigint; epoch: bigint; linkToNextCommit: bigint},
         ];
@@ -639,7 +691,7 @@ export const stakingActions = (
       const pendingWithdrawals: PendingWithdrawal[] = [];
 
       for (let i = 0n; i < withdrawalLen; i++) {
-        const [epoch, commit] = (await contract.read.validatorWithdrawal([validator as ViemAddress, i])) as [
+        const [epoch, commit] = (await readCommitView("validatorWithdrawal", [validator as ViemAddress, i])) as [
           bigint,
           {input: bigint; output: bigint; epoch: bigint; linkToNextCommit: bigint},
         ];
@@ -715,7 +767,7 @@ export const stakingActions = (
       const pendingDeposits: PendingDeposit[] = [];
 
       for (let i = 0n; i < depositLen; i++) {
-        const [claim, commit] = (await contract.read.delegatorDeposit([
+        const [claim, commit] = (await readCommitView("delegatorDeposit", [
           delegator as ViemAddress,
           validator as ViemAddress,
           i,
@@ -739,7 +791,7 @@ export const stakingActions = (
       const pendingWithdrawals: PendingWithdrawal[] = [];
 
       for (let i = 0n; i < withdrawalLen; i++) {
-        const [claim, commit] = (await contract.read.delegatorWithdrawal([
+        const [claim, commit] = (await readCommitView("delegatorWithdrawal", [
           delegator as ViemAddress,
           validator as ViemAddress,
           i,
