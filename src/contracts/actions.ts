@@ -358,6 +358,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       consensusMaxRotations?: number;
       validUntil?: BigNumberish;
       fees?: TransactionFeeOptions;
+      gas?: bigint;
     }): Promise<`0x${string}`> => {
       const {
         account,
@@ -370,6 +371,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         consensusMaxRotations = client.chain.defaultConsensusMaxRotations,
         validUntil,
         fees,
+        gas,
       } = args;
 
       const data = [calldata.encode(calldata.makeCalldataObject(functionName, callArgs, kwargs)), leaderOnly];
@@ -396,6 +398,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         publicClient,
         transactionVariants,
         senderAccount,
+        gas,
       });
     },
     /** Deploys a new intelligent contract to GenLayer. Returns the transaction hash. */
@@ -408,6 +411,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       consensusMaxRotations?: number;
       validUntil?: BigNumberish;
       fees?: TransactionFeeOptions;
+      gas?: bigint;
     }) => {
       const {
         account,
@@ -418,6 +422,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         consensusMaxRotations = client.chain.defaultConsensusMaxRotations,
         validUntil,
         fees,
+        gas,
       } = args;
 
       const data = [
@@ -448,6 +453,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         publicClient,
         transactionVariants,
         senderAccount,
+        gas,
       });
     },
     /** Returns the active fee price policy used to build user-side caps. */
@@ -2262,11 +2268,18 @@ const _sendTransaction = async ({
   publicClient,
   transactionVariants,
   senderAccount,
+  gas: gasOverride,
 }: {
   client: GenLayerClient<GenLayerChain>;
   publicClient: PublicClient;
   transactionVariants: EncodedTransactionVariant[];
   senderAccount?: Account;
+  /**
+   * Explicit outer EVM gas limit, bypassing `eth_estimateGas` and the
+   * automatic headroom below. Used as-is with no further markup, since an
+   * explicit override is the caller stating what to use.
+   */
+  gas?: bigint;
 }) => {
   if (!client.chain.consensusMainContract?.address) {
     throw new Error(`Consensus main contract address not found in chain config for "${client.chain.name}".`);
@@ -2320,18 +2333,22 @@ const _sendTransaction = async ({
   const sendWithEncodedData = async (transactionVariant: EncodedTransactionVariant) => {
     let estimatedGas: bigint;
     let gasEstimationError: string | undefined;
-    try {
-      estimatedGas = await client.estimateTransactionGas({
-        from: validatedSenderAccount.address,
-        to: client.chain.consensusMainContract?.address as Address,
-        data: transactionVariant.encodedData,
-        value: transactionVariant.value,
-      });
-      estimatedGas = withTransactionGasHeadroom(estimatedGas);
-    } catch (err) {
-      gasEstimationError = stringifyRpcError(err);
-      console.error("Gas estimation failed, using default 200_000:", err);
-      estimatedGas = 200_000n;
+    if (gasOverride !== undefined) {
+      estimatedGas = gasOverride;
+    } else {
+      try {
+        estimatedGas = await client.estimateTransactionGas({
+          from: validatedSenderAccount.address,
+          to: client.chain.consensusMainContract?.address as Address,
+          data: transactionVariant.encodedData,
+          value: transactionVariant.value,
+        });
+        estimatedGas = withTransactionGasHeadroom(estimatedGas);
+      } catch (err) {
+        gasEstimationError = stringifyRpcError(err);
+        console.error("Gas estimation failed, using default 200_000:", err);
+        estimatedGas = 200_000n;
+      }
     }
 
     // For local accounts, build transaction request directly to avoid viem's
