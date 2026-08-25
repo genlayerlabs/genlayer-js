@@ -41,6 +41,11 @@ export enum TransactionResult {
   MAJORITY_TIMEOUT = "MAJORITY_TIMEOUT",
 }
 
+// ReadyToFinalize is no longer one of these. It stopped being a status the
+// chain stores -- readiness is the resolution kernel's verdict now -- and
+// removing it at ordinal 11 shifted the three above it down. The name survives
+// as a client-side state the node still reports, so TransactionStatus keeps the
+// member; what changed is that no chain value decodes to it.
 export const transactionsStatusNumberToName = {
   "0": TransactionStatus.UNINITIALIZED,
   "1": TransactionStatus.PENDING,
@@ -53,13 +58,12 @@ export const transactionsStatusNumberToName = {
   "8": TransactionStatus.CANCELED,
   "9": TransactionStatus.APPEAL_REVEALING,
   "10": TransactionStatus.APPEAL_COMMITTING,
-  "11": TransactionStatus.READY_TO_FINALIZE,
-  "12": TransactionStatus.VALIDATORS_TIMEOUT,
-  "13": TransactionStatus.LEADER_TIMEOUT,
-  "14": TransactionStatus.LEADER_REVEALING,
+  "11": TransactionStatus.VALIDATORS_TIMEOUT,
+  "12": TransactionStatus.LEADER_TIMEOUT,
+  "13": TransactionStatus.LEADER_REVEALING,
 };
 
-export const transactionsStatusNameToNumber = {
+export const transactionsStatusNameToNumber: Partial<Record<TransactionStatus, string>> = {
   [TransactionStatus.UNINITIALIZED]: "0",
   [TransactionStatus.PENDING]: "1",
   [TransactionStatus.PROPOSING]: "2",
@@ -71,10 +75,13 @@ export const transactionsStatusNameToNumber = {
   [TransactionStatus.CANCELED]: "8",
   [TransactionStatus.APPEAL_REVEALING]: "9",
   [TransactionStatus.APPEAL_COMMITTING]: "10",
-  [TransactionStatus.READY_TO_FINALIZE]: "11",
-  [TransactionStatus.VALIDATORS_TIMEOUT]: "12",
-  [TransactionStatus.LEADER_TIMEOUT]: "13",
-  [TransactionStatus.LEADER_REVEALING]: "14",
+  // READY_TO_FINALIZE has no ordinal here on purpose. It is not a stored status
+  // any more, so there is no number it could take that would not collide with a
+  // real one -- 11 is VALIDATORS_TIMEOUT now. Looking it up yields undefined,
+  // which is the truthful answer: no chain status decodes to it.
+  [TransactionStatus.VALIDATORS_TIMEOUT]: "11",
+  [TransactionStatus.LEADER_TIMEOUT]: "12",
+  [TransactionStatus.LEADER_REVEALING]: "13",
 };
 
 export const DECIDED_STATES = [

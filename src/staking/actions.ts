@@ -3,6 +3,12 @@ import {GenLayerClient, GenLayerChain, Address} from "@/types";
 import {STAKING_ABI, VALIDATOR_WALLET_ABI, STAKING_COMMIT_VIEWS_CURRENT_ABI} from "@/abi/staking";
 import {ADDRESS_MANAGER_ABI, CONSENSUS_ADDRESS_MANAGER_ABI} from "@/abi/vesting";
 import {parseStakingAmount, formatStakingAmount} from "./utils";
+
+// The joined validator registry is only readable in slices: committee capacity
+// is 1,543 and an address[] that long overruns the return-size limit. 64 is the
+// size the paged reads are written around, and the one genlayer-node uses for
+// the same walk.
+const VALIDATORS_JOINED_PAGE_SIZE = 64n;
 import {operatorAddressFromPublicKey, verifyOperatorRegistration} from "@/vesting/operatorRegistration";
 import {
   ValidatorInfo,
@@ -835,7 +841,7 @@ export const stakingActions = (
       ] = await Promise.all([
         contract.read.epoch() as Promise<bigint>,
         contract.read.finalized() as Promise<bigint>,
-        contract.read.activeValidatorsCount() as Promise<bigint>,
+        contract.read.validatorsJoinedCount() as Promise<bigint>,
         contract.read.epochMinDuration() as Promise<bigint>,
         contract.read.epochZeroMinDuration() as Promise<bigint>,
         contract.read.epochOdd() as Promise<any>,
@@ -923,14 +929,28 @@ export const stakingActions = (
     /** Returns addresses of all currently active validators. */
     getActiveValidators: async (): Promise<Address[]> => {
       const contract = getReadOnlyStakingContract();
-      const validators = (await contract.read.activeValidators()) as Address[];
+
+      // Read a page at a time. Committee capacity is 1,543, and an address[]
+      // that long overruns the return-size limit, so the joined registry is
+      // only reachable in slices. The count is read first so a registry that
+      // grows underneath the walk cannot spin the loop, and a short page means
+      // it shrank instead -- stop there and let the next read see it settled.
+      const total = (await contract.read.validatorsJoinedCount()) as bigint;
+      const validators: Address[] = [];
+
+      for (let start = 0n; start < total; start += VALIDATORS_JOINED_PAGE_SIZE) {
+        const page = (await contract.read.getValidatorsJoined([start, VALIDATORS_JOINED_PAGE_SIZE])) as Address[];
+        if (page.length === 0) break;
+        validators.push(...page);
+      }
+
       return validators.filter(v => v !== "0x0000000000000000000000000000000000000000");
     },
 
     /** Returns the count of active validators. */
     getActiveValidatorsCount: async (): Promise<bigint> => {
       const contract = getReadOnlyStakingContract();
-      return contract.read.activeValidatorsCount() as Promise<bigint>;
+      return contract.read.validatorsJoinedCount() as Promise<bigint>;
     },
 
     /** Returns addresses of validators currently in quarantine. */

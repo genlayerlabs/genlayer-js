@@ -501,18 +501,21 @@ export const STAKING_ABI = [
 
   // Functions
   {
-    name: "activeValidators",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{name: "", type: "address[]"}],
-  },
-  {
-    name: "activeValidatorsCount",
+    name: "validatorsJoinedCount",
     type: "function",
     stateMutability: "view",
     inputs: [],
     outputs: [{name: "", type: "uint256"}],
+  },
+  {
+    name: "getValidatorsJoined",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      {name: "_start", type: "uint256"},
+      {name: "_count", type: "uint256"},
+    ],
+    outputs: [{name: "", type: "address[]"}],
   },
   {
     name: "activeWeights",
@@ -1340,10 +1343,7 @@ export const STAKING_ABI = [
         name: "",
         type: "tuple",
         components: [
-          {name: "left", type: "address"},
-          {name: "right", type: "address"},
-          {name: "parent", type: "address"},
-          {name: "eBanned", type: "uint256"},
+                      {name: "eBanned", type: "uint256"},
           {name: "ePrimed", type: "uint256"},
           {name: "vStake", type: "uint256"},
           {name: "vShares", type: "uint256"},
@@ -1485,13 +1485,6 @@ export const STAKING_ABI = [
     stateMutability: "view",
     inputs: [],
     outputs: [{name: "", type: "uint256"}],
-  },
-  {
-    name: "validatorsRoot",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{name: "", type: "address"}],
   },
 ] as const;
 

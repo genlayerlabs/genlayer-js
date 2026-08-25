@@ -154,12 +154,24 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
     const contractAddress = client.chain.consensusDataContract?.address as Address;
     const contractAbi = client.chain.consensusDataContract?.abi as Abi;
 
+    // getTransactionData(txId, timestamp) answered with a projection evaluated at
+    // a caller-supplied clock. The resolution-kernel train splits that apart: the
+    // stored record is getStoredTransactionData(txId), and the projection lives
+    // behind getTransactionLifecycle. Chains are upgraded independently, so pick
+    // whichever read the chain's own ABI actually offers rather than assuming.
+    const hasStoredRead = (contractAbi as readonly {name?: string}[]).some(
+      entry => entry?.name === "getStoredTransactionData",
+    );
+    const dataRead = hasStoredRead
+      ? {functionName: "getStoredTransactionData", args: [hash] as const}
+      : {functionName: "getTransactionData", args: [hash, Math.round(new Date().getTime() / 1000)] as const};
+
     const [txDataRaw, allDataRaw] = await Promise.all([
       publicClient.readContract({
         address: contractAddress,
         abi: contractAbi,
-        functionName: "getTransactionData",
-        args: [hash, Math.round(new Date().getTime() / 1000)],
+        functionName: dataRead.functionName,
+        args: dataRead.args as unknown as readonly unknown[],
       }) as Promise<GenLayerRawTransaction>,
       publicClient.readContract({
         address: contractAddress,

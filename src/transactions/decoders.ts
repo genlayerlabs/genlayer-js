@@ -77,6 +77,10 @@ export const decodeTransaction = (tx: GenLayerRawTransaction): GenLayerTransacti
   // Normalize field names across chain ABIs (Bradbury uses different names)
   const txData = tx.txData ?? (tx as any).txCalldata;
   const numOfInitialValidators = tx.numOfInitialValidators ?? (tx as any).initialRotations;
+  // The train's stored record calls this observedAt; older chains say
+  // currentTimestamp. Same value, and it is read unconditionally below, so an
+  // unrecognised name is a crash rather than a missing field.
+  const currentTimestamp = tx.currentTimestamp ?? (tx as any).observedAt;
 
   const txDataDecoded = decodeInputData(txData, tx.recipient);
 
@@ -85,7 +89,7 @@ export const decodeTransaction = (tx: GenLayerRawTransaction): GenLayerTransacti
     txData: txData,
     txDataDecoded: txDataDecoded,
 
-    currentTimestamp: tx.currentTimestamp.toString(),
+    currentTimestamp: currentTimestamp?.toString() ?? "0",
     numOfInitialValidators: numOfInitialValidators?.toString() ?? "0",
     txSlot: tx.txSlot.toString(),
     createdTimestamp: tx.createdTimestamp.toString(),

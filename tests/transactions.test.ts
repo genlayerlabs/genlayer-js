@@ -35,7 +35,7 @@ describe("DECIDED_STATES constant", () => {
 
 describe("isDecidedState utility function", () => {
   it("should return true for all decided states", () => {
-    const decidedStatusNumbers = ["5", "6", "13", "12", "8", "7"]; // ACCEPTED, UNDETERMINED, LEADER_TIMEOUT, VALIDATORS_TIMEOUT, CANCELED, FINALIZED
+    const decidedStatusNumbers = ["5", "6", "12", "11", "8", "7"]; // ACCEPTED, UNDETERMINED, LEADER_TIMEOUT, VALIDATORS_TIMEOUT, CANCELED, FINALIZED
     
     decidedStatusNumbers.forEach(statusNum => {
       expect(isDecidedState(statusNum)).toBe(true);
@@ -43,7 +43,7 @@ describe("isDecidedState utility function", () => {
   });
 
   it("should return false for non-decided states", () => {
-    const nonDecidedStatusNumbers = ["0", "1", "2", "3", "4", "9", "10", "11", "14"]; // transient states
+    const nonDecidedStatusNumbers = ["0", "1", "2", "3", "4", "9", "10", "13"]; // transient states
     
     nonDecidedStatusNumbers.forEach(statusNum => {
       expect(isDecidedState(statusNum)).toBe(false);
@@ -61,8 +61,12 @@ describe("isDecidedState utility function", () => {
 
 describe("transaction enum maps", () => {
   it("maps v0.6 transaction status, vote type, and result type values", () => {
-    expect(transactionsStatusNumberToName["14"]).toBe(TransactionStatus.LEADER_REVEALING);
-    expect(isDecidedState("14")).toBe(false);
+    // The train removed ReadyToFinalize at ordinal 11 and shifted the three
+    // above it down, so LeaderRevealing is 13 now and nothing occupies 14.
+    expect(transactionsStatusNumberToName["13"]).toBe(TransactionStatus.LEADER_REVEALING);
+    expect(transactionsStatusNumberToName["11"]).toBe(TransactionStatus.VALIDATORS_TIMEOUT);
+    expect(transactionsStatusNumberToName["12"]).toBe(TransactionStatus.LEADER_TIMEOUT);
+    expect(isDecidedState("13")).toBe(false);
     expect(executionResultNumberToName["3"]).toBe(ExecutionResult.TIMEOUT);
     expect(executionResultNumberToName["4"]).toBe(ExecutionResult.NONDET_DISAGREE);
     expect(transactionResultNumberToName).toEqual({
@@ -152,7 +156,7 @@ describe("waitForTransactionReceipt with DECIDED_STATES", () => {
   });
 
   it("should accept all decided states when waiting for ACCEPTED", async () => {
-    const decidedStatusNumbers = ["5", "6", "13", "12", "8", "7"]; // All decided states
+    const decidedStatusNumbers = ["5", "6", "12", "11", "8", "7"]; // All decided states
     
     for (const statusNum of decidedStatusNumbers) {
       const mockTransaction = {
