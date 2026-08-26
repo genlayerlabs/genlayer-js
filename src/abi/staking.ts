@@ -1366,10 +1366,7 @@ export const STAKING_ABI = [
         name: "",
         type: "tuple",
         components: [
-          {name: "left", type: "address"},
-          {name: "right", type: "address"},
-          {name: "parent", type: "address"},
-          {name: "eBanned", type: "uint256"},
+                      {name: "eBanned", type: "uint256"},
           {name: "ePrimed", type: "uint256"},
           {name: "vStake", type: "uint256"},
           {name: "vShares", type: "uint256"},
@@ -1392,10 +1389,7 @@ export const STAKING_ABI = [
         name: "",
         type: "tuple",
         components: [
-          {name: "left", type: "address"},
-          {name: "right", type: "address"},
-          {name: "parent", type: "address"},
-          {name: "eBanned", type: "uint256"},
+                      {name: "eBanned", type: "uint256"},
           {name: "ePrimed", type: "uint256"},
           {name: "vStake", type: "uint256"},
           {name: "vShares", type: "uint256"},
