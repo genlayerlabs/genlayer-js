@@ -11,7 +11,11 @@ import {
   isDecidedState,
   DebugTraceResult,
   TransactionReceiptWaitUntil,
+  TransactionProtocolLifecycle,
   transactionResolutionActionNumberToName,
+  transactionProtocolStatusNumberToName,
+  transactionResolutionSourceNumberToName,
+  transactionLifecycleFromStoredStatus,
 } from "../types/transactions";
 import {transactionsConfig} from "../config/transactions";
 import {sleep} from "../utils/async";
@@ -27,6 +31,85 @@ import {
 } from "../abi/consensusTrain";
 
 const TRANSACTION_PAGE_SIZE = 64n;
+
+type RawProtocolLifecycle = {
+  storedStatusCode: unknown;
+  projectedStatusCode: unknown;
+  resolutionActionCode: unknown;
+  resolutionSourceCode: unknown;
+  decisionId: unknown;
+  decisionActive: unknown;
+  evaluatedAt: unknown;
+};
+
+const protocolInteger = (value: unknown, label: string): number => {
+  if (value === null || value === undefined || value === "") {
+    throw new Error(`Missing protocol lifecycle ${label}`);
+  }
+  const numeric = Number(value);
+  if (!Number.isSafeInteger(numeric) || numeric < 0) {
+    throw new Error(`Invalid protocol lifecycle ${label}: ${String(value)}`);
+  }
+  return numeric;
+};
+
+const protocolName = <T>(
+  names: Record<string, T>,
+  code: number,
+  label: string,
+): T => {
+  const name = names[String(code)];
+  if (!name) throw new Error(`Unknown protocol lifecycle ${label}: ${code}`);
+  return name;
+};
+
+const protocolDecisionId = (value: unknown, active: boolean): string | null => {
+  if (!active) return null;
+  if (typeof value === "number" && !Number.isSafeInteger(value)) {
+    throw new Error(`Invalid protocol lifecycle decisionId: ${String(value)}`);
+  }
+  const decimal = String(value);
+  if (!/^\d+$/.test(decimal)) {
+    throw new Error(`Invalid protocol lifecycle decisionId: ${decimal}`);
+  }
+  return BigInt(decimal).toString();
+};
+
+const normalizeProtocolLifecycle = (raw: RawProtocolLifecycle): TransactionProtocolLifecycle => {
+  const storedStatusCode = protocolInteger(raw.storedStatusCode, "storedStatusCode");
+  const projectedStatusCode = protocolInteger(raw.projectedStatusCode, "projectedStatusCode");
+  const resolutionActionCode = protocolInteger(raw.resolutionActionCode, "resolutionActionCode");
+  const resolutionSourceCode = protocolInteger(raw.resolutionSourceCode, "resolutionSourceCode");
+  if (typeof raw.decisionActive !== "boolean") {
+    throw new Error(`Invalid protocol lifecycle decisionActive: ${String(raw.decisionActive)}`);
+  }
+
+  return {
+    storedStatus: protocolName(transactionProtocolStatusNumberToName, storedStatusCode, "storedStatusCode"),
+    storedStatusCode,
+    projectedStatus: protocolName(
+      transactionProtocolStatusNumberToName,
+      projectedStatusCode,
+      "projectedStatusCode",
+    ),
+    projectedStatusCode,
+    resolutionAction: protocolName(
+      transactionResolutionActionNumberToName,
+      resolutionActionCode,
+      "resolutionActionCode",
+    ),
+    resolutionActionCode,
+    resolutionSource: protocolName(
+      transactionResolutionSourceNumberToName,
+      resolutionSourceCode,
+      "resolutionSourceCode",
+    ),
+    resolutionSourceCode,
+    decisionId: protocolDecisionId(raw.decisionId, raw.decisionActive),
+    decisionActive: raw.decisionActive,
+    evaluatedAt: protocolInteger(raw.evaluatedAt, "evaluatedAt"),
+  };
+};
 
 const resolvedAddress = (name: string, address: Address): Address => {
   if (address === zeroAddress) {
@@ -91,9 +174,20 @@ const resolveWaitTarget = (
 };
 
 const hasReachedWaitTarget = (
-  transactionStatusString: string,
+  transaction: GenLayerTransaction,
   target: ReturnType<typeof resolveWaitTarget>,
 ): boolean => {
+  const storedStatusName = transaction.statusName ?? (
+    typeof transaction.status === "number" || /^\d+$/.test(String(transaction.status))
+      ? transactionsStatusNumberToName[
+        String(transaction.status) as keyof typeof transactionsStatusNumberToName
+      ]
+      : transaction.status as TransactionStatus | undefined
+  );
+  const transactionStatusString = storedStatusName
+    ? transactionsStatusNameToNumber[storedStatusName]
+    : String(transaction.status);
+
   if (target.waitUntil === "decided") {
     return isDecidedState(transactionStatusString);
   }
@@ -151,7 +245,7 @@ export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClie
       throw new Error(`Transaction not found: ${hash}`);
     }
     const transactionStatusString = String(transaction.status);
-    if (hasReachedWaitTarget(transactionStatusString, target)) {
+    if (hasReachedWaitTarget(transaction, target)) {
       let finalTransaction = transaction;
       if (client.chain.isStudio) {
         finalTransaction = decodeLocalnetTransaction(transaction as unknown as GenLayerTransaction);
@@ -176,12 +270,100 @@ export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClie
       fullTransaction,
     });
   },
+  /** Polls until the stored transaction state contains a materialized decision. */
+  waitForDecision: async ({
+    hash,
+    interval,
+    retries,
+    fullTransaction,
+  }: {
+    hash: TransactionHash;
+    interval?: number;
+    retries?: number;
+    fullTransaction?: boolean;
+  }): Promise<GenLayerTransaction> => receiptActions(client, publicClient).waitForTransactionReceipt({
+    hash,
+    waitUntil: "decided",
+    interval,
+    retries,
+    fullTransaction,
+  }),
+  /** Polls until the stored transaction state is finalized. */
+  waitForFinalization: async ({
+    hash,
+    interval,
+    retries,
+    fullTransaction,
+  }: {
+    hash: TransactionHash;
+    interval?: number;
+    retries?: number;
+    fullTransaction?: boolean;
+  }): Promise<GenLayerTransaction> => receiptActions(client, publicClient).waitForTransactionReceipt({
+    hash,
+    waitUntil: "finalized",
+    interval,
+    retries,
+    fullTransaction,
+  }),
 });
 
 export const transactionActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => ({
+  advanced: {
+    /**
+     * `advanced.getTransactionLifecycle` exposes stored/projected status,
+     * resolution action/source, and active decision identity. Studio uses the
+     * node RPC; contract networks use one fixed-block lifecycle read. `Finalize`
+     * is an action, not a status or separate readiness field.
+     */
+    getTransactionLifecycle: async ({
+      hash,
+      timestamp,
+    }: {
+      hash: TransactionHash;
+      timestamp?: number;
+    }): Promise<TransactionProtocolLifecycle> => {
+      if (client.chain.isStudio) {
+        const raw = await client.request({
+          method: "gen_getTransactionLifecycle",
+          params: [{txId: hash, ...(timestamp === undefined ? {} : {
+            timestamp: protocolInteger(timestamp, "timestamp"),
+          })}],
+        }) as RawProtocolLifecycle;
+        return normalizeProtocolLifecycle(raw);
+      }
+      const consensusDataAddress = client.chain.consensusDataContract?.address as Address;
+      if (!consensusDataAddress || consensusDataAddress === zeroAddress) {
+        throw new Error("ConsensusData contract is not configured for this chain");
+      }
+
+      const snapshot = await publicClient.getBlock();
+      const blockNumber = snapshot.number;
+      const evaluatedAt = timestamp === undefined
+        ? protocolInteger(snapshot.timestamp, "block timestamp")
+        : protocolInteger(timestamp, "timestamp");
+      const lifecycle = await publicClient.readContract({
+        address: consensusDataAddress,
+        abi: CONSENSUS_DATA_TRAIN_ABI,
+        functionName: "getTransactionLifecycle",
+        args: [hash, BigInt(evaluatedAt)],
+        blockNumber,
+      }) as any;
+
+      return normalizeProtocolLifecycle({
+        storedStatusCode: lifecycle.storedStatus,
+        projectedStatusCode: lifecycle.resolution.projectedStatus,
+        resolutionActionCode: lifecycle.resolution.action,
+        resolutionSourceCode: lifecycle.resolution.source,
+        decisionId: lifecycle.latestDecision.decisionId,
+        decisionActive: lifecycle.decisionActive,
+        evaluatedAt: lifecycle.resolution.evaluatedAt,
+      });
+    },
+  },
   /**
-   * Fetches the train transaction snapshot, including projected/stored status,
-   * resolution action, authoritative finalization readiness, and split round data.
+   * Fetches a transaction with a simple stored lifecycle and split round data.
+   * Use advanced.getTransactionLifecycle for protocol projection/action details.
    */
   getTransaction: async ({hash}: {hash: TransactionHash}): Promise<GenLayerTransaction> => {
     if (client.chain.isStudio) {
@@ -191,6 +373,10 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
 
       transaction.status = Number(transactionsStatusNameToNumber[localnetStatus as TransactionStatus]);
       transaction.statusName = localnetStatus as TransactionStatus;
+      transaction.lifecycle = transactionLifecycleFromStoredStatus(
+        localnetStatus as TransactionStatus,
+        transaction.result,
+      );
       return decodeLocalnetTransaction(transaction as unknown as GenLayerTransaction);
     }
     const consensusDataAddress = client.chain.consensusDataContract?.address as Address;
@@ -198,12 +384,10 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
       throw new Error("ConsensusData contract is not configured for this chain");
     }
 
-    // Freeze every lifecycle and round read to one chain snapshot. A local
-    // wall-clock projection mixed with moving latest-state reads can report a
-    // status and finalization action that never coexisted.
+    // Freeze every transaction and round component to one chain snapshot so
+    // the assembled public transaction never mixes different stored states.
     const snapshot = await publicClient.getBlock();
     const blockNumber = snapshot.number;
-    const observedAt = snapshot.timestamp;
     const addressManagerAddress = resolvedAddress(
       "AddressManager",
       await publicClient.readContract({
@@ -241,22 +425,13 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
     const roundsStorageAddress = resolvedAddress("RoundsStorage", roundsStorageAddressRaw);
     const transactionManagerAddress = resolvedAddress("TransactionManager", transactionManagerAddressRaw);
 
-    const [txData, lifecycle] = await Promise.all([
-      publicClient.readContract({
-        address: bigRoundsAddress,
-        abi: CONSENSUS_DATA_BIG_ROUNDS_TRAIN_ABI,
-        functionName: "getStoredTransactionDataLight",
-        args: [hash],
-        blockNumber,
-      }),
-      publicClient.readContract({
-        address: consensusDataAddress,
-        abi: CONSENSUS_DATA_TRAIN_ABI,
-        functionName: "getTransactionLifecycle",
-        args: [hash, observedAt],
-        blockNumber,
-      }),
-    ]) as [any, any];
+    const txData = await publicClient.readContract({
+      address: bigRoundsAddress,
+      abi: CONSENSUS_DATA_BIG_ROUNDS_TRAIN_ABI,
+      functionName: "getStoredTransactionDataLight",
+      args: [hash],
+      blockNumber,
+    }) as any;
 
     const round = txData.lastRound.round;
     const [roundValidators, consumedValidators, validatorVotes, validatorVotesHash, validatorResultHash, txExecutionResult, numOfInitialValidators] =
@@ -312,25 +487,9 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
         }),
       ]) as [Address[], Address[], readonly number[], readonly `0x${string}`[], readonly `0x${string}`[], number, bigint];
 
-    const projectedStatus = Number(lifecycle.resolution.projectedStatus);
-    const storedStatus = Number(lifecycle.storedStatus);
-    const resolutionAction = Number(lifecycle.resolution.action);
-    const decisionId = lifecycle.decisionActive
-      ? BigInt(lifecycle.latestDecision.decisionId)
-      : 0n;
-    const finalizeRead = await publicClient.readContract({
-      address: consensusDataAddress,
-      abi: CONSENSUS_DATA_TRAIN_ABI,
-      functionName: "canFinalize",
-      args: [hash, observedAt, decisionId],
-      blockNumber,
-    }) as any;
-    const canFinalize = Boolean(finalizeRead.ready ?? finalizeRead[0]);
-
     const transaction = {
       ...txData,
       numOfInitialValidators,
-      status: projectedStatus,
       txExecutionResult: Number(txExecutionResult),
       consumedValidators,
       lastRound: {
@@ -341,20 +500,7 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
         validatorResultHash: [...validatorResultHash],
       },
     } as unknown as GenLayerRawTransaction;
-    const decoded = decodeTransaction(transaction);
-    const resolutionActionName =
-      transactionResolutionActionNumberToName[
-        String(resolutionAction) as keyof typeof transactionResolutionActionNumberToName
-      ];
-    return {
-      ...decoded,
-      storedStatus,
-      storedStatusName:
-        transactionsStatusNumberToName[String(storedStatus) as keyof typeof transactionsStatusNumberToName],
-      resolutionAction,
-      resolutionActionName,
-      canFinalize,
-    };
+    return decodeTransaction(transaction);
   },
   /** Returns transaction IDs of child transactions created from emitted messages. */
   getTriggeredTransactionIds: async ({hash}: {hash: TransactionHash}): Promise<TransactionHash[]> => {

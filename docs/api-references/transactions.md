@@ -19,10 +19,56 @@ Polls until a transaction reaches the specified status. Returns the transaction 
 
 ---
 
+### waitForDecision
+
+Polls until the stored transaction state contains a materialized decision.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| hash | `TransactionHash` | yes |  |
+| interval | `number` | no |  |
+| retries | `number` | no |  |
+| fullTransaction | `boolean` | no |  |
+
+**Returns:** `GenLayerTransaction`
+
+---
+
+### waitForFinalization
+
+Polls until the stored transaction state is finalized.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| hash | `TransactionHash` | yes |  |
+| interval | `number` | no |  |
+| retries | `number` | no |  |
+| fullTransaction | `boolean` | no |  |
+
+**Returns:** `GenLayerTransaction`
+
+---
+
+### getTransactionLifecycle
+
+`advanced.getTransactionLifecycle` exposes stored/projected status,
+resolution action/source, and active decision identity. Studio uses the
+node RPC; contract networks use one fixed-block lifecycle read. `Finalize`
+is an action, not a status or separate readiness field.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| hash | `TransactionHash` | yes |  |
+| timestamp | `number` | no |  |
+
+**Returns:** `TransactionProtocolLifecycle`
+
+---
+
 ### getTransaction
 
-Fetches the train transaction snapshot, including projected/stored status,
-resolution action, authoritative finalization readiness, and split round data.
+Fetches a transaction with a simple stored lifecycle and split round data.
+Use advanced.getTransactionLifecycle for protocol projection/action details.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

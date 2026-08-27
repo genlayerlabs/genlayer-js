@@ -263,11 +263,10 @@ transaction hash; on Studio/localnet it is the target GenLayer transaction id.
 A transaction can be finalized by consensus but still have a failed execution. Always check `txExecutionResult` before reading contract state:
 
 ```typescript
-import { ExecutionResult, TransactionStatus } from "genlayer-js/types";
+import { ExecutionResult } from "genlayer-js/types";
 
-const receipt = await client.waitForTransactionReceipt({
+const receipt = await client.waitForFinalization({
   hash: txHash,
-  status: TransactionStatus.FINALIZED,
 });
 
 if (receipt.txExecutionResultName === ExecutionResult.FINISHED_WITH_RETURN) {
@@ -293,12 +292,21 @@ Transactions can emit messages to other contracts. These messages create new chi
 ```typescript
 const tx = await client.getTransaction({ hash: txHash });
 
-// Projected lifecycle state, exact stored state, and queue-head readiness are
-// intentionally separate.
-console.log(tx.statusName);
-console.log(tx.storedStatusName);
-console.log(tx.resolutionActionName);
-console.log(tx.canFinalize);
+// The default model is derived from the exact stored state. Processing entries
+// have a phase; decided entries have an outcome.
+console.log(tx.lifecycle);
+// {state: "processing", phase: "revealing"}
+// {state: "decided", outcome: "accepted"}
+
+// Advanced protocol consumers can explicitly request timestamp projection and
+// the exact resolution action/source. The same shape works on Studio and train.
+const protocolLifecycle = await client.advanced.getTransactionLifecycle({ hash: txHash });
+console.log(protocolLifecycle.storedStatus);
+console.log(protocolLifecycle.projectedStatus);
+console.log(protocolLifecycle.resolutionSource);
+if (protocolLifecycle.resolutionAction === "Finalize") {
+  // Finalize is the protocol's current action/capability, not a transaction status.
+}
 
 // The train retains the authoritative execution hash, not the old receipt
 // bytes. `txReceipt` is therefore unavailable on train transactions.

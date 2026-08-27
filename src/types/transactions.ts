@@ -24,13 +24,13 @@ export enum TransactionStatus {
 }
 
 export enum TransactionResolutionAction {
-  NO_OP = "NO_OP",
-  CANCEL = "CANCEL",
-  REPLACE_ACTOR = "REPLACE_ACTOR",
-  ROTATE_LEADER = "ROTATE_LEADER",
-  RESOLVE_APPEAL = "RESOLVE_APPEAL",
-  MATERIALIZE_DECISION = "MATERIALIZE_DECISION",
-  FINALIZE = "FINALIZE",
+  NO_OP = "NoOp",
+  CANCEL = "Cancel",
+  REPLACE_ACTOR = "ReplaceActor",
+  ROTATE_LEADER = "RotateLeader",
+  RESOLVE_APPEAL = "ResolveAppeal",
+  MATERIALIZE_DECISION = "MaterializeDecision",
+  FINALIZE = "Finalize",
 }
 
 export const transactionResolutionActionNumberToName = {
@@ -41,6 +41,72 @@ export const transactionResolutionActionNumberToName = {
   "4": TransactionResolutionAction.RESOLVE_APPEAL,
   "5": TransactionResolutionAction.MATERIALIZE_DECISION,
   "6": TransactionResolutionAction.FINALIZE,
+};
+
+/** Exact protocol status names used by the advanced lifecycle RPC. */
+export enum TransactionProtocolStatus {
+  UNINITIALIZED = "Uninitialized",
+  PENDING = "Pending",
+  PROPOSING = "Proposing",
+  COMMITTING = "Committing",
+  REVEALING = "Revealing",
+  ACCEPTED = "Accepted",
+  UNDETERMINED = "Undetermined",
+  FINALIZED = "Finalized",
+  CANCELED = "Canceled",
+  APPEAL_REVEALING = "AppealRevealing",
+  APPEAL_COMMITTING = "AppealCommitting",
+  VALIDATORS_TIMEOUT = "ValidatorsTimeout",
+  LEADER_TIMEOUT = "LeaderTimeout",
+  LEADER_REVEALING = "LeaderRevealing",
+}
+
+export const transactionProtocolStatusNumberToName = {
+  "0": TransactionProtocolStatus.UNINITIALIZED,
+  "1": TransactionProtocolStatus.PENDING,
+  "2": TransactionProtocolStatus.PROPOSING,
+  "3": TransactionProtocolStatus.COMMITTING,
+  "4": TransactionProtocolStatus.REVEALING,
+  "5": TransactionProtocolStatus.ACCEPTED,
+  "6": TransactionProtocolStatus.UNDETERMINED,
+  "7": TransactionProtocolStatus.FINALIZED,
+  "8": TransactionProtocolStatus.CANCELED,
+  "9": TransactionProtocolStatus.APPEAL_REVEALING,
+  "10": TransactionProtocolStatus.APPEAL_COMMITTING,
+  "11": TransactionProtocolStatus.VALIDATORS_TIMEOUT,
+  "12": TransactionProtocolStatus.LEADER_TIMEOUT,
+  "13": TransactionProtocolStatus.LEADER_REVEALING,
+};
+
+/** Exact resolution-source names used by the advanced lifecycle RPC. */
+export enum TransactionResolutionSource {
+  UNSPECIFIED = "Unspecified",
+  ACTIVATION_INSUFFICIENT_VALIDATORS = "ActivationInsufficientValidators",
+  PROPOSAL_HANGING = "ProposalHanging",
+  LEADER_RECEIPT_TIMEOUT = "LeaderReceiptTimeout",
+  COMMIT_HANGING = "CommitHanging",
+  LEADER_REVEAL_HANGING = "LeaderRevealHanging",
+  FULL_REVEAL = "FullReveal",
+  REVEAL_DEADLINE = "RevealDeadline",
+  APPEAL_COMMIT_HANGING = "AppealCommitHanging",
+  APPEAL_FULL_REVEAL = "AppealFullReveal",
+  APPEAL_REVEAL_DEADLINE = "AppealRevealDeadline",
+  SELECTION_DEPLETED = "SelectionDepleted",
+}
+
+export const transactionResolutionSourceNumberToName = {
+  "0": TransactionResolutionSource.UNSPECIFIED,
+  "1": TransactionResolutionSource.ACTIVATION_INSUFFICIENT_VALIDATORS,
+  "2": TransactionResolutionSource.PROPOSAL_HANGING,
+  "3": TransactionResolutionSource.LEADER_RECEIPT_TIMEOUT,
+  "4": TransactionResolutionSource.COMMIT_HANGING,
+  "5": TransactionResolutionSource.LEADER_REVEAL_HANGING,
+  "6": TransactionResolutionSource.FULL_REVEAL,
+  "7": TransactionResolutionSource.REVEAL_DEADLINE,
+  "8": TransactionResolutionSource.APPEAL_COMMIT_HANGING,
+  "9": TransactionResolutionSource.APPEAL_FULL_REVEAL,
+  "10": TransactionResolutionSource.APPEAL_REVEAL_DEADLINE,
+  "11": TransactionResolutionSource.SELECTION_DEPLETED,
 };
 
 export enum TransactionResult {
@@ -60,8 +126,8 @@ export enum TransactionResult {
   MAJORITY_TIMEOUT = "MAJORITY_TIMEOUT",
 }
 
-// ReadyToFinalize is no longer a transaction status. Readiness is exposed by
-// the resolution kernel as ResolutionAction.Finalize / `canFinalize`.
+// ReadyToFinalize is no longer a transaction status. Advanced consumers derive
+// the current finalization capability from resolutionAction === "Finalize".
 export const transactionsStatusNumberToName = {
   "0": TransactionStatus.UNINITIALIZED,
   "1": TransactionStatus.PENDING,
@@ -182,6 +248,126 @@ export enum TransactionHashVariant {
 }
 
 export type TransactionReceiptWaitUntil = "decided" | "finalized";
+
+export type TransactionProcessingPhase =
+  | "uninitialized"
+  | "pending"
+  | "proposing"
+  | "committing"
+  | "revealing"
+  | "appeal-revealing"
+  | "appeal-committing"
+  | "leader-revealing";
+
+export type TransactionDecisionOutcome =
+  | "accepted"
+  | "undetermined"
+  | "validators-timeout"
+  | "leader-timeout";
+
+/** Consumer-oriented lifecycle derived only from the persisted transaction state. */
+export type TransactionLifecycle =
+  | {state: "processing"; phase: TransactionProcessingPhase}
+  | {state: "decided"; outcome: TransactionDecisionOutcome}
+  /** Outcome is omitted when the retained result cannot prove the pre-finalized decision. */
+  | {state: "finalized"; outcome?: TransactionDecisionOutcome}
+  | {state: "canceled"};
+
+/**
+ * Arguments for the advanced protocol lifecycle read. `timestamp` is a Unix
+ * timestamp; omitting it evaluates the lifecycle at the node or block time.
+ */
+export type TransactionProtocolLifecycleArgs = {
+  hash: TransactionHash;
+  timestamp?: number;
+};
+
+/**
+ * Advanced protocol lifecycle normalized across Studio and contract networks.
+ * `resolutionAction === "Finalize"` is the protocol's finalization capability;
+ * finalization is not a transaction status or a separate readiness flag.
+ */
+export type TransactionProtocolLifecycle = {
+  storedStatus: TransactionProtocolStatus;
+  storedStatusCode: number;
+  projectedStatus: TransactionProtocolStatus;
+  projectedStatusCode: number;
+  resolutionAction: TransactionResolutionAction;
+  resolutionActionCode: number;
+  resolutionSource: TransactionResolutionSource;
+  resolutionSourceCode: number;
+  decisionId: string | null;
+  decisionActive: boolean;
+  evaluatedAt: number;
+};
+
+const finalizedOutcomeFromResult = (
+  result: TransactionResult | number | undefined,
+): TransactionDecisionOutcome | undefined => {
+  const resultName = typeof result === "number"
+    ? transactionResultNumberToName[String(result) as keyof typeof transactionResultNumberToName]
+    : result;
+
+  switch (resultName) {
+    case TransactionResult.MAJORITY_AGREE:
+      return "accepted";
+    case TransactionResult.MAJORITY_TIMEOUT:
+      return "validators-timeout";
+    case TransactionResult.MAJORITY_DISAGREE:
+    case TransactionResult.DETERMINISTIC_VIOLATION:
+    case TransactionResult.NO_MAJORITY:
+      return "undetermined";
+    default:
+      // IDLE does not distinguish a finalized leader timeout from every other
+      // result-less path, so the SDK must not invent an outcome for it.
+      return undefined;
+  }
+};
+
+/** Maps the exact stored protocol status to the non-projecting public lifecycle. */
+export const transactionLifecycleFromStoredStatus = (
+  status: TransactionStatus | number,
+  result?: TransactionResult | number,
+): TransactionLifecycle => {
+  const statusName = typeof status === "number"
+    ? transactionsStatusNumberToName[String(status) as keyof typeof transactionsStatusNumberToName]
+    : status;
+
+  switch (statusName) {
+    case TransactionStatus.UNINITIALIZED:
+      return {state: "processing", phase: "uninitialized"};
+    case TransactionStatus.PENDING:
+      return {state: "processing", phase: "pending"};
+    case TransactionStatus.PROPOSING:
+      return {state: "processing", phase: "proposing"};
+    case TransactionStatus.COMMITTING:
+      return {state: "processing", phase: "committing"};
+    case TransactionStatus.REVEALING:
+      return {state: "processing", phase: "revealing"};
+    case TransactionStatus.APPEAL_REVEALING:
+      return {state: "processing", phase: "appeal-revealing"};
+    case TransactionStatus.APPEAL_COMMITTING:
+      return {state: "processing", phase: "appeal-committing"};
+    case TransactionStatus.LEADER_REVEALING:
+      return {state: "processing", phase: "leader-revealing"};
+    case TransactionStatus.ACCEPTED:
+      return {state: "decided", outcome: "accepted"};
+    case TransactionStatus.UNDETERMINED:
+      return {state: "decided", outcome: "undetermined"};
+    case TransactionStatus.VALIDATORS_TIMEOUT:
+      return {state: "decided", outcome: "validators-timeout"};
+    case TransactionStatus.LEADER_TIMEOUT:
+      return {state: "decided", outcome: "leader-timeout"};
+    case TransactionStatus.FINALIZED: {
+      const outcome = finalizedOutcomeFromResult(result);
+      return outcome ? {state: "finalized", outcome} : {state: "finalized"};
+    }
+    case TransactionStatus.CANCELED:
+      return {state: "canceled"};
+    default:
+      throw new Error(`Unknown stored transaction status: ${String(status)}`);
+  }
+};
 
 /** Full public round shape reconstructed from bounded train reads. */
 export interface ConsensusRoundData {
@@ -576,21 +762,12 @@ export type GenLayerTransaction = {
   lastLeader?: Address;
 
   // status: localnet: TransactionStatus // status: testnet: number
-  /** Lifecycle status projected at the block snapshot used for this read. */
+  /** Exact lifecycle status persisted by the transaction manager. */
   status?: TransactionStatus | number;
-  /** Named form of the projected lifecycle status. */
+  /** Named form of the exact persisted lifecycle status. */
   statusName?: TransactionStatus;
-
-  /** Exact status currently persisted by the transaction manager. */
-  storedStatus?: number;
-  /** Named form of the exact stored status. */
-  storedStatusName?: TransactionStatus;
-  /** Resolution-kernel action currently available for the transaction. */
-  resolutionAction?: number;
-  /** Named form of the available resolution action. */
-  resolutionActionName?: TransactionResolutionAction;
-  /** Authoritative queue-head/deadline result from `ConsensusData.canFinalize`. */
-  canFinalize?: boolean;
+  /** Simple lifecycle derived from `status`; it never uses timestamp projection. */
+  lifecycle: TransactionLifecycle;
 
   // hash: localnet // txId: testnet// hash: localnet // txId: testnet
   hash?: TransactionHash;

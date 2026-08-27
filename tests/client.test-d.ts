@@ -85,6 +85,55 @@ test("type checks", () => {
     retries: 10,
   });
 
+  void client.waitForDecision({
+    hash: "0x1234567890123456789012345678901234567890123456789012345678901234" as TransactionHash,
+    fullTransaction: true,
+  });
+
+  void client.waitForFinalization({
+    hash: "0x1234567890123456789012345678901234567890123456789012345678901234" as TransactionHash,
+    retries: 10,
+  });
+
+  void client.advanced.getTransactionLifecycle({
+    hash: "0x1234567890123456789012345678901234567890123456789012345678901234" as TransactionHash,
+    timestamp: 1_700_000_000,
+  }).then(lifecycle => {
+    void lifecycle.storedStatus;
+    void lifecycle.storedStatusCode;
+    void lifecycle.projectedStatus;
+    void lifecycle.projectedStatusCode;
+    void lifecycle.resolutionAction;
+    void lifecycle.resolutionActionCode;
+    void lifecycle.resolutionSource;
+    void lifecycle.resolutionSourceCode;
+    void lifecycle.decisionId;
+    void lifecycle.decisionActive;
+    void lifecycle.evaluatedAt;
+    // @ts-expect-error finalization is represented by resolutionAction === "Finalize"
+    void lifecycle.finalization;
+    // @ts-expect-error there is no separate readiness field
+    void lifecycle.canFinalize;
+  });
+
+  // @ts-expect-error raw lifecycle access is intentionally kept out of the primary client namespace
+  void client.getTransactionLifecycle;
+
+  void client.getTransaction({
+    hash: "0x1234567890123456789012345678901234567890123456789012345678901234" as TransactionHash,
+  }).then(transaction => {
+    if (transaction.lifecycle.state === "processing") {
+      void transaction.lifecycle.phase;
+      // @ts-expect-error processing transactions do not expose an outcome
+      void transaction.lifecycle.outcome;
+    }
+    // Protocol projection/action is intentionally absent from the primary model.
+    // @ts-expect-error use advanced.getTransactionLifecycle for raw resolution details
+    void transaction.resolutionAction;
+    // @ts-expect-error use advanced.getTransactionLifecycle for the resolution action
+    void transaction.canFinalize;
+  });
+
   // @ts-expect-error missing hash
   void client.waitForTransactionReceipt({
     status: TransactionStatus.FINALIZED,

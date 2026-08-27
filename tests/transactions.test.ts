@@ -9,10 +9,15 @@ import {
   transactionsStatusNameToNumber,
   TransactionResolutionAction,
   transactionResolutionActionNumberToName,
+  TransactionProtocolStatus,
+  transactionProtocolStatusNumberToName,
+  TransactionResolutionSource,
+  transactionResolutionSourceNumberToName,
   transactionResultNumberToName,
   executionResultNumberToName,
   VoteType,
   voteTypeNumberToName,
+  transactionLifecycleFromStoredStatus,
 } from "../src/types/transactions";
 import { receiptActions, transactionActions, isSuccessful } from "../src/transactions/actions";
 import { decodeTransaction, simplifyTransactionReceipt } from "../src/transactions/decoders";
@@ -83,6 +88,23 @@ describe("transaction enum maps", () => {
       "5": TransactionResolutionAction.MATERIALIZE_DECISION,
       "6": TransactionResolutionAction.FINALIZE,
     });
+    expect(transactionProtocolStatusNumberToName["5"]).toBe(TransactionProtocolStatus.ACCEPTED);
+    expect(transactionProtocolStatusNumberToName["13"]).toBe(TransactionProtocolStatus.LEADER_REVEALING);
+    expect(transactionResolutionSourceNumberToName).toEqual({
+      "0": TransactionResolutionSource.UNSPECIFIED,
+      "1": TransactionResolutionSource.ACTIVATION_INSUFFICIENT_VALIDATORS,
+      "2": TransactionResolutionSource.PROPOSAL_HANGING,
+      "3": TransactionResolutionSource.LEADER_RECEIPT_TIMEOUT,
+      "4": TransactionResolutionSource.COMMIT_HANGING,
+      "5": TransactionResolutionSource.LEADER_REVEAL_HANGING,
+      "6": TransactionResolutionSource.FULL_REVEAL,
+      "7": TransactionResolutionSource.REVEAL_DEADLINE,
+      "8": TransactionResolutionSource.APPEAL_COMMIT_HANGING,
+      "9": TransactionResolutionSource.APPEAL_FULL_REVEAL,
+      "10": TransactionResolutionSource.APPEAL_REVEAL_DEADLINE,
+      "11": TransactionResolutionSource.SELECTION_DEPLETED,
+    });
+    expect(CONSENSUS_DATA_TRAIN_ABI.some(item => item.type === "function" && item.name === "canFinalize")).toBe(false);
     expect(isDecidedState("13")).toBe(false);
     expect(executionResultNumberToName["3"]).toBe(ExecutionResult.TIMEOUT);
     expect(executionResultNumberToName["4"]).toBe(ExecutionResult.NONDET_DISAGREE);
@@ -138,6 +160,43 @@ describe("transaction enum maps", () => {
     expect(decoded.resolution.projectedStatus).toBe(6);
     expect(decoded.resolution.action).toBe(6);
     expect(decoded.decisionActive).toBe(true);
+  });
+});
+
+describe("stored transaction lifecycle mapping", () => {
+  it.each([
+    [0, {state: "processing", phase: "uninitialized"}],
+    [1, {state: "processing", phase: "pending"}],
+    [2, {state: "processing", phase: "proposing"}],
+    [3, {state: "processing", phase: "committing"}],
+    [4, {state: "processing", phase: "revealing"}],
+    [5, {state: "decided", outcome: "accepted"}],
+    [6, {state: "decided", outcome: "undetermined"}],
+    [8, {state: "canceled"}],
+    [9, {state: "processing", phase: "appeal-revealing"}],
+    [10, {state: "processing", phase: "appeal-committing"}],
+    [11, {state: "decided", outcome: "validators-timeout"}],
+    [12, {state: "decided", outcome: "leader-timeout"}],
+    [13, {state: "processing", phase: "leader-revealing"}],
+  ] as const)("maps stored status %i without projection", (status, expected) => {
+    expect(transactionLifecycleFromStoredStatus(status)).toEqual(expected);
+  });
+
+  it.each([
+    [1, {state: "finalized", outcome: "accepted"}],
+    [2, {state: "finalized", outcome: "undetermined"}],
+    [3, {state: "finalized", outcome: "validators-timeout"}],
+    [4, {state: "finalized", outcome: "undetermined"}],
+    [5, {state: "finalized", outcome: "undetermined"}],
+    [0, {state: "finalized"}],
+  ] as const)("maps finalized result %i only when its outcome is unambiguous", (result, expected) => {
+    expect(transactionLifecycleFromStoredStatus(7, result)).toEqual(expected);
+  });
+
+  it("fails loudly for an unknown protocol status", () => {
+    expect(() => transactionLifecycleFromStoredStatus(14)).toThrow(
+      "Unknown stored transaction status: 14",
+    );
   });
 });
 
@@ -302,6 +361,51 @@ describe("waitForTransactionReceipt with DECIDED_STATES", () => {
     });
 
     expect(result).toEqual(mockTransaction);
+  });
+
+  it("waitForFinalization ignores a projected final status", async () => {
+    const hash = "0x4b8037744adab7ea8335b4f839979d20031d83a8ccdf706e0ae61312930335f6" as any;
+    const mockClient = {
+      chain: localnet,
+      getTransaction: vi.fn().mockResolvedValue({
+        hash,
+        status: 5,
+        statusName: TransactionStatus.ACCEPTED,
+        lifecycle: {state: "decided", outcome: "accepted"},
+        projectedStatus: 7,
+      }),
+    };
+
+    await expect(receiptActions(mockClient as any, {} as any).waitForFinalization({
+      hash,
+      retries: 0,
+    })).rejects.toThrow('current status: 5');
+  });
+
+  it("provides focused decision and finalization wait helpers", async () => {
+    const hash = "0x4b8037744adab7ea8335b4f839979d20031d83a8ccdf706e0ae61312930335f6" as any;
+    const decided = {
+      hash,
+      status: 6,
+      statusName: TransactionStatus.UNDETERMINED,
+      lifecycle: {state: "decided", outcome: "undetermined"},
+    };
+    const finalized = {
+      hash,
+      status: 7,
+      statusName: TransactionStatus.FINALIZED,
+      lifecycle: {state: "finalized", outcome: "undetermined"},
+    };
+    const mockClient = {
+      chain: localnet,
+      getTransaction: vi.fn()
+        .mockResolvedValueOnce(decided)
+        .mockResolvedValueOnce(finalized),
+    };
+    const actions = receiptActions(mockClient as any, {} as any);
+
+    await expect(actions.waitForDecision({hash, fullTransaction: true})).resolves.toEqual(decided);
+    await expect(actions.waitForFinalization({hash, fullTransaction: true})).resolves.toEqual(finalized);
   });
 });
 
@@ -515,7 +619,7 @@ const TRANSACTION_MANAGER = "0x0000000000000000000000000000000000000014";
 
 const trainLifecycle = (overrides: Record<string, unknown> = {}) => ({
   storedStatus: 5,
-  resolution: {projectedStatus: 5, action: 0},
+  resolution: {projectedStatus: 5, action: 0, source: 0, evaluatedAt: 456n},
   latestDecision: {},
   decisionActive: false,
   ...overrides,
@@ -524,13 +628,11 @@ const trainLifecycle = (overrides: Record<string, unknown> = {}) => ({
 const trainReadContract = ({
   light = makeLightTx(),
   lifecycle = trainLifecycle(),
-  canFinalize = false,
   roundValidators = [] as string[],
   consumedValidators = [] as string[],
 }: {
   light?: ReturnType<typeof makeLightTx>;
   lifecycle?: ReturnType<typeof trainLifecycle>;
-  canFinalize?: boolean;
   roundValidators?: string[];
   consumedValidators?: string[];
 } = {}) => vi.fn().mockImplementation(async ({functionName, args}: any) => {
@@ -542,7 +644,6 @@ const trainReadContract = ({
   }
   if (functionName === "getStoredTransactionDataLight") return light;
   if (functionName === "getTransactionLifecycle") return lifecycle;
-  if (functionName === "canFinalize") return [canFinalize, 456n, 400n];
   if (functionName === "getRoundValidatorsPaged") {
     const offset = Number(args[2]);
     const size = Number(args[3]);
@@ -611,7 +712,7 @@ describe("getTriggeredTransactionIds", () => {
 });
 
 describe("getTransaction train lifecycle", () => {
-  it("returns projected and stored state from one block snapshot", async () => {
+  it("returns only the stored state in the primary transaction model", async () => {
     const validators = Array.from(
       {length: 65},
       (_, index) => `0x${(index + 1).toString(16).padStart(40, "0")}`,
@@ -624,13 +725,6 @@ describe("getTransaction train lifecycle", () => {
     });
     const readContract = trainReadContract({
       light,
-      lifecycle: trainLifecycle({
-        storedStatus: 5,
-        resolution: {projectedStatus: 6, action: 6},
-        latestDecision: {decisionId: 42n},
-        decisionActive: true,
-      }),
-      canFinalize: true,
       roundValidators: validators,
       consumedValidators: consumed,
     });
@@ -652,29 +746,20 @@ describe("getTransaction train lifecycle", () => {
       hash: light.txId as any,
     });
 
-    expect(transaction.status).toBe(6);
-    expect(transaction.statusName).toBe(TransactionStatus.UNDETERMINED);
-    expect(transaction.storedStatus).toBe(5);
-    expect(transaction.storedStatusName).toBe(TransactionStatus.ACCEPTED);
-    expect(transaction.resolutionAction).toBe(6);
-    expect(transaction.resolutionActionName).toBe("FINALIZE");
-    expect(transaction.canFinalize).toBe(true);
+    expect(transaction.status).toBe(5);
+    expect(transaction.statusName).toBe(TransactionStatus.ACCEPTED);
+    expect(transaction.lifecycle).toEqual({state: "decided", outcome: "accepted"});
+    expect(transaction).not.toHaveProperty("storedStatus");
+    expect(transaction).not.toHaveProperty("resolutionAction");
+    expect(transaction).not.toHaveProperty("canFinalize");
     expect(transaction.lastRound?.roundValidators).toEqual(validators);
     expect(transaction.lastRound?.validatorResultHash).toHaveLength(validators.length);
     expect(transaction.consumedValidators).toEqual(consumed);
-    expect(readContract).toHaveBeenCalledWith(
-      expect.objectContaining({
-        functionName: "getTransactionLifecycle",
-        args: [light.txId, 456n],
-        blockNumber: 123n,
-      }),
+    expect(readContract).not.toHaveBeenCalledWith(
+      expect.objectContaining({functionName: "getTransactionLifecycle"}),
     );
-    expect(readContract).toHaveBeenCalledWith(
-      expect.objectContaining({
-        functionName: "canFinalize",
-        args: [light.txId, 456n, 42n],
-        blockNumber: 123n,
-      }),
+    expect(readContract).not.toHaveBeenCalledWith(
+      expect.objectContaining({functionName: "canFinalize"}),
     );
     expect(readContract).not.toHaveBeenCalledWith(
       expect.objectContaining({functionName: "getTransactionAllData"}),
@@ -684,17 +769,16 @@ describe("getTransaction train lifecycle", () => {
     );
   });
 
-  it("does not infer queue-head readiness from a FINALIZE action", async () => {
+  it("normalizes the contract-backed advanced lifecycle from one fixed-block read", async () => {
     const light = makeLightTx();
     const readContract = trainReadContract({
       light,
       lifecycle: trainLifecycle({
         storedStatus: 5,
-        resolution: {projectedStatus: 5, action: 6},
+        resolution: {projectedStatus: 6, action: 6, source: 11, evaluatedAt: 500n},
         latestDecision: {decisionId: 7n},
         decisionActive: true,
       }),
-      canFinalize: false,
     });
     const publicClient = {
       readContract,
@@ -710,12 +794,126 @@ describe("getTransaction train lifecycle", () => {
       },
     } as any;
 
-    const transaction = await transactionActions(client, publicClient).getTransaction({
+    const lifecycle = await transactionActions(client, publicClient).advanced.getTransactionLifecycle({
+      hash: light.txId as any,
+      timestamp: 500,
+    });
+
+    expect(lifecycle).toEqual({
+      storedStatus: "Accepted",
+      storedStatusCode: 5,
+      projectedStatus: "Undetermined",
+      projectedStatusCode: 6,
+      resolutionAction: "Finalize",
+      resolutionActionCode: 6,
+      resolutionSource: "SelectionDepleted",
+      resolutionSourceCode: 11,
+      decisionId: "7",
+      decisionActive: true,
+      evaluatedAt: 500,
+    });
+    expect(readContract).toHaveBeenCalledWith(
+      expect.objectContaining({
+        functionName: "getTransactionLifecycle",
+        args: [light.txId, 500n],
+        blockNumber: 123n,
+      }),
+    );
+    expect(readContract).toHaveBeenCalledTimes(1);
+    expect(lifecycle).not.toHaveProperty("finalization");
+    expect(lifecycle).not.toHaveProperty("canFinalize");
+  });
+
+  it("uses the advanced node RPC on Studio and returns the same normalized schema", async () => {
+    const hash = makeLightTx().txId as any;
+    const request = vi.fn().mockResolvedValue({
+      storedStatus: "Accepted",
+      storedStatusCode: 5,
+      projectedStatus: "Undetermined",
+      projectedStatusCode: 6,
+      resolutionAction: "Finalize",
+      resolutionActionCode: 6,
+      resolutionSource: "SelectionDepleted",
+      resolutionSourceCode: 11,
+      decisionId: "0007",
+      decisionActive: true,
+      evaluatedAt: 500,
+    });
+    const publicClient = {
+      getBlock: vi.fn(),
+      readContract: vi.fn(),
+    } as any;
+    const client = {chain: {isStudio: true}, request} as any;
+
+    const lifecycle = await transactionActions(client, publicClient).advanced.getTransactionLifecycle({
+      hash,
+      timestamp: 500,
+    });
+
+    expect(lifecycle).toEqual({
+      storedStatus: "Accepted",
+      storedStatusCode: 5,
+      projectedStatus: "Undetermined",
+      projectedStatusCode: 6,
+      resolutionAction: "Finalize",
+      resolutionActionCode: 6,
+      resolutionSource: "SelectionDepleted",
+      resolutionSourceCode: 11,
+      decisionId: "7",
+      decisionActive: true,
+      evaluatedAt: 500,
+    });
+    expect(request).toHaveBeenCalledWith({
+      method: "gen_getTransactionLifecycle",
+      params: [{txId: hash, timestamp: 500}],
+    });
+    expect(publicClient.getBlock).not.toHaveBeenCalled();
+    expect(publicClient.readContract).not.toHaveBeenCalled();
+    expect(lifecycle).not.toHaveProperty("finalization");
+    expect(lifecycle).not.toHaveProperty("canFinalize");
+  });
+
+  it("uses block time by default and nulls an inactive decision identity", async () => {
+    const light = makeLightTx();
+    const readContract = trainReadContract({
+      lifecycle: trainLifecycle({
+        storedStatus: 1,
+        resolution: {projectedStatus: 1, action: 0, source: 0, evaluatedAt: 456n},
+        latestDecision: {decisionId: 999n},
+        decisionActive: false,
+      }),
+    });
+    const publicClient = {
+      readContract,
+      getBlock: vi.fn().mockResolvedValue({number: 123n, timestamp: 456n}),
+    } as any;
+    const client = {
+      chain: {
+        isStudio: false,
+        consensusDataContract: {address: "0x0000000000000000000000000000000000000010", abi: []},
+      },
+    } as any;
+
+    const lifecycle = await transactionActions(client, publicClient).advanced.getTransactionLifecycle({
       hash: light.txId as any,
     });
 
-    expect(transaction.resolutionActionName).toBe("FINALIZE");
-    expect(transaction.canFinalize).toBe(false);
+    expect(lifecycle).toEqual({
+      storedStatus: "Pending",
+      storedStatusCode: 1,
+      projectedStatus: "Pending",
+      projectedStatusCode: 1,
+      resolutionAction: "NoOp",
+      resolutionActionCode: 0,
+      resolutionSource: "Unspecified",
+      resolutionSourceCode: 0,
+      decisionId: null,
+      decisionActive: false,
+      evaluatedAt: 456,
+    });
+    expect(readContract).toHaveBeenCalledWith(
+      expect.objectContaining({args: [light.txId, 456n], blockNumber: 123n}),
+    );
   });
 });
 
@@ -731,6 +929,7 @@ describe("decodeTransaction", () => {
     expect(decoded.txReceipt).toBeUndefined();
     expect(decoded.txSlot).toBe("5");
     expect(decoded.statusName).toBe("ACCEPTED");
+    expect(decoded.lifecycle).toEqual({state: "decided", outcome: "accepted"});
     expect(decoded.resultName).toBe("MAJORITY_AGREE");
   });
 

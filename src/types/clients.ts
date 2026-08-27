@@ -17,6 +17,8 @@ import {
   SimulateWriteContractResult,
   ConsensusRoundData,
   ConsensusLastRoundData,
+  TransactionProtocolLifecycle,
+  TransactionProtocolLifecycleArgs,
 } from "./transactions";
 import {GenLayerChain} from "./chains";
 import {Address, Account} from "./accounts";
@@ -36,6 +38,7 @@ export type GenLayerMethod =
   | {method: "gen_getContractSchema"; params: [address: Address] | [{address: Address}] | [{code: string}]}
   | {method: "gen_getContractSchemaForCode"; params: [contractCode: string]}
   | {method: "gen_getContractCode"; params: [address: Address] | [{address: Address}]}
+  | {method: "gen_getTransactionLifecycle"; params: [{txId: TransactionHash; timestamp?: number}]}
   | {method: "sim_getTransactionsForAddress"; params: [address: Address, filter?: "all" | "from" | "to"]}
   | {method: "eth_getTransactionCount"; params: [address: Address, block: string]}
   | {method: "eth_estimateGas"; params: [transactionParams: any]}
@@ -115,6 +118,10 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       fees?: TransactionFeeOptions;
     }) => Promise<`0x${string}`>;
     getTransaction: (args: {hash: TransactionHash}) => Promise<GenLayerTransaction>;
+    advanced: {
+      /** Protocol lifecycle read with projection and resolution action details. */
+      getTransactionLifecycle: (args: TransactionProtocolLifecycleArgs) => Promise<TransactionProtocolLifecycle>;
+    };
     getCurrentNonce: (args: {address: Address}) => Promise<number>;
     transfer: (args: {to: Address; value: bigint}) => Promise<TransactionReceipt>;
     estimateTransactionGas: (transactionParams: {
@@ -128,6 +135,18 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       /** @deprecated Use waitUntil: "decided" or waitUntil: "finalized" instead. */
       status?: TransactionStatus;
       waitUntil?: TransactionReceiptWaitUntil;
+      interval?: number;
+      retries?: number;
+      fullTransaction?: boolean;
+    }) => Promise<GenLayerTransaction>;
+    waitForDecision: (args: {
+      hash: TransactionHash;
+      interval?: number;
+      retries?: number;
+      fullTransaction?: boolean;
+    }) => Promise<GenLayerTransaction>;
+    waitForFinalization: (args: {
+      hash: TransactionHash;
       interval?: number;
       retries?: number;
       fullTransaction?: boolean;
