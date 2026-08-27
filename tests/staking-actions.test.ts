@@ -56,6 +56,12 @@ const readRegistrationContract = vi.fn().mockImplementation(async ({functionName
   throw new Error(`Unexpected read: ${functionName}`);
 });
 
+const makeStakingReadHarness = (readContract: ReturnType<typeof vi.fn>) => {
+  const client = {chain: baseChain};
+  const publicClient = {readContract};
+  return {actions: stakingActions(client as any, publicClient as any), publicClient};
+};
+
 // Local-key harness (byte-for-byte regression anchor for the sign+sendRaw lane).
 const makeLocalHarness = () => {
   const signTransaction = vi.fn().mockResolvedValue("0xsigned");
@@ -250,5 +256,126 @@ describe("stakingActions provider lane (Address-only)", () => {
     await actions.delegatorExit({validator: VALIDATOR_WALLET_ADDRESS, shares: "1"});
 
     expect(sentTxParams(request).gasPrice).toBeUndefined();
+  });
+});
+
+describe("stakingActions validator reads", () => {
+  it("uses the authoritative ban predicate instead of a stale nonzero ban epoch", async () => {
+    const readContract = vi.fn().mockImplementation(async ({functionName}: any) => {
+      if (functionName === "isValidator") return true;
+      if (functionName === "validatorView") {
+        return {
+          eBanned: 5n,
+          ePrimed: 9n,
+          vStake: parseEther("2"),
+          vShares: 2n,
+          dStake: 0n,
+          dShares: 0n,
+          vDeposit: 0n,
+          vWithdrawal: 0n,
+          live: true,
+        };
+      }
+      if (functionName === "owner") return ACCOUNT_ADDRESS;
+      if (functionName === "operator") return OPERATOR_ADDRESS;
+      if (functionName === "getIdentity") return null;
+      if (functionName === "epoch") return 10n;
+      if (functionName === "validatorMinStake") return parseEther("1");
+      if (functionName === "isValidatorBanned") return false;
+      if (functionName === "validatorDepositLen") return 0n;
+      if (functionName === "validatorWithdrawalLen") return 0n;
+      throw new Error(`Unexpected read: ${functionName}`);
+    });
+    const {actions} = makeStakingReadHarness(readContract);
+
+    const info = await actions.getValidatorInfo(VALIDATOR_WALLET_ADDRESS);
+
+    expect(info.banned).toBe(false);
+    expect(info.bannedEpoch).toBeUndefined();
+    expect(readContract).toHaveBeenCalledWith(expect.objectContaining({
+      functionName: "isValidatorBanned",
+      args: [VALIDATOR_WALLET_ADDRESS],
+    }));
+  });
+});
+
+describe("stakingActions validator-set reads", () => {
+  it("keeps setOperator source-compatible with an actionable train migration error", async () => {
+    const readContract = vi.fn();
+    const {actions} = makeStakingReadHarness(readContract);
+
+    await expect(actions.setOperator({
+      validator: VALIDATOR_WALLET_ADDRESS,
+      operator: ACCOUNT_ADDRESS,
+    })).rejects.toThrow("initiateOperatorTransfer and completeOperatorTransfer");
+    expect(readContract).not.toHaveBeenCalled();
+  });
+
+  it("keeps active-validator APIs bound to the selectable duty set", async () => {
+    const selectable = [ACCOUNT_ADDRESS, VALIDATOR_WALLET_ADDRESS];
+    const readContract = vi.fn().mockImplementation(async ({functionName}: any) => {
+      if (functionName === "selectableValidators") return selectable;
+      if (functionName === "selectableValidatorsCount") return 2n;
+      throw new Error(`Unexpected read: ${functionName}`);
+    });
+    const {actions} = makeStakingReadHarness(readContract);
+
+    await expect(actions.getActiveValidators()).resolves.toEqual(selectable);
+    await expect(actions.getActiveValidatorsCount()).resolves.toBe(2n);
+    expect(readContract).not.toHaveBeenCalledWith(
+      expect.objectContaining({functionName: "validatorsJoinedCount"}),
+    );
+    expect(readContract).not.toHaveBeenCalledWith(
+      expect.objectContaining({functionName: "getValidatorsJoined"}),
+    );
+  });
+
+  it("exposes the joined registry separately and reads it in bounded pages", async () => {
+    const joined = Array.from(
+      {length: 66},
+      (_, index) => `0x${(index + 1).toString(16).padStart(40, "0")}`,
+    );
+    const readContract = vi.fn().mockImplementation(async ({functionName, args}: any) => {
+      if (functionName === "validatorsJoinedCount") return 66n;
+      if (functionName === "getValidatorsJoined") {
+        const [start, size] = args as [bigint, bigint];
+        return joined.slice(Number(start), Number(start + size));
+      }
+      throw new Error(`Unexpected read: ${functionName}`);
+    });
+    const {actions} = makeStakingReadHarness(readContract);
+
+    await expect(actions.getJoinedValidatorsCount()).resolves.toBe(66n);
+    await expect(actions.getJoinedValidators()).resolves.toEqual(joined);
+    expect(readContract).toHaveBeenCalledWith(
+      expect.objectContaining({functionName: "getValidatorsJoined", args: [0n, 64n]}),
+    );
+    expect(readContract).toHaveBeenCalledWith(
+      expect.objectContaining({functionName: "getValidatorsJoined", args: [64n, 64n]}),
+    );
+  });
+
+  it("reports the selectable count as active in epoch information", async () => {
+    const epochData = [10n, 0n, 0n, 0n, 0n, 0n, 3n, 0n, 0n, 0n, 0n];
+    const responses: Record<string, unknown> = {
+      epoch: 4n,
+      finalized: 3n,
+      selectableValidatorsCount: 2n,
+      epochMinDuration: 60n,
+      epochZeroMinDuration: 120n,
+      epochOdd: epochData,
+      epochEven: epochData,
+      validatorMinStake: 1n,
+      delegatorMinStake: 1n,
+    };
+    const readContract = vi.fn().mockImplementation(async ({functionName}: any) => responses[functionName]);
+    const {actions} = makeStakingReadHarness(readContract);
+
+    const info = await actions.getEpochInfo();
+
+    expect(info.activeValidatorsCount).toBe(2n);
+    expect(readContract).toHaveBeenCalledWith(
+      expect.objectContaining({functionName: "selectableValidatorsCount"}),
+    );
   });
 });

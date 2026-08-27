@@ -17,9 +17,6 @@ export type StakingContract = GetContractReturnType<
 >;
 
 export interface ValidatorView {
-  left: Address;
-  right: Address;
-  parent: Address;
   eBanned: bigint;
   ePrimed: bigint;
   vStake: bigint;
@@ -74,8 +71,11 @@ export interface ValidatorInfo {
 export interface WithdrawalCommit {
   input: bigint;
   output: bigint;
+  outstanding: bigint;
   epoch: bigint;
   linkToNextCommit: bigint;
+  priced: boolean;
+  fragmented: boolean;
 }
 
 export interface PendingDeposit {
@@ -237,6 +237,8 @@ export interface DelegatorClaimOptions {
 export interface StakingActions {
   validatorJoin: (options: ValidatorJoinOptions) => Promise<ValidatorJoinResult>;
   getValidatorRegistrationContext: () => Promise<OperatorRegistrationContext>;
+  /** @deprecated Use initiateOperatorTransfer followed by completeOperatorTransfer. */
+  setOperator: (options: SetOperatorOptions) => Promise<StakingTransactionResult>;
   getOperatorTransferContext: (validator: Address) => Promise<OperatorRegistrationContext>;
   initiateOperatorTransfer: (options: InitiateOperatorTransferOptions) => Promise<StakingTransactionResult>;
   completeOperatorTransfer: (options: CompleteOperatorTransferOptions) => Promise<StakingTransactionResult>;
@@ -248,6 +250,7 @@ export interface StakingActions {
   delegatorJoin: (options: DelegatorJoinOptions) => Promise<DelegatorJoinResult>;
   delegatorExit: (options: DelegatorExitOptions) => Promise<StakingTransactionResult>;
   delegatorClaim: (options: DelegatorClaimOptions) => Promise<StakingTransactionResult>;
+  /** Checks whether the address is a registered/joined validator wallet. */
   isValidator: (address: Address) => Promise<boolean>;
   getValidatorInfo: (validator: Address) => Promise<ValidatorInfo>;
   getStakeInfo: (delegator: Address, validator: Address) => Promise<StakeInfo>;
@@ -255,6 +258,8 @@ export interface StakingActions {
   getEpochData: (epochNumber: bigint) => Promise<EpochData>;
   getActiveValidators: () => Promise<Address[]>;
   getActiveValidatorsCount: () => Promise<bigint>;
+  getJoinedValidators: () => Promise<Address[]>;
+  getJoinedValidatorsCount: () => Promise<bigint>;
   getStakingContract: () => StakingContract;
   parseStakingAmount: (amount: string | bigint) => bigint;
   formatStakingAmount: (amount: bigint) => string;

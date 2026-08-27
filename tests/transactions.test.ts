@@ -6,14 +6,20 @@ import {
   DECIDED_STATES,
   isDecidedState,
   transactionsStatusNumberToName,
+  transactionsStatusNameToNumber,
+  TransactionResolutionAction,
+  transactionResolutionActionNumberToName,
   transactionResultNumberToName,
   executionResultNumberToName,
+  VoteType,
+  voteTypeNumberToName,
 } from "../src/types/transactions";
 import { receiptActions, transactionActions, isSuccessful } from "../src/transactions/actions";
 import { decodeTransaction, simplifyTransactionReceipt } from "../src/transactions/decoders";
 import { localnet } from "../src/chains/localnet";
 import type { GenLayerRawTransaction } from "../src/types/transactions";
-import {keccak256, stringToBytes} from "viem";
+import {decodeFunctionResult, encodeFunctionResult, keccak256, stringToBytes} from "viem";
+import {CONSENSUS_DATA_BIG_ROUNDS_TRAIN_ABI, CONSENSUS_DATA_TRAIN_ABI} from "../src/abi/consensusTrain";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -66,9 +72,36 @@ describe("transaction enum maps", () => {
     expect(transactionsStatusNumberToName["13"]).toBe(TransactionStatus.LEADER_REVEALING);
     expect(transactionsStatusNumberToName["11"]).toBe(TransactionStatus.VALIDATORS_TIMEOUT);
     expect(transactionsStatusNumberToName["12"]).toBe(TransactionStatus.LEADER_TIMEOUT);
+    expect("READY_TO_FINALIZE" in TransactionStatus).toBe(false);
+    expect(Object.keys(transactionsStatusNameToNumber)).not.toContain("READY_TO_FINALIZE");
+    expect(transactionResolutionActionNumberToName).toEqual({
+      "0": TransactionResolutionAction.NO_OP,
+      "1": TransactionResolutionAction.CANCEL,
+      "2": TransactionResolutionAction.REPLACE_ACTOR,
+      "3": TransactionResolutionAction.ROTATE_LEADER,
+      "4": TransactionResolutionAction.RESOLVE_APPEAL,
+      "5": TransactionResolutionAction.MATERIALIZE_DECISION,
+      "6": TransactionResolutionAction.FINALIZE,
+    });
     expect(isDecidedState("13")).toBe(false);
     expect(executionResultNumberToName["3"]).toBe(ExecutionResult.TIMEOUT);
     expect(executionResultNumberToName["4"]).toBe(ExecutionResult.NONDET_DISAGREE);
+    expect(executionResultNumberToName).toEqual({
+      "0": ExecutionResult.NOT_VOTED,
+      "1": ExecutionResult.FINISHED_WITH_RETURN,
+      "2": ExecutionResult.FINISHED_WITH_ERROR,
+      "3": ExecutionResult.TIMEOUT,
+      "4": ExecutionResult.NONDET_DISAGREE,
+      "5": ExecutionResult.DETERMINISTIC_VIOLATION,
+    });
+    expect(voteTypeNumberToName).toEqual({
+      "0": VoteType.NOT_VOTED,
+      "1": VoteType.FINISHED_WITH_RETURN,
+      "2": VoteType.FINISHED_WITH_ERROR,
+      "3": VoteType.TIMEOUT,
+      "4": VoteType.NONDET_DISAGREE,
+      "5": VoteType.DETERMINISTIC_VIOLATION,
+    });
     expect(transactionResultNumberToName).toEqual({
       "0": TransactionResult.IDLE,
       "1": TransactionResult.MAJORITY_AGREE,
@@ -77,6 +110,34 @@ describe("transaction enum maps", () => {
       "4": TransactionResult.DETERMINISTIC_VIOLATION,
       "5": TransactionResult.NO_MAJORITY,
     });
+  });
+
+  it("decodes the train lifecycle ABI from raw return bytes", () => {
+    const bytes32 = `0x${"00".repeat(32)}` as const;
+    const resolution = [
+      bytes32, 5, 6, 6, 1, bytes32, 0, 0n, 0n, bytes32, bytes32, 0n, 0n,
+      0n, 0, bytes32, 100n, 101n, 102n, 10n, 110n, false, true, false,
+    ] as const;
+    const latestDecision = [
+      true, 1n, 0n, 0, 0, bytes32, 5, 6, 0n, 0n, bytes32, bytes32, 0n,
+      0n, 1, bytes32, 100n, 101n, 110n,
+    ] as const;
+    const encoded = encodeFunctionResult({
+      abi: CONSENSUS_DATA_TRAIN_ABI,
+      functionName: "getTransactionLifecycle",
+      result: [5, resolution, latestDecision, true] as any,
+    });
+
+    const decoded = decodeFunctionResult({
+      abi: CONSENSUS_DATA_TRAIN_ABI,
+      functionName: "getTransactionLifecycle",
+      data: encoded,
+    }) as any;
+
+    expect(decoded.storedStatus).toBe(5);
+    expect(decoded.resolution.projectedStatus).toBe(6);
+    expect(decoded.resolution.action).toBe(6);
+    expect(decoded.decisionActive).toBe(true);
   });
 });
 
@@ -322,21 +383,24 @@ describe("cancelTransaction", () => {
   });
 });
 
-// ─── decodeTransaction field normalization ──────────────────────────────────
+// ─── decodeTransaction train layout ─────────────────────────────────────────
 
 const makeRawTx = (overrides: Record<string, unknown> = {}): GenLayerRawTransaction => ({
-  currentTimestamp: 1000n,
+  observedAt: 1000n,
   sender: "0x0000000000000000000000000000000000000001" as any,
   recipient: "0x0000000000000000000000000000000000000002" as any,
-  numOfInitialValidators: 3n,
+  initialRotations: 3n,
+  numOfInitialValidators: 5n,
   txSlot: 5n,
   createdTimestamp: 900n,
   lastVoteTimestamp: 950n,
   randomSeed: "0x" + "ab".repeat(32) as any,
   result: 1,
-  txData: "0x" as any,
-  txReceipt: "0x" + "00".repeat(32) as any,
+  txCalldata: "0x" as any,
+  txExecutionHash: "0x" + "00".repeat(32) as any,
+  eqBlocksOutputs: "0x",
   messages: [],
+  consumedValidators: [],
   queueType: 0,
   queuePosition: 0n,
   activator: "0x0000000000000000000000000000000000000003" as any,
@@ -359,9 +423,142 @@ const makeRawTx = (overrides: Record<string, unknown> = {}): GenLayerRawTransact
     result: 1,
     roundValidators: [],
     validatorVotesHash: [],
+    validatorResultHash: [],
     validatorVotes: [1, 1, 1],
   },
   ...overrides,
+});
+
+const makeLightTx = (overrides: Record<string, unknown> = {}) => {
+  const raw = makeRawTx();
+  return {
+    observedAt: raw.observedAt,
+    sender: raw.sender,
+    recipient: raw.recipient,
+    initialRotations: raw.initialRotations,
+    txSlot: raw.txSlot,
+    createdTimestamp: raw.createdTimestamp,
+    lastVoteTimestamp: raw.lastVoteTimestamp,
+    randomSeed: raw.randomSeed,
+    result: raw.result,
+    txExecutionHash: raw.txExecutionHash,
+    txCalldata: raw.txCalldata,
+    eqBlocksOutputs: raw.eqBlocksOutputs,
+    messages: raw.messages,
+    queueType: raw.queueType,
+    queuePosition: raw.queuePosition,
+    activator: raw.activator,
+    lastLeader: raw.lastLeader,
+    status: raw.status,
+    txId: raw.txId,
+    readStateBlockRange: raw.readStateBlockRange,
+    numOfRounds: raw.numOfRounds,
+    lastRound: {
+      round: raw.lastRound.round,
+      leaderIndex: raw.lastRound.leaderIndex,
+      votesCommitted: raw.lastRound.votesCommitted,
+      votesRevealed: raw.lastRound.votesRevealed,
+      appealBond: raw.lastRound.appealBond,
+      rotationsLeft: raw.lastRound.rotationsLeft,
+      result: raw.lastRound.result,
+      validatorsCount: 0n,
+    },
+    consumedValidatorsCount: 0n,
+    ...overrides,
+  };
+};
+
+describe("train light transaction ABI", () => {
+  it("decodes the exact nested tuple from raw return bytes", () => {
+    const light = makeLightTx({
+      messages: [{
+        messageType: 1,
+        recipient: "0x0000000000000000000000000000000000000005",
+        value: 7n,
+        data: "0x1234",
+        onAcceptance: true,
+        saltNonce: 8n,
+        feeParams: "0xabcd",
+        declaredBudget: 9n,
+        allocationSubtree: "0x5678",
+        callKey: `0x${"11".repeat(32)}`,
+        useBalance: false,
+      }],
+    });
+    const encoded = encodeFunctionResult({
+      abi: CONSENSUS_DATA_BIG_ROUNDS_TRAIN_ABI,
+      functionName: "getStoredTransactionDataLight",
+      result: light as any,
+    });
+    const decoded = decodeFunctionResult({
+      abi: CONSENSUS_DATA_BIG_ROUNDS_TRAIN_ABI,
+      functionName: "getStoredTransactionDataLight",
+      data: encoded,
+    }) as any;
+
+    expect(decoded.txId).toBe(light.txId);
+    expect(decoded.txExecutionHash).toBe(light.txExecutionHash);
+    expect(decoded.lastRound.validatorsCount).toBe(0n);
+    expect(decoded.messages[0]).toMatchObject({
+      messageType: 1,
+      recipient: "0x0000000000000000000000000000000000000005",
+      declaredBudget: 9n,
+      useBalance: false,
+    });
+  });
+});
+
+const ADDRESS_MANAGER = "0x0000000000000000000000000000000000000011";
+const BIG_ROUNDS = "0x0000000000000000000000000000000000000012";
+const ROUNDS_STORAGE = "0x0000000000000000000000000000000000000013";
+const TRANSACTION_MANAGER = "0x0000000000000000000000000000000000000014";
+
+const trainLifecycle = (overrides: Record<string, unknown> = {}) => ({
+  storedStatus: 5,
+  resolution: {projectedStatus: 5, action: 0},
+  latestDecision: {},
+  decisionActive: false,
+  ...overrides,
+});
+
+const trainReadContract = ({
+  light = makeLightTx(),
+  lifecycle = trainLifecycle(),
+  canFinalize = false,
+  roundValidators = [] as string[],
+  consumedValidators = [] as string[],
+}: {
+  light?: ReturnType<typeof makeLightTx>;
+  lifecycle?: ReturnType<typeof trainLifecycle>;
+  canFinalize?: boolean;
+  roundValidators?: string[];
+  consumedValidators?: string[];
+} = {}) => vi.fn().mockImplementation(async ({functionName, args}: any) => {
+  if (functionName === "addressManager") return ADDRESS_MANAGER;
+  if (functionName === "getAddress") {
+    if (args[0] === "ConsensusDataBigRounds") return BIG_ROUNDS;
+    if (args[0] === "RoundsStorage") return ROUNDS_STORAGE;
+    if (args[0] === "TransactionManager") return TRANSACTION_MANAGER;
+  }
+  if (functionName === "getStoredTransactionDataLight") return light;
+  if (functionName === "getTransactionLifecycle") return lifecycle;
+  if (functionName === "canFinalize") return [canFinalize, 456n, 400n];
+  if (functionName === "getRoundValidatorsPaged") {
+    const offset = Number(args[2]);
+    const size = Number(args[3]);
+    return [roundValidators.slice(offset, offset + size), BigInt(roundValidators.length)];
+  }
+  if (functionName === "getConsumedValidatorsPaged") {
+    const offset = Number(args[1]);
+    const size = Number(args[2]);
+    return [consumedValidators.slice(offset, offset + size), BigInt(consumedValidators.length)];
+  }
+  if (functionName === "getValidatorVotes") return roundValidators.map(() => 1);
+  if (functionName === "getValidatorVotesHash") return roundValidators.map(() => `0x${"01".repeat(32)}`);
+  if (functionName === "getValidatorResultHash") return roundValidators.map(() => `0x${"02".repeat(32)}`);
+  if (functionName === "getTxExecutionResult") return 1;
+  if (functionName === "getNumOfInitialValidators") return 5n;
+  throw new Error(`Unexpected read: ${functionName}`);
 });
 
 describe("getTriggeredTransactionIds", () => {
@@ -373,10 +570,11 @@ describe("getTriggeredTransactionIds", () => {
     const internalMessageTopic = keccak256(
       stringToBytes("InternalMessageProcessed(bytes32,address,address)"),
     );
-    const readContract = vi
-      .fn()
-      .mockResolvedValueOnce(makeRawTx({readStateBlockRange: {proposalBlock: 100n}}))
-      .mockResolvedValueOnce([{txExecutionResult: 1n}, []]);
+    const readContract = trainReadContract({
+      light: makeLightTx({
+        readStateBlockRange: {activationBlock: 0n, processingBlock: 0n, proposalBlock: 100n},
+      }),
+    });
     const getLogs = vi.fn().mockResolvedValue([{transactionHash: decisionHash}]);
     const getTransactionReceipt = vi.fn().mockResolvedValue({
       logs: [
@@ -388,6 +586,7 @@ describe("getTriggeredTransactionIds", () => {
     });
     const publicClient = {
       readContract,
+      getBlock: vi.fn().mockResolvedValue({number: 150n, timestamp: 1000n}),
       getBlockNumber: vi.fn().mockResolvedValue(200n),
       getLogs,
       getTransactionReceipt,
@@ -411,44 +610,128 @@ describe("getTriggeredTransactionIds", () => {
   });
 });
 
+describe("getTransaction train lifecycle", () => {
+  it("returns projected and stored state from one block snapshot", async () => {
+    const validators = Array.from(
+      {length: 65},
+      (_, index) => `0x${(index + 1).toString(16).padStart(40, "0")}`,
+    );
+    const consumed = validators.slice(0, 2);
+    const light = makeLightTx({
+      status: 5,
+      lastRound: {...makeLightTx().lastRound, validatorsCount: 65n},
+      consumedValidatorsCount: 2n,
+    });
+    const readContract = trainReadContract({
+      light,
+      lifecycle: trainLifecycle({
+        storedStatus: 5,
+        resolution: {projectedStatus: 6, action: 6},
+        latestDecision: {decisionId: 42n},
+        decisionActive: true,
+      }),
+      canFinalize: true,
+      roundValidators: validators,
+      consumedValidators: consumed,
+    });
+    const publicClient = {
+      readContract,
+      getBlock: vi.fn().mockResolvedValue({number: 123n, timestamp: 456n}),
+    } as any;
+    const client = {
+      chain: {
+        isStudio: false,
+        consensusDataContract: {
+          address: "0x0000000000000000000000000000000000000010",
+          abi: [],
+        },
+      },
+    } as any;
+
+    const transaction = await transactionActions(client, publicClient).getTransaction({
+      hash: light.txId as any,
+    });
+
+    expect(transaction.status).toBe(6);
+    expect(transaction.statusName).toBe(TransactionStatus.UNDETERMINED);
+    expect(transaction.storedStatus).toBe(5);
+    expect(transaction.storedStatusName).toBe(TransactionStatus.ACCEPTED);
+    expect(transaction.resolutionAction).toBe(6);
+    expect(transaction.resolutionActionName).toBe("FINALIZE");
+    expect(transaction.canFinalize).toBe(true);
+    expect(transaction.lastRound?.roundValidators).toEqual(validators);
+    expect(transaction.lastRound?.validatorResultHash).toHaveLength(validators.length);
+    expect(transaction.consumedValidators).toEqual(consumed);
+    expect(readContract).toHaveBeenCalledWith(
+      expect.objectContaining({
+        functionName: "getTransactionLifecycle",
+        args: [light.txId, 456n],
+        blockNumber: 123n,
+      }),
+    );
+    expect(readContract).toHaveBeenCalledWith(
+      expect.objectContaining({
+        functionName: "canFinalize",
+        args: [light.txId, 456n, 42n],
+        blockNumber: 123n,
+      }),
+    );
+    expect(readContract).not.toHaveBeenCalledWith(
+      expect.objectContaining({functionName: "getTransactionAllData"}),
+    );
+    expect(readContract).not.toHaveBeenCalledWith(
+      expect.objectContaining({functionName: "getStoredTransactionData"}),
+    );
+  });
+
+  it("does not infer queue-head readiness from a FINALIZE action", async () => {
+    const light = makeLightTx();
+    const readContract = trainReadContract({
+      light,
+      lifecycle: trainLifecycle({
+        storedStatus: 5,
+        resolution: {projectedStatus: 5, action: 6},
+        latestDecision: {decisionId: 7n},
+        decisionActive: true,
+      }),
+      canFinalize: false,
+    });
+    const publicClient = {
+      readContract,
+      getBlock: vi.fn().mockResolvedValue({number: 123n, timestamp: 456n}),
+    } as any;
+    const client = {
+      chain: {
+        isStudio: false,
+        consensusDataContract: {
+          address: "0x0000000000000000000000000000000000000010",
+          abi: [],
+        },
+      },
+    } as any;
+
+    const transaction = await transactionActions(client, publicClient).getTransaction({
+      hash: light.txId as any,
+    });
+
+    expect(transaction.resolutionActionName).toBe("FINALIZE");
+    expect(transaction.canFinalize).toBe(false);
+  });
+});
+
 describe("decodeTransaction", () => {
-  it("should decode standard field names (localnet/asimov)", () => {
+  it("decodes the canonical train field layout into stable public names", () => {
     const tx = makeRawTx();
     const decoded = decodeTransaction(tx);
-    expect(decoded.numOfInitialValidators).toBe("3");
+    expect(decoded.numOfInitialValidators).toBe("5");
+    expect(decoded.initialRotations).toBe(3n);
+    expect(decoded.currentTimestamp).toBe("1000");
+    expect(decoded.txData).toBe("0x");
+    expect(decoded.txExecutionHash).toBe(tx.txExecutionHash);
+    expect(decoded.txReceipt).toBeUndefined();
     expect(decoded.txSlot).toBe("5");
     expect(decoded.statusName).toBe("ACCEPTED");
     expect(decoded.resultName).toBe("MAJORITY_AGREE");
-  });
-
-  it("should handle Bradbury field: initialRotations instead of numOfInitialValidators", () => {
-    const tx = makeRawTx({ numOfInitialValidators: undefined });
-    (tx as any).initialRotations = 5n;
-    const decoded = decodeTransaction(tx);
-    expect(decoded.numOfInitialValidators).toBe("5");
-  });
-
-  it("should handle Bradbury field: txCalldata instead of txData", () => {
-    const tx = makeRawTx({ txData: undefined });
-    (tx as any).txCalldata = "0xdeadbeef";
-    const decoded = decodeTransaction(tx);
-    expect(decoded.txData).toBe("0xdeadbeef");
-  });
-
-  it("should handle both Bradbury fields missing (defaults gracefully)", () => {
-    const tx = makeRawTx({ numOfInitialValidators: undefined, txData: undefined });
-    const decoded = decodeTransaction(tx);
-    expect(decoded.numOfInitialValidators).toBe("0");
-    expect(decoded.txData).toBeUndefined();
-  });
-
-  it("should prefer standard fields over Bradbury aliases when both present", () => {
-    const tx = makeRawTx({ numOfInitialValidators: 3n, txData: "0xaa" as any });
-    (tx as any).initialRotations = 99n;
-    (tx as any).txCalldata = "0xbb";
-    const decoded = decodeTransaction(tx);
-    expect(decoded.numOfInitialValidators).toBe("3");
-    expect(decoded.txData).toBe("0xaa");
   });
 
   it("should decode readStateBlockRange fields to strings", () => {
@@ -467,8 +750,12 @@ describe("decodeTransaction", () => {
 
   it("should map validator votes to vote type names", () => {
     const decoded = decodeTransaction(makeRawTx());
-    const names = (decoded.lastRound as any)?.validatorVotesName;
-    expect(names).toEqual(["AGREE", "AGREE", "AGREE"]);
+    const names = decoded.lastRound?.validatorVotesName;
+    expect(names).toEqual([
+      "FINISHED_WITH_RETURN",
+      "FINISHED_WITH_RETURN",
+      "FINISHED_WITH_RETURN",
+    ]);
   });
 });
 

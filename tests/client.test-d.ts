@@ -46,6 +46,17 @@ test("type checks", () => {
 
   void client.getContractSchemaForCode("class SomeContract...");
 
+  // Existing consumer-facing active-validator methods remain available, and
+  // the append-only joined registry is an explicitly named separate read.
+  void client.getActiveValidators();
+  void client.getActiveValidatorsCount();
+  void client.getJoinedValidators();
+  void client.getJoinedValidatorsCount();
+
+  // Finalization readiness is an action, not a transaction status.
+  // @ts-expect-error READY_TO_FINALIZE was removed from the train status enum
+  void TransactionStatus.READY_TO_FINALIZE;
+
   void client.waitForTransactionReceipt({
     hash: "0x1234567890123456789012345678901234567890123456789012345678901234" as TransactionHash,
   });

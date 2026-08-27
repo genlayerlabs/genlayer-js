@@ -11,12 +11,51 @@ import {
   isDecidedState,
   DebugTraceResult,
   TransactionReceiptWaitUntil,
+  transactionResolutionActionNumberToName,
 } from "../types/transactions";
 import {transactionsConfig} from "../config/transactions";
 import {sleep} from "../utils/async";
 import {GenLayerChain} from "@/types";
-import {Abi, PublicClient, Address, keccak256, concat, stringToBytes, toBytes} from "viem";
+import {Abi, PublicClient, Address, keccak256, concat, stringToBytes, toBytes, zeroAddress} from "viem";
 import {decodeLocalnetTransaction, decodeTransaction, simplifyTransactionReceipt} from "./decoders";
+import {
+  ADDRESS_MANAGER_TRAIN_ABI,
+  CONSENSUS_DATA_BIG_ROUNDS_TRAIN_ABI,
+  CONSENSUS_DATA_TRAIN_ABI,
+  ROUNDS_STORAGE_TRAIN_READ_ABI,
+  TRANSACTION_MANAGER_TRAIN_READ_ABI,
+} from "../abi/consensusTrain";
+
+const TRANSACTION_PAGE_SIZE = 64n;
+
+const resolvedAddress = (name: string, address: Address): Address => {
+  if (address === zeroAddress) {
+    throw new Error(`${name} is not registered in AddressManager`);
+  }
+  return address;
+};
+
+type AddressPage = readonly [readonly Address[], bigint] | {page: readonly Address[]; total: bigint};
+
+const unpackAddressPage = (result: AddressPage): {page: readonly Address[]; total: bigint} =>
+  "page" in result ? result : {page: result[0], total: result[1]};
+
+const readAddressPages = async (
+  total: bigint,
+  readPage: (offset: bigint) => Promise<AddressPage>,
+): Promise<Address[]> => {
+  const offsets: bigint[] = [];
+  for (let offset = 0n; offset < total; offset += TRANSACTION_PAGE_SIZE) offsets.push(offset);
+  const pages = (await Promise.all(offsets.map(readPage))).map(unpackAddressPage);
+  if (pages.some(page => page.total !== total)) {
+    throw new Error("Address page total changed within a fixed block snapshot");
+  }
+  const items = pages.flatMap(({page}) => [...page]);
+  if (BigInt(items.length) !== total) {
+    throw new Error(`Incomplete address pages: expected ${total}, received ${items.length}`);
+  }
+  return items;
+};
 
 let didWarnWaitForTransactionReceiptStatus = false;
 
@@ -140,7 +179,10 @@ export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClie
 });
 
 export const transactionActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => ({
-  /** Fetches transaction data including status, execution result, and consensus details. */
+  /**
+   * Fetches the train transaction snapshot, including projected/stored status,
+   * resolution action, authoritative finalization readiness, and split round data.
+   */
   getTransaction: async ({hash}: {hash: TransactionHash}): Promise<GenLayerTransaction> => {
     if (client.chain.isStudio) {
       const transaction = await client.getTransaction({hash});
@@ -151,44 +193,168 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
       transaction.statusName = localnetStatus as TransactionStatus;
       return decodeLocalnetTransaction(transaction as unknown as GenLayerTransaction);
     }
-    const contractAddress = client.chain.consensusDataContract?.address as Address;
-    const contractAbi = client.chain.consensusDataContract?.abi as Abi;
+    const consensusDataAddress = client.chain.consensusDataContract?.address as Address;
+    if (!consensusDataAddress || consensusDataAddress === zeroAddress) {
+      throw new Error("ConsensusData contract is not configured for this chain");
+    }
 
-    // getTransactionData(txId, timestamp) answered with a projection evaluated at
-    // a caller-supplied clock. The resolution-kernel train splits that apart: the
-    // stored record is getStoredTransactionData(txId), and the projection lives
-    // behind getTransactionLifecycle. Chains are upgraded independently, so pick
-    // whichever read the chain's own ABI actually offers rather than assuming.
-    const hasStoredRead = (contractAbi as readonly {name?: string}[]).some(
-      entry => entry?.name === "getStoredTransactionData",
+    // Freeze every lifecycle and round read to one chain snapshot. A local
+    // wall-clock projection mixed with moving latest-state reads can report a
+    // status and finalization action that never coexisted.
+    const snapshot = await publicClient.getBlock();
+    const blockNumber = snapshot.number;
+    const observedAt = snapshot.timestamp;
+    const addressManagerAddress = resolvedAddress(
+      "AddressManager",
+      await publicClient.readContract({
+        address: consensusDataAddress,
+        abi: CONSENSUS_DATA_TRAIN_ABI,
+        functionName: "addressManager",
+        blockNumber,
+      }) as Address,
     );
-    const dataRead = hasStoredRead
-      ? {functionName: "getStoredTransactionData", args: [hash] as const}
-      : {functionName: "getTransactionData", args: [hash, Math.round(new Date().getTime() / 1000)] as const};
 
-    const [txDataRaw, allDataRaw] = await Promise.all([
+    const [bigRoundsAddressRaw, roundsStorageAddressRaw, transactionManagerAddressRaw] = await Promise.all([
       publicClient.readContract({
-        address: contractAddress,
-        abi: contractAbi,
-        functionName: dataRead.functionName,
-        args: dataRead.args as unknown as readonly unknown[],
-      }) as Promise<GenLayerRawTransaction>,
+        address: addressManagerAddress,
+        abi: ADDRESS_MANAGER_TRAIN_ABI,
+        functionName: "getAddress",
+        args: ["ConsensusDataBigRounds"],
+        blockNumber,
+      }),
       publicClient.readContract({
-        address: contractAddress,
-        abi: contractAbi,
-        functionName: "getTransactionAllData",
+        address: addressManagerAddress,
+        abi: ADDRESS_MANAGER_TRAIN_ABI,
+        functionName: "getAddress",
+        args: ["RoundsStorage"],
+        blockNumber,
+      }),
+      publicClient.readContract({
+        address: addressManagerAddress,
+        abi: ADDRESS_MANAGER_TRAIN_ABI,
+        functionName: "getAddress",
+        args: ["TransactionManager"],
+        blockNumber,
+      }),
+    ]) as [Address, Address, Address];
+    const bigRoundsAddress = resolvedAddress("ConsensusDataBigRounds", bigRoundsAddressRaw);
+    const roundsStorageAddress = resolvedAddress("RoundsStorage", roundsStorageAddressRaw);
+    const transactionManagerAddress = resolvedAddress("TransactionManager", transactionManagerAddressRaw);
+
+    const [txData, lifecycle] = await Promise.all([
+      publicClient.readContract({
+        address: bigRoundsAddress,
+        abi: CONSENSUS_DATA_BIG_ROUNDS_TRAIN_ABI,
+        functionName: "getStoredTransactionDataLight",
         args: [hash],
-      }) as Promise<[any, any[]]>,
-    ]);
+        blockNumber,
+      }),
+      publicClient.readContract({
+        address: consensusDataAddress,
+        abi: CONSENSUS_DATA_TRAIN_ABI,
+        functionName: "getTransactionLifecycle",
+        args: [hash, observedAt],
+        blockNumber,
+      }),
+    ]) as [any, any];
 
-    const txData = txDataRaw as unknown as GenLayerRawTransaction;
-    const [txAllData, _roundsData] = allDataRaw as unknown as [any, any[]];
+    const round = txData.lastRound.round;
+    const [roundValidators, consumedValidators, validatorVotes, validatorVotesHash, validatorResultHash, txExecutionResult, numOfInitialValidators] =
+      await Promise.all([
+        readAddressPages(txData.lastRound.validatorsCount, offset => publicClient.readContract({
+          address: bigRoundsAddress,
+          abi: CONSENSUS_DATA_BIG_ROUNDS_TRAIN_ABI,
+          functionName: "getRoundValidatorsPaged",
+          args: [hash, round, offset, TRANSACTION_PAGE_SIZE],
+          blockNumber,
+        }) as Promise<readonly [readonly Address[], bigint]>),
+        readAddressPages(txData.consumedValidatorsCount, offset => publicClient.readContract({
+          address: bigRoundsAddress,
+          abi: CONSENSUS_DATA_BIG_ROUNDS_TRAIN_ABI,
+          functionName: "getConsumedValidatorsPaged",
+          args: [hash, offset, TRANSACTION_PAGE_SIZE],
+          blockNumber,
+        }) as Promise<readonly [readonly Address[], bigint]>),
+        publicClient.readContract({
+          address: roundsStorageAddress,
+          abi: ROUNDS_STORAGE_TRAIN_READ_ABI,
+          functionName: "getValidatorVotes",
+          args: [hash, round],
+          blockNumber,
+        }),
+        publicClient.readContract({
+          address: roundsStorageAddress,
+          abi: ROUNDS_STORAGE_TRAIN_READ_ABI,
+          functionName: "getValidatorVotesHash",
+          args: [hash, round],
+          blockNumber,
+        }),
+        publicClient.readContract({
+          address: roundsStorageAddress,
+          abi: ROUNDS_STORAGE_TRAIN_READ_ABI,
+          functionName: "getValidatorResultHash",
+          args: [hash, round],
+          blockNumber,
+        }),
+        publicClient.readContract({
+          address: transactionManagerAddress,
+          abi: TRANSACTION_MANAGER_TRAIN_READ_ABI,
+          functionName: "getTxExecutionResult",
+          args: [hash],
+          blockNumber,
+        }),
+        publicClient.readContract({
+          address: transactionManagerAddress,
+          abi: TRANSACTION_MANAGER_TRAIN_READ_ABI,
+          functionName: "getNumOfInitialValidators",
+          args: [hash],
+          blockNumber,
+        }),
+      ]) as [Address[], Address[], readonly number[], readonly `0x${string}`[], readonly `0x${string}`[], number, bigint];
+
+    const projectedStatus = Number(lifecycle.resolution.projectedStatus);
+    const storedStatus = Number(lifecycle.storedStatus);
+    const resolutionAction = Number(lifecycle.resolution.action);
+    const decisionId = lifecycle.decisionActive
+      ? BigInt(lifecycle.latestDecision.decisionId)
+      : 0n;
+    const finalizeRead = await publicClient.readContract({
+      address: consensusDataAddress,
+      abi: CONSENSUS_DATA_TRAIN_ABI,
+      functionName: "canFinalize",
+      args: [hash, observedAt, decisionId],
+      blockNumber,
+    }) as any;
+    const canFinalize = Boolean(finalizeRead.ready ?? finalizeRead[0]);
 
     const transaction = {
       ...txData,
-      txExecutionResult: Number(txAllData.txExecutionResult),
-    } as GenLayerRawTransaction;
-    return decodeTransaction(transaction);
+      numOfInitialValidators,
+      status: projectedStatus,
+      txExecutionResult: Number(txExecutionResult),
+      consumedValidators,
+      lastRound: {
+        ...txData.lastRound,
+        roundValidators,
+        validatorVotes: [...validatorVotes].map(Number),
+        validatorVotesHash: [...validatorVotesHash],
+        validatorResultHash: [...validatorResultHash],
+      },
+    } as unknown as GenLayerRawTransaction;
+    const decoded = decodeTransaction(transaction);
+    const resolutionActionName =
+      transactionResolutionActionNumberToName[
+        String(resolutionAction) as keyof typeof transactionResolutionActionNumberToName
+      ];
+    return {
+      ...decoded,
+      storedStatus,
+      storedStatusName:
+        transactionsStatusNumberToName[String(storedStatus) as keyof typeof transactionsStatusNumberToName],
+      resolutionAction,
+      resolutionActionName,
+      canFinalize,
+    };
   },
   /** Returns transaction IDs of child transactions created from emitted messages. */
   getTriggeredTransactionIds: async ({hash}: {hash: TransactionHash}): Promise<TransactionHash[]> => {

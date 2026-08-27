@@ -297,6 +297,17 @@ Transactions can emit messages to other contracts. These messages create new chi
 ```typescript
 const tx = await client.getTransaction({ hash: txHash });
 
+// Projected lifecycle state, exact stored state, and queue-head readiness are
+// intentionally separate.
+console.log(tx.statusName);
+console.log(tx.storedStatusName);
+console.log(tx.resolutionActionName);
+console.log(tx.canFinalize);
+
+// The train retains the authoritative execution hash, not the old receipt
+// bytes. `txReceipt` is therefore unavailable on train transactions.
+console.log(tx.txExecutionHash);
+
 // Messages emitted by the contract during execution
 console.log(tx.messages);
 // [{messageType, recipient, value, data, onAcceptance, saltNonce}, ...]
@@ -428,8 +439,11 @@ const epochInfo = await client.getEpochInfo();
 //   totalClaimed: "500 GEN",         // Total claimed rewards
 // }
 
-// Get active validators
+// Get validators currently eligible for consensus duties
 const validators = await client.getActiveValidators();
+
+// Inspect every identity in the append-only joined registry
+const joinedValidators = await client.getJoinedValidators();
 
 // Check if address is a validator
 const isValidator = await client.isValidator("0x...");

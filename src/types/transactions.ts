@@ -18,11 +18,30 @@ export enum TransactionStatus {
   CANCELED = "CANCELED",
   APPEAL_REVEALING = "APPEAL_REVEALING",
   APPEAL_COMMITTING = "APPEAL_COMMITTING",
-  READY_TO_FINALIZE = "READY_TO_FINALIZE",
   VALIDATORS_TIMEOUT = "VALIDATORS_TIMEOUT",
   LEADER_TIMEOUT = "LEADER_TIMEOUT",
   LEADER_REVEALING = "LEADER_REVEALING",
 }
+
+export enum TransactionResolutionAction {
+  NO_OP = "NO_OP",
+  CANCEL = "CANCEL",
+  REPLACE_ACTOR = "REPLACE_ACTOR",
+  ROTATE_LEADER = "ROTATE_LEADER",
+  RESOLVE_APPEAL = "RESOLVE_APPEAL",
+  MATERIALIZE_DECISION = "MATERIALIZE_DECISION",
+  FINALIZE = "FINALIZE",
+}
+
+export const transactionResolutionActionNumberToName = {
+  "0": TransactionResolutionAction.NO_OP,
+  "1": TransactionResolutionAction.CANCEL,
+  "2": TransactionResolutionAction.REPLACE_ACTOR,
+  "3": TransactionResolutionAction.ROTATE_LEADER,
+  "4": TransactionResolutionAction.RESOLVE_APPEAL,
+  "5": TransactionResolutionAction.MATERIALIZE_DECISION,
+  "6": TransactionResolutionAction.FINALIZE,
+};
 
 export enum TransactionResult {
   SUCCESS = "SUCCESS",
@@ -41,11 +60,8 @@ export enum TransactionResult {
   MAJORITY_TIMEOUT = "MAJORITY_TIMEOUT",
 }
 
-// ReadyToFinalize is no longer one of these. It stopped being a status the
-// chain stores -- readiness is the resolution kernel's verdict now -- and
-// removing it at ordinal 11 shifted the three above it down. The name survives
-// as a client-side state the node still reports, so TransactionStatus keeps the
-// member; what changed is that no chain value decodes to it.
+// ReadyToFinalize is no longer a transaction status. Readiness is exposed by
+// the resolution kernel as ResolutionAction.Finalize / `canFinalize`.
 export const transactionsStatusNumberToName = {
   "0": TransactionStatus.UNINITIALIZED,
   "1": TransactionStatus.PENDING,
@@ -63,7 +79,7 @@ export const transactionsStatusNumberToName = {
   "13": TransactionStatus.LEADER_REVEALING,
 };
 
-export const transactionsStatusNameToNumber: Partial<Record<TransactionStatus, string>> = {
+export const transactionsStatusNameToNumber: Record<TransactionStatus, string> = {
   [TransactionStatus.UNINITIALIZED]: "0",
   [TransactionStatus.PENDING]: "1",
   [TransactionStatus.PROPOSING]: "2",
@@ -75,10 +91,6 @@ export const transactionsStatusNameToNumber: Partial<Record<TransactionStatus, s
   [TransactionStatus.CANCELED]: "8",
   [TransactionStatus.APPEAL_REVEALING]: "9",
   [TransactionStatus.APPEAL_COMMITTING]: "10",
-  // READY_TO_FINALIZE has no ordinal here on purpose. It is not a stored status
-  // any more, so there is no number it could take that would not collide with a
-  // real one -- 11 is VALIDATORS_TIMEOUT now. Looking it up yields undefined,
-  // which is the truthful answer: no chain status decodes to it.
   [TransactionStatus.VALIDATORS_TIMEOUT]: "11",
   [TransactionStatus.LEADER_TIMEOUT]: "12",
   [TransactionStatus.LEADER_REVEALING]: "13",
@@ -123,6 +135,7 @@ export enum ExecutionResult {
   FINISHED_WITH_ERROR = "FINISHED_WITH_ERROR",
   TIMEOUT = "TIMEOUT",
   NONDET_DISAGREE = "NONDET_DISAGREE",
+  DETERMINISTIC_VIOLATION = "DETERMINISTIC_VIOLATION",
 }
 
 export const executionResultNumberToName = {
@@ -131,30 +144,34 @@ export const executionResultNumberToName = {
   "2": ExecutionResult.FINISHED_WITH_ERROR,
   "3": ExecutionResult.TIMEOUT,
   "4": ExecutionResult.NONDET_DISAGREE,
+  "5": ExecutionResult.DETERMINISTIC_VIOLATION,
 };
 
 export enum VoteType {
   NOT_VOTED = "NOT_VOTED",
-  AGREE = "AGREE",
-  DISAGREE = "DISAGREE",
+  FINISHED_WITH_RETURN = "FINISHED_WITH_RETURN",
+  FINISHED_WITH_ERROR = "FINISHED_WITH_ERROR",
   TIMEOUT = "TIMEOUT",
+  NONDET_DISAGREE = "NONDET_DISAGREE",
   DETERMINISTIC_VIOLATION = "DETERMINISTIC_VIOLATION",
 }
 
 export const voteTypeNumberToName = {
   "0": VoteType.NOT_VOTED,
-  "1": VoteType.AGREE,
-  "2": VoteType.DISAGREE,
+  "1": VoteType.FINISHED_WITH_RETURN,
+  "2": VoteType.FINISHED_WITH_ERROR,
   "3": VoteType.TIMEOUT,
-  "4": VoteType.DETERMINISTIC_VIOLATION,
+  "4": VoteType.NONDET_DISAGREE,
+  "5": VoteType.DETERMINISTIC_VIOLATION,
 };
 
 export const voteTypeNameToNumber = {
   [VoteType.NOT_VOTED]: "0",
-  [VoteType.AGREE]: "1",
-  [VoteType.DISAGREE]: "2",
+  [VoteType.FINISHED_WITH_RETURN]: "1",
+  [VoteType.FINISHED_WITH_ERROR]: "2",
   [VoteType.TIMEOUT]: "3",
-  [VoteType.DETERMINISTIC_VIOLATION]: "4",
+  [VoteType.NONDET_DISAGREE]: "4",
+  [VoteType.DETERMINISTIC_VIOLATION]: "5",
 };
 
 export type TransactionType = "deploy" | "call";
@@ -165,6 +182,27 @@ export enum TransactionHashVariant {
 }
 
 export type TransactionReceiptWaitUntil = "decided" | "finalized";
+
+/** Full public round shape reconstructed from bounded train reads. */
+export interface ConsensusRoundData {
+  round: bigint;
+  leaderIndex: bigint;
+  votesCommitted: bigint;
+  votesRevealed: bigint;
+  appealBond: bigint;
+  rotationsLeft: bigint;
+  result: number;
+  roundValidators: Address[];
+  validatorVotes: number[];
+  validatorVotesHash: Hash[];
+  validatorResultHash: Hash[];
+}
+
+/** Legacy tuple shape returned by getLastRoundData, with named properties retained. */
+export type ConsensusLastRoundData = [round: bigint, roundData: ConsensusRoundData] & {
+  round: bigint;
+  roundData: ConsensusRoundData;
+};
 
 export enum MessageType {
   External = 0,
@@ -488,6 +526,8 @@ export type GenLayerTransaction = {
 
   // numOfInitialValidators: testnet
   numOfInitialValidators?: string;
+  /** Train maximum rotations, distinct from the initial committee size. */
+  initialRotations?: bigint;
 
   // txSlot: testnet
   txSlot?: string;
@@ -513,11 +553,15 @@ export type GenLayerTransaction = {
   data?: Record<string, unknown>;
   txData?: Hex;
   txDataDecoded?: DecodedDeployData | DecodedCallData;
-  // txReceipt: testnet
-  txReceipt?: Hash;
+  /** Authoritative execution hash retained by the train. */
+  txExecutionHash?: Hash;
+  eqBlocksOutputs?: Hex;
+  /** Legacy receipt bytes; unavailable on the train. */
+  txReceipt?: Hex;
 
   // messages: testnet
   messages?: unknown[];
+  consumedValidators?: Address[];
 
   // queueType: testnet
   queueType?: number;
@@ -532,8 +576,21 @@ export type GenLayerTransaction = {
   lastLeader?: Address;
 
   // status: localnet: TransactionStatus // status: testnet: number
+  /** Lifecycle status projected at the block snapshot used for this read. */
   status?: TransactionStatus | number;
+  /** Named form of the projected lifecycle status. */
   statusName?: TransactionStatus;
+
+  /** Exact status currently persisted by the transaction manager. */
+  storedStatus?: number;
+  /** Named form of the exact stored status. */
+  storedStatusName?: TransactionStatus;
+  /** Resolution-kernel action currently available for the transaction. */
+  resolutionAction?: number;
+  /** Named form of the available resolution action. */
+  resolutionActionName?: TransactionResolutionAction;
+  /** Authoritative queue-head/deadline result from `ConsensusData.canFinalize`. */
+  canFinalize?: boolean;
 
   // hash: localnet // txId: testnet// hash: localnet // txId: testnet
   hash?: TransactionHash;
@@ -560,6 +617,7 @@ export type GenLayerTransaction = {
     result: number;
     roundValidators: Address[];
     validatorVotesHash: Hash[];
+    validatorResultHash: Hash[];
     validatorVotes: number[];
     validatorVotesName: VoteType[];
   };
@@ -582,20 +640,22 @@ export type GenLayerTransaction = {
 };
 
 export type GenLayerRawTransaction = {
-  currentTimestamp: bigint;
+  observedAt: bigint;
   sender: Address;
   recipient: Address;
-  numOfInitialValidators?: bigint; // undefined on Bradbury — use `initialRotations` instead
-  initialRotations?: bigint;       // Bradbury equivalent of `numOfInitialValidators`
+  initialRotations: bigint;
+  numOfInitialValidators: bigint;
   txSlot: bigint;
   createdTimestamp: bigint;
   lastVoteTimestamp: bigint;
   randomSeed: Hash;
   result: number;
   txExecutionResult?: number;
-  txData: Hex | undefined | null;
-  txReceipt: Hash;
+  txExecutionHash: Hash;
+  txCalldata: Hex;
+  eqBlocksOutputs: Hex;
   messages: unknown[];
+  consumedValidators: Address[];
   queueType: number;
   queuePosition: bigint;
   activator: Address;
@@ -618,6 +678,7 @@ export type GenLayerRawTransaction = {
     result: number;
     roundValidators: Address[];
     validatorVotesHash: Hash[];
+    validatorResultHash: Hash[];
     validatorVotes: number[];
   };
 };

@@ -15,6 +15,8 @@ import {
   BigNumberish,
   FeesDistributionInput,
   SimulateWriteContractResult,
+  ConsensusRoundData,
+  ConsensusLastRoundData,
 } from "./transactions";
 import {GenLayerChain} from "./chains";
 import {Address, Account} from "./accounts";
@@ -142,8 +144,8 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     getTransactionQueuePosition: (args: {hash: TransactionHash}) => Promise<number>;
     cancelTransaction: (args: {hash: TransactionHash}) => Promise<{transaction_hash: string; status: string}>;
     getRoundNumber: (args: {txId: `0x${string}`}) => Promise<bigint>;
-    getRoundData: (args: {txId: `0x${string}`; round: bigint}) => Promise<any>;
-    getLastRoundData: (args: {txId: `0x${string}`}) => Promise<any>;
+    getRoundData: (args: {txId: `0x${string}`; round: bigint}) => Promise<ConsensusRoundData>;
+    getLastRoundData: (args: {txId: `0x${string}`}) => Promise<ConsensusLastRoundData>;
     canAppeal: (args: {txId: `0x${string}`}) => Promise<boolean>;
     getDeveloperNft: (args: {developer: Address}) => Promise<DeveloperNft | null>;
     getClaimableRewardsFromFees: (args: {nftId: BigNumberish}) => Promise<bigint>;
@@ -185,6 +187,16 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       account?: Account;
       txIds: readonly `0x${string}`[];
     }) => Promise<`0x${string}`>;
+    resolveTransactions: (args: {
+      account?: Account;
+      txIds: readonly `0x${string}`[];
+    }) => Promise<`0x${string}`>;
+    finalizeDecisions: (args: {
+      account?: Account;
+      txIds: readonly `0x${string}`[];
+    }) => Promise<`0x${string}`>;
+    getAppealCharge: (args: {txId: `0x${string}`}) => Promise<bigint>;
+    /** @deprecated Use getAppealCharge. This alias returns bond plus appeal funding. */
     getMinAppealBond: (args: {txId: `0x${string}`}) => Promise<bigint>;
     getCurrentFeePolicy: () => Promise<FeePolicyQuote>;
     estimateFeesDistribution: (args?: FeeEstimateOptions) => Promise<TransactionFeeEstimate["distribution"]>;

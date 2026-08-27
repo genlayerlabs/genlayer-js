@@ -26,9 +26,10 @@ import {
   SimulateWriteContractResult,
   StudioExecutionFeeReport,
   StudioFeeAccounting,
+  ConsensusRoundData,
+  ConsensusLastRoundData,
 } from "@/types";
 import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs, type Abi} from "viem";
-import {TransactionHash} from "@/types/transactions";
 import {toJsonSafeDeep, b64ToArray, arrayToB64} from "@/utils/jsonifier";
 import {
   CALL_KEY_WILDCARD,
@@ -38,6 +39,7 @@ import {
   normalizeTransactionFees,
   NormalizedTransactionFees,
 } from "@/transactions/fees";
+import {CONSENSUS_DATA_TRAIN_ABI, ROUNDS_STORAGE_TRAIN_READ_ABI} from "@/abi/consensusTrain";
 
 const prefixHex = (hex: string): `0x${string}` => {
   return (hex.startsWith("0x") ? hex : `0x${hex}`) as `0x${string}`;
@@ -599,32 +601,15 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         observed,
       };
     },
-    /** Calculates the minimum bond required to appeal a transaction. */
+    /** Returns the full authoritative appeal charge (bond plus appeal funding). */
+    getAppealCharge: async (args: {txId: `0x${string}`}): Promise<bigint> => {
+      const context = await _readAppealContext({client, publicClient, txId: args.txId});
+      return context.requiredValue;
+    },
+    /** @deprecated Use getAppealCharge. This legacy name also returns bond plus appeal funding. */
     getMinAppealBond: async (args: {txId: `0x${string}`}): Promise<bigint> => {
-      const {txId} = args;
-
-      if (!client.chain.feeManagerContract?.address || !client.chain.roundsStorageContract?.address) {
-        throw new Error("Appeal bond calculation not supported on this chain (missing feeManagerContract/roundsStorageContract)");
-      }
-
-      const roundNumber = await publicClient.readContract({
-        address: client.chain.roundsStorageContract.address as `0x${string}`,
-        abi: client.chain.roundsStorageContract.abi as Abi,
-        functionName: "getRoundNumber",
-        args: [txId],
-      }) as bigint;
-
-      const transaction = await client.getTransaction({hash: txId as TransactionHash});
-      const txStatus = Number(transaction.status);
-
-      const minBond = await publicClient.readContract({
-        address: client.chain.feeManagerContract.address as `0x${string}`,
-        abi: client.chain.feeManagerContract.abi as Abi,
-        functionName: "calculateMinAppealBond",
-        args: [txId, roundNumber, txStatus],
-      }) as bigint;
-
-      return minBond;
+      const context = await _readAppealContext({client, publicClient, txId: args.txId});
+      return context.requiredValue;
     },
     /** Returns the current consensus round number for a transaction. */
     getRoundNumber: async (args: {txId: `0x${string}`}): Promise<bigint> => {
@@ -633,7 +618,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       }
       return publicClient.readContract({
         address: client.chain.roundsStorageContract.address as `0x${string}`,
-        abi: client.chain.roundsStorageContract.abi as Abi,
+        abi: ROUNDS_STORAGE_TRAIN_READ_ABI,
         functionName: "getRoundNumber",
         args: [args.txId],
       }) as Promise<bigint>;
@@ -643,11 +628,13 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       if (!client.chain.roundsStorageContract?.address) {
         throw new Error("getRoundData not supported on this chain (missing roundsStorageContract)");
       }
-      return publicClient.readContract({
+      const snapshot = await publicClient.getBlock();
+      return _readRoundDataSnapshot({
+        publicClient,
         address: client.chain.roundsStorageContract.address as `0x${string}`,
-        abi: client.chain.roundsStorageContract.abi as Abi,
-        functionName: "getRoundData",
-        args: [args.txId, args.round],
+        txId: args.txId,
+        round: args.round,
+        blockNumber: snapshot.number,
       });
     },
     /** Returns the current round number and its data for a transaction. */
@@ -655,23 +642,40 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       if (!client.chain.roundsStorageContract?.address) {
         throw new Error("getLastRoundData not supported on this chain (missing roundsStorageContract)");
       }
-      return publicClient.readContract({
-        address: client.chain.roundsStorageContract.address as `0x${string}`,
-        abi: client.chain.roundsStorageContract.abi as Abi,
-        functionName: "getLastRoundData",
+      const snapshot = await publicClient.getBlock();
+      const address = client.chain.roundsStorageContract.address as `0x${string}`;
+      const round = await publicClient.readContract({
+        address,
+        abi: ROUNDS_STORAGE_TRAIN_READ_ABI,
+        functionName: "getRoundNumber",
         args: [args.txId],
+        blockNumber: snapshot.number,
+      }) as bigint;
+      const roundData = await _readRoundDataSnapshot({
+        publicClient,
+        address,
+        txId: args.txId,
+        round,
+        blockNumber: snapshot.number,
       });
+      return Object.assign(
+        [round, roundData] as [bigint, ConsensusRoundData],
+        {round, roundData},
+      ) as ConsensusLastRoundData;
     },
     /** Checks if a transaction can be appealed. */
     canAppeal: async (args: {txId: `0x${string}`}): Promise<boolean> => {
       if (!client.chain.appealsContract?.address) {
         throw new Error("canAppeal not supported on this chain (missing appealsContract)");
       }
+      const context = await _readLifecycleIdentity({client, publicClient, txId: args.txId});
+      if (!context.decisionActive) return false;
       return publicClient.readContract({
         address: client.chain.appealsContract.address as `0x${string}`,
-        abi: client.chain.appealsContract.abi as Abi,
+        abi: APPEALS_TRAIN_ABI,
         functionName: "canAppeal",
-        args: [args.txId],
+        args: [args.txId, context.decisionId],
+        blockNumber: context.blockNumber,
       }) as Promise<boolean>;
     },
     /** Returns a developer's NFT reward record, or null when no NFT is registered. */
@@ -799,10 +803,19 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       value?: bigint;
     }) => {
       const {account, txId} = args;
-      const value = await _resolveAppealValue({client, publicClient, txId, value: args.value});
+      const context = await _readAppealContext({
+        client,
+        publicClient,
+        txId,
+        includeQuote: args.value === undefined,
+      });
+      const value = args.value ?? context.requiredValue;
 
       const senderAccount = account || client.account;
-      const encodedData = _encodeSubmitAppealData({client, txId});
+      const encodedData = _encodeSubmitAppealData({
+        txId,
+        expectedDecisionId: context.decisionId,
+      });
       // Appeals don't go through _sendTransaction because submitAppeal emits
       // AppealStarted/TransactionActivated events, not NewTransaction/CreatedTransaction.
       // The appeal operates on the same GenLayer txId, so we return it directly.
@@ -850,10 +863,20 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       value?: bigint;
     }): Promise<`0x${string}`> => {
       const {account, txId, distribution} = args;
-      const value = await _resolveAppealValue({client, publicClient, txId, value: args.value});
+      const context = await _readAppealContext({
+        client,
+        publicClient,
+        txId,
+        includeQuote: args.value === undefined,
+      });
+      const value = args.value ?? context.requiredValue;
 
       const senderAccount = account || client.account;
-      const encodedData = _encodeTopUpAndSubmitAppealData({txId, distribution});
+      const encodedData = _encodeTopUpAndSubmitAppealData({
+        txId,
+        expectedDecisionId: context.decisionId,
+        distribution,
+      });
       await _sendConsensusCall({
         client,
         publicClient,
@@ -870,11 +893,15 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       txId: `0x${string}`;
     }): Promise<`0x${string}`> => {
       const {account, txId} = args;
+      const identity = await _readLifecycleIdentity({client, publicClient, txId});
+      if (!identity.decisionActive) {
+        throw new Error(`Transaction ${txId} has no active decision to finalize`);
+      }
       const senderAccount = account || client.account;
       const encodedData = encodeFunctionData({
-        abi: client.chain.consensusMainContract?.abi as any,
+        abi: CONSENSUS_FINALIZATION_TRAIN_ABI,
         functionName: "finalizeTransaction",
-        args: [txId],
+        args: [txId, identity.decisionId],
       });
       return _sendConsensusCall({
         client,
@@ -884,27 +911,91 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         operationName: "Finalize",
       });
     },
-    /** Batch-finalizes idle GenLayer transactions (those stuck without progressing). Returns the EVM transaction hash. */
+    /**
+     * @deprecated The train separates attempt-bound resolution from
+     * decision-bound finalization. Use resolveTransactions or
+     * finalizeDecisions after classifying the lifecycle action.
+     */
     finalizeIdlenessTxs: async (args: {
       account?: Account;
       txIds: readonly `0x${string}`[];
     }): Promise<`0x${string}`> => {
-      const {account, txIds} = args;
-      if (txIds.length === 0) {
-        throw new Error("finalizeIdlenessTxs requires at least one txId.");
+      throw new Error(
+        `finalizeIdlenessTxs(${args.txIds.length} transaction(s)) is unavailable on the train: ` +
+          "use resolveTransactions for attempt-bound lifecycle actions or finalizeDecisions for active decisions.",
+      );
+    },
+    /** Resolves a batch of attempt-bound lifecycle actions. */
+    resolveTransactions: async (args: {
+      account?: Account;
+      txIds: readonly `0x${string}`[];
+    }): Promise<`0x${string}`> => {
+      if (args.txIds.length === 0) {
+        throw new Error("resolveTransactions requires at least one txId.");
       }
-      const senderAccount = account || client.account;
+      const snapshot = await publicClient.getBlock();
+      const identities = await Promise.all(args.txIds.map(txId =>
+        _readLifecycleIdentity({
+          client,
+          publicClient,
+          txId,
+          blockNumber: snapshot.number,
+          blockTimestamp: snapshot.timestamp,
+        }),
+      ));
       const encodedData = encodeFunctionData({
-        abi: client.chain.consensusMainContract?.abi as any,
-        functionName: "finalizeIdlenessTxs",
-        args: [txIds],
+        abi: CONSENSUS_FINALIZATION_TRAIN_ABI,
+        functionName: "resolveTransactions",
+        args: [args.txIds.map((txId, index) => ({
+          txId,
+          expectedAttemptId: identities[index].attemptId,
+        }))],
       });
       return _sendConsensusCall({
         client,
         publicClient,
         encodedData,
-        senderAccount,
-        operationName: "Finalize idleness",
+        senderAccount: args.account || client.account,
+        operationName: "Resolve transactions",
+      });
+    },
+    /** Finalizes a batch of active, decision-bound transactions. */
+    finalizeDecisions: async (args: {
+      account?: Account;
+      txIds: readonly `0x${string}`[];
+    }): Promise<`0x${string}`> => {
+      if (args.txIds.length === 0) {
+        throw new Error("finalizeDecisions requires at least one txId.");
+      }
+      const snapshot = await publicClient.getBlock();
+      const identities = await Promise.all(args.txIds.map(txId =>
+        _readLifecycleIdentity({
+          client,
+          publicClient,
+          txId,
+          blockNumber: snapshot.number,
+          blockTimestamp: snapshot.timestamp,
+        }),
+      ));
+      identities.forEach((identity, index) => {
+        if (!identity.decisionActive) {
+          throw new Error(`Transaction ${args.txIds[index]} has no active decision to finalize`);
+        }
+      });
+      const encodedData = encodeFunctionData({
+        abi: CONSENSUS_FINALIZATION_TRAIN_ABI,
+        functionName: "finalizeDecisions",
+        args: [args.txIds.map((txId, index) => ({
+          txId,
+          expectedDecisionId: identities[index].decisionId,
+        }))],
+      });
+      return _sendConsensusCall({
+        client,
+        publicClient,
+        encodedData,
+        senderAccount: args.account || client.account,
+        operationName: "Finalize decisions",
       });
     },
   };
@@ -928,39 +1019,6 @@ const CREATED_TRANSACTION_EVENT_ABI = [
     ],
     name: "CreatedTransaction",
     type: "event",
-  },
-] as const;
-
-const ADD_TRANSACTION_ABI_V5 = [
-  {
-    type: "function",
-    name: "addTransaction",
-    stateMutability: "nonpayable",
-    inputs: [
-      {name: "_sender", type: "address"},
-      {name: "_recipient", type: "address"},
-      {name: "_numOfInitialValidators", type: "uint256"},
-      {name: "_maxRotations", type: "uint256"},
-      {name: "_txData", type: "bytes"},
-    ],
-    outputs: [],
-  },
-] as const;
-
-const ADD_TRANSACTION_ABI_V6 = [
-  {
-    type: "function",
-    name: "addTransaction",
-    stateMutability: "payable",
-    inputs: [
-      {name: "_sender", type: "address"},
-      {name: "_recipient", type: "address"},
-      {name: "_numOfInitialValidators", type: "uint256"},
-      {name: "_maxRotations", type: "uint256"},
-      {name: "_txData", type: "bytes"},
-      {name: "_validUntil", type: "uint256"},
-    ],
-    outputs: [],
   },
 ] as const;
 
@@ -1029,9 +1087,77 @@ const CONSENSUS_FEE_MANAGEMENT_ABI = [
     stateMutability: "payable",
     inputs: [
       {name: "_txId", type: "bytes32"},
+      {name: "_expectedDecisionId", type: "uint256"},
       {name: "_feesDistribution", type: "tuple", components: FEES_DISTRIBUTION_COMPONENTS},
     ],
     outputs: [],
+  },
+] as const;
+
+const CONSENSUS_APPEAL_TRAIN_ABI = [
+  {
+    type: "function",
+    name: "submitAppeal",
+    stateMutability: "payable",
+    inputs: [
+      {name: "_txId", type: "bytes32"},
+      {name: "_expectedDecisionId", type: "uint256"},
+    ],
+    outputs: [],
+  },
+] as const;
+
+const CONSENSUS_FINALIZATION_TRAIN_ABI = [
+  {
+    type: "function",
+    name: "finalizeTransaction",
+    stateMutability: "nonpayable",
+    inputs: [
+      {name: "_txId", type: "bytes32"},
+      {name: "_expectedDecisionId", type: "uint256"},
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "resolveTransactions",
+    stateMutability: "nonpayable",
+    inputs: [{
+      name: "_commands",
+      type: "tuple[]",
+      components: [
+        {name: "txId", type: "bytes32"},
+        {name: "expectedAttemptId", type: "bytes32"},
+      ],
+    }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "finalizeDecisions",
+    stateMutability: "nonpayable",
+    inputs: [{
+      name: "_commands",
+      type: "tuple[]",
+      components: [
+        {name: "txId", type: "bytes32"},
+        {name: "expectedDecisionId", type: "uint256"},
+      ],
+    }],
+    outputs: [],
+  },
+] as const;
+
+const APPEALS_TRAIN_ABI = [
+  {
+    type: "function",
+    name: "canAppeal",
+    stateMutability: "view",
+    inputs: [
+      {name: "_txId", type: "bytes32"},
+      {name: "_expectedDecisionId", type: "uint256"},
+    ],
+    outputs: [{name: "", type: "bool"}],
   },
 ] as const;
 
@@ -1076,34 +1202,6 @@ const FEE_MANAGER_CALCULATE_ROUND_FEES_ABI = [
     outputs: [{name: "totalFeesToPay", type: "uint256"}],
   },
 ] as const;
-
-type AddTransactionAbiVersion = "fees" | "v6" | "v5";
-
-const getAddTransactionAbiVersion = (abi: readonly unknown[] | undefined): AddTransactionAbiVersion => {
-  if (!abi || !Array.isArray(abi)) {
-    return "v5";
-  }
-
-  const addTransactionFunction = abi.find(item => {
-    if (!item || typeof item !== "object") {
-      return false;
-    }
-
-    const candidate = item as {type?: string; name?: string};
-    return candidate.type === "function" && candidate.name === "addTransaction";
-  }) as {inputs?: readonly {type?: string; components?: readonly unknown[]}[]} | undefined;
-
-  const inputs = addTransactionFunction?.inputs;
-  if (!Array.isArray(inputs)) {
-    return "v5";
-  }
-
-  if (inputs.length === 1 && inputs[0]?.type === "tuple") {
-    return "fees";
-  }
-
-  return inputs.length >= 6 ? "v6" : "v5";
-};
 
 type EncodedTransactionVariant = {
   encodedData: `0x${string}`;
@@ -1860,129 +1958,235 @@ const _encodeAddTransactionData = ({
   const txValidUntil = toUInt(validUntil, "validUntil", getDefaultValidUntil());
   const feeValue = transactionFees.feeValue ?? 0n;
 
-  const addTransactionArgs: [
-    Address,
-    `0x${string}`,
-    number,
-    number,
-    `0x${string}`,
-  ] = [
-    validatedSenderAccount.address,
-    txRecipient,
-    client.chain.defaultNumberOfInitialValidators,
-    consensusMaxRotations,
+  const params = {
+    sender: validatedSenderAccount.address,
+    recipient: txRecipient,
+    numOfInitialValidators: BigInt(client.chain.defaultNumberOfInitialValidators),
+    maxRotations: BigInt(consensusMaxRotations),
+    validUntil: txValidUntil,
+    saltNonce: 0n,
+    userValue,
+    feesDistribution: transactionFees.distribution,
     txCalldata,
-  ];
-
-  const buildVariant = (abiVersion: AddTransactionAbiVersion): EncodedTransactionVariant => {
-    if (abiVersion === "fees") {
-      const params = {
-        sender: validatedSenderAccount.address,
-        recipient: txRecipient,
-        numOfInitialValidators: BigInt(client.chain.defaultNumberOfInitialValidators),
-        maxRotations: BigInt(consensusMaxRotations),
-        validUntil: txValidUntil,
-        saltNonce: 0n,
-        userValue,
-        feesDistribution: transactionFees.distribution,
-        txCalldata,
-        messageAllocations: transactionFees.messageAllocations,
-      };
-
-      return {
-        encodedData: encodeFunctionData({
-          abi: ADD_TRANSACTION_ABI_WITH_FEES as any,
-          functionName: "addTransaction",
-          args: [params],
-        }),
-        value: userValue + feeValue,
-      };
-    }
-
-    if (abiVersion === "v6") {
-      return {
-        encodedData: encodeFunctionData({
-          abi: ADD_TRANSACTION_ABI_V6 as any,
-          functionName: "addTransaction",
-          args: [...addTransactionArgs, txValidUntil],
-        }),
-        value: userValue,
-      };
-    }
-
-    return {
-      encodedData: encodeFunctionData({
-        abi: ADD_TRANSACTION_ABI_V5 as any,
-        functionName: "addTransaction",
-        args: addTransactionArgs,
-      }),
-      value: userValue,
-    };
+    messageAllocations: transactionFees.messageAllocations,
   };
 
-  if (transactionFees.requiresFeeAwareTransaction) {
-    return [buildVariant("fees")];
-  }
-
-  const detectedVersion = getAddTransactionAbiVersion(client.chain.consensusMainContract?.abi);
-  const orderByDetectedVersion: Record<AddTransactionAbiVersion, AddTransactionAbiVersion[]> = {
-    fees: ["fees", "v6", "v5"],
-    v6: ["v6", "v5", "fees"],
-    v5: ["v5", "v6", "fees"],
-  };
-
-  return orderByDetectedVersion[detectedVersion].map(buildVariant);
+  return [{
+    encodedData: encodeFunctionData({
+      abi: ADD_TRANSACTION_ABI_WITH_FEES as any,
+      functionName: "addTransaction",
+      args: [params],
+    }),
+    value: userValue + feeValue,
+  }];
 };
 
 const _encodeSubmitAppealData = ({
-  client,
   txId,
+  expectedDecisionId,
 }: {
-  client: GenLayerClient<GenLayerChain>;
   txId: `0x${string}`;
+  expectedDecisionId: bigint;
 }): `0x${string}` => {
   return encodeFunctionData({
-    abi: client.chain.consensusMainContract?.abi as any,
+    abi: CONSENSUS_APPEAL_TRAIN_ABI,
     functionName: "submitAppeal",
-    args: [txId],
+    args: [txId, expectedDecisionId],
   });
 };
 
-const _resolveAppealValue = async ({
+const ROUND_PAGE_SIZE = 64n;
+
+const _unpackRoundValidatorPage = (
+  value: any,
+): {validators: readonly Address[]; total: bigint} => ({
+  validators: value.validators ?? value[0],
+  total: BigInt(value.total ?? value[1]),
+});
+
+/** Rebuilds the legacy RoundData shape without the aggregate four-array getter. */
+const _readRoundDataSnapshot = async ({
+  publicClient,
+  address,
+  txId,
+  round,
+  blockNumber,
+}: {
+  publicClient: PublicClient;
+  address: Address;
+  txId: `0x${string}`;
+  round: bigint;
+  blockNumber: bigint;
+}): Promise<ConsensusRoundData> => {
+  const read = (functionName: string, args: readonly unknown[]) => publicClient.readContract({
+    address,
+    abi: ROUNDS_STORAGE_TRAIN_READ_ABI,
+    functionName,
+    args,
+    blockNumber,
+  } as any) as Promise<any>;
+
+  const [
+    leaderIndex,
+    votesCommitted,
+    votesRevealed,
+    appealBond,
+    rotationsLeft,
+    result,
+    validatorVotes,
+    validatorVotesHash,
+    validatorResultHash,
+    firstPageRaw,
+  ] = await Promise.all([
+    read("getLeaderIndex", [txId, round]),
+    read("getVotesCommitted", [txId, round]),
+    read("getVotesRevealed", [txId, round]),
+    read("getAppealBond", [txId, round]),
+    read("getRotationsLeft", [txId, round]),
+    read("getResult", [txId, round]),
+    read("getValidatorVotes", [txId, round]),
+    read("getValidatorVotesHash", [txId, round]),
+    read("getValidatorResultHash", [txId, round]),
+    read("getRoundValidatorsPage", [txId, round, 0n, ROUND_PAGE_SIZE]),
+  ]);
+
+  const firstPage = _unpackRoundValidatorPage(firstPageRaw);
+  const offsets: bigint[] = [];
+  for (let offset = ROUND_PAGE_SIZE; offset < firstPage.total; offset += ROUND_PAGE_SIZE) {
+    offsets.push(offset);
+  }
+  const remainingPages = await Promise.all(
+    offsets.map(offset => read("getRoundValidatorsPage", [txId, round, offset, ROUND_PAGE_SIZE])),
+  );
+  const pages = [firstPage, ...remainingPages.map(_unpackRoundValidatorPage)];
+  if (pages.some(page => page.total !== firstPage.total)) {
+    throw new Error("Round validator page total changed within a fixed block snapshot");
+  }
+  const roundValidators = pages.flatMap(page => [...page.validators]);
+  const expected = Number(firstPage.total);
+  if (roundValidators.length !== expected) {
+    throw new Error(`Incomplete round validator pages: expected ${expected}, received ${roundValidators.length}`);
+  }
+  for (const [name, values] of [
+    ["validator votes", validatorVotes],
+    ["validator vote hashes", validatorVotesHash],
+    ["validator result hashes", validatorResultHash],
+  ] as const) {
+    if (values.length !== expected) {
+      throw new Error(`Incomplete ${name}: expected ${expected}, received ${values.length}`);
+    }
+  }
+
+  return {
+    round,
+    leaderIndex,
+    votesCommitted,
+    votesRevealed,
+    appealBond,
+    rotationsLeft,
+    result: Number(result),
+    roundValidators,
+    validatorVotes: [...validatorVotes].map(Number),
+    validatorVotesHash: [...validatorVotesHash],
+    validatorResultHash: [...validatorResultHash],
+  };
+};
+
+type LifecycleIdentity = {
+  blockNumber: bigint;
+  blockTimestamp: bigint;
+  resolutionAction: number;
+  attemptId: `0x${string}`;
+  decisionActive: boolean;
+  decisionId: bigint;
+};
+
+const _readLifecycleIdentity = async ({
   client,
   publicClient,
   txId,
-  value,
+  blockNumber,
+  blockTimestamp,
 }: {
   client: GenLayerClient<GenLayerChain>;
   publicClient: PublicClient;
   txId: `0x${string}`;
-  value?: bigint;
-}): Promise<bigint> => {
-  if (value !== undefined) {
-    return value;
+  blockNumber?: bigint;
+  blockTimestamp?: bigint;
+}): Promise<LifecycleIdentity> => {
+  const consensusDataAddress = client.chain.consensusDataContract?.address as Address | undefined;
+  if (!consensusDataAddress || consensusDataAddress === zeroAddress) {
+    throw new Error("ConsensusData contract is not configured for this chain");
   }
 
-  if (!client.chain.feeManagerContract?.address || !client.chain.roundsStorageContract?.address) {
-    return 0n;
+  let snapshotNumber = blockNumber;
+  let snapshotTimestamp = blockTimestamp;
+  if (snapshotNumber === undefined || snapshotTimestamp === undefined) {
+    const snapshot = await publicClient.getBlock();
+    snapshotNumber = snapshot.number;
+    snapshotTimestamp = snapshot.timestamp;
   }
 
-  const roundNumber = await publicClient.readContract({
-    address: client.chain.roundsStorageContract.address as `0x${string}`,
-    abi: client.chain.roundsStorageContract.abi as Abi,
-    functionName: "getRoundNumber",
+  const lifecycle = await publicClient.readContract({
+    address: consensusDataAddress,
+    abi: CONSENSUS_DATA_TRAIN_ABI,
+    functionName: "getTransactionLifecycle",
+    args: [txId, snapshotTimestamp],
+    blockNumber: snapshotNumber,
+  }) as any;
+  const resolution = lifecycle.resolution ?? lifecycle[1];
+  const latestDecision = lifecycle.latestDecision ?? lifecycle[2];
+  const decisionActive = Boolean(lifecycle.decisionActive ?? lifecycle[3]);
+
+  return {
+    blockNumber: snapshotNumber,
+    blockTimestamp: snapshotTimestamp,
+    resolutionAction: Number(resolution.action ?? resolution[3]),
+    attemptId: (resolution.attemptId ?? resolution[15]) as `0x${string}`,
+    decisionActive,
+    decisionId: decisionActive
+      ? BigInt(latestDecision.decisionId ?? latestDecision[1])
+      : 0n,
+  };
+};
+
+const _readAppealContext = async ({
+  client,
+  publicClient,
+  txId,
+  includeQuote = true,
+}: {
+  client: GenLayerClient<GenLayerChain>;
+  publicClient: PublicClient;
+  txId: `0x${string}`;
+  includeQuote?: boolean;
+}): Promise<LifecycleIdentity & {requiredValue: bigint}> => {
+  const identity = await _readLifecycleIdentity({client, publicClient, txId});
+  if (!identity.decisionActive) {
+    throw new Error(`Transaction ${txId} has no active decision to appeal`);
+  }
+
+  if (!includeQuote) {
+    return {...identity, requiredValue: 0n};
+  }
+
+  const consensusDataAddress = client.chain.consensusDataContract!.address as Address;
+  const quote = await publicClient.readContract({
+    address: consensusDataAddress,
+    abi: CONSENSUS_DATA_TRAIN_ABI,
+    functionName: "estimateLatestAppealCharge",
     args: [txId],
-  }) as bigint;
-
-  const transaction = await client.getTransaction({hash: txId as TransactionHash});
-  const txStatus = Number(transaction.status);
-
-  return publicClient.readContract({
-    address: client.chain.feeManagerContract.address as `0x${string}`,
-    abi: client.chain.feeManagerContract.abi as Abi,
-    functionName: "calculateMinAppealBond",
-    args: [txId, roundNumber, txStatus],
-  }) as Promise<bigint>;
+    blockNumber: identity.blockNumber,
+  }) as any;
+  const quoteDecisionId = BigInt(quote.decisionId ?? quote[0]);
+  if (quoteDecisionId !== identity.decisionId) {
+    throw new Error(
+      `Appeal decision changed while reading ${txId}: expected ${identity.decisionId}, received ${quoteDecisionId}`,
+    );
+  }
+  const bond = BigInt(quote.bond ?? quote[1]);
+  const funding = BigInt(quote.funding ?? quote[2]);
+  return {...identity, requiredValue: bond + funding};
 };
 
 const _encodeTopUpFeesData = ({
@@ -2001,15 +2205,17 @@ const _encodeTopUpFeesData = ({
 
 const _encodeTopUpAndSubmitAppealData = ({
   txId,
+  expectedDecisionId,
   distribution,
 }: {
   txId: `0x${string}`;
+  expectedDecisionId: bigint;
   distribution: FeesDistributionInput;
 }): `0x${string}` => {
   return encodeFunctionData({
     abi: CONSENSUS_FEE_MANAGEMENT_ABI,
     functionName: "topUpAndSubmitAppeal",
-    args: [txId, createFeesDistribution(distribution)],
+    args: [txId, expectedDecisionId, createFeesDistribution(distribution)],
   });
 };
 
@@ -2184,46 +2390,6 @@ const _sendConsensusCall = async ({
     throw new Error(`${operationName} reverted: EVM tx ${evmHash}`);
   }
   return evmHash;
-};
-
-const isAddTransactionAbiMismatchError = (error: unknown): boolean => {
-  const seen = new WeakSet<object>();
-  const serializedError =
-    typeof error === "object" && error !== null
-      ? JSON.stringify(error, (_key, value) => {
-        if (typeof value === "bigint") {
-          return value.toString();
-        }
-
-        if (typeof value === "object" && value !== null) {
-          if (seen.has(value as object)) {
-            return "[Circular]";
-          }
-          seen.add(value as object);
-        }
-
-        return value;
-      })
-      : "";
-  const errorObject = error as {shortMessage?: string; details?: string; message?: string};
-  const errorMessage = [
-    errorObject?.shortMessage,
-    errorObject?.details,
-    errorObject?.message,
-    serializedError,
-    String(error ?? ""),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  return (
-    errorMessage.includes("invalid pointer in tuple") ||
-    errorMessage.includes("invalid pointer") ||
-    errorMessage.includes("could not decode") ||
-    errorMessage.includes("invalid arrayify value") ||
-    errorMessage.includes("types/value length mismatch")
-  );
 };
 
 /**
@@ -2454,15 +2620,8 @@ const _sendTransaction = async ({
     return externalTxId;
   };
 
-  for (let i = 0; i < transactionVariants.length; i++) {
-    try {
-      return await sendWithEncodedData(transactionVariants[i]);
-    } catch (error) {
-      if (i === transactionVariants.length - 1 || !isAddTransactionAbiMismatchError(error)) {
-        throw error;
-      }
-    }
+  if (transactionVariants.length !== 1) {
+    throw new Error(`Train transaction encoding expected one variant, received ${transactionVariants.length}`);
   }
-
-  throw new Error("Unable to send transaction.");
+  return sendWithEncodedData(transactionVariants[0]);
 };

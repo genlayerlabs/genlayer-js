@@ -74,23 +74,17 @@ export const decodeInputData = (
 };
 
 export const decodeTransaction = (tx: GenLayerRawTransaction): GenLayerTransaction => {
-  // Normalize field names across chain ABIs (Bradbury uses different names)
-  const txData = tx.txData ?? (tx as any).txCalldata;
-  const numOfInitialValidators = tx.numOfInitialValidators ?? (tx as any).initialRotations;
-  // The train's stored record calls this observedAt; older chains say
-  // currentTimestamp. Same value, and it is read unconditionally below, so an
-  // unrecognised name is a crash rather than a missing field.
-  const currentTimestamp = tx.currentTimestamp ?? (tx as any).observedAt;
-
-  const txDataDecoded = decodeInputData(txData, tx.recipient);
+  const txDataDecoded = decodeInputData(tx.txCalldata, tx.recipient);
 
   const decodedTx = {
     ...tx,
-    txData: txData,
+    // Preserve the public SDK field names while decoding one canonical train
+    // wire layout. Deployments with the old tuple must use the old SDK.
+    txData: tx.txCalldata,
     txDataDecoded: txDataDecoded,
 
-    currentTimestamp: currentTimestamp?.toString() ?? "0",
-    numOfInitialValidators: numOfInitialValidators?.toString() ?? "0",
+    currentTimestamp: tx.observedAt.toString(),
+    numOfInitialValidators: tx.numOfInitialValidators.toString(),
     txSlot: tx.txSlot.toString(),
     createdTimestamp: tx.createdTimestamp.toString(),
     lastVoteTimestamp: tx.lastVoteTimestamp.toString(),
@@ -288,4 +282,4 @@ export const decodeLocalnetTransaction = (tx: GenLayerTransaction): GenLayerTran
     console.error("Error in decodeLocalnetTransaction:", e);
   }
   return tx;
-}; 
+};
