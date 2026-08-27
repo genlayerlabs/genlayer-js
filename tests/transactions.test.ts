@@ -124,6 +124,17 @@ describe("transaction enum maps", () => {
       "4": VoteType.NONDET_DISAGREE,
       "5": VoteType.DETERMINISTIC_VIOLATION,
     });
+    expect(TransactionResult).toEqual({
+      IDLE: "IDLE",
+      AGREE: "AGREE",
+      DISAGREE: "DISAGREE",
+      TIMEOUT: "TIMEOUT",
+      DETERMINISTIC_VIOLATION: "DETERMINISTIC_VIOLATION",
+      NO_MAJORITY: "NO_MAJORITY",
+      MAJORITY_AGREE: "MAJORITY_AGREE",
+      MAJORITY_DISAGREE: "MAJORITY_DISAGREE",
+      MAJORITY_TIMEOUT: "MAJORITY_TIMEOUT",
+    });
     expect(transactionResultNumberToName).toEqual({
       "0": TransactionResult.IDLE,
       "1": TransactionResult.MAJORITY_AGREE,
