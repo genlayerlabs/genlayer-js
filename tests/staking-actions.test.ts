@@ -356,7 +356,7 @@ describe("stakingActions validator-set reads", () => {
   });
 
   it("reports the selectable count as active in epoch information", async () => {
-    const epochData = [10n, 0n, 0n, 0n, 0n, 0n, 3n, 0n, 0n, 0n, 0n];
+    const epochData = [10n, 0n, 10n, 100n, 0n, 0n, 3n, 0n, 0n, 0n, 0n];
     const responses: Record<string, unknown> = {
       epoch: 4n,
       finalized: 3n,
@@ -374,6 +374,8 @@ describe("stakingActions validator-set reads", () => {
     const info = await actions.getEpochInfo();
 
     expect(info.activeValidatorsCount).toBe(2n);
+    expect(info.totalWeight).toBe(100n);
+    expect(info.inflationRaw).toBe(10n);
     expect(readContract).toHaveBeenCalledWith(
       expect.objectContaining({functionName: "selectableValidatorsCount"}),
     );

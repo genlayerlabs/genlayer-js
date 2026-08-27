@@ -126,6 +126,10 @@ export interface EpochInfo {
   currentEpoch: bigint;
   lastFinalizedEpoch: bigint;
   activeValidatorsCount: bigint;
+  /** Current epoch's aggregate validator weight. */
+  totalWeight: bigint;
+  /** Current epoch's inflation amount in base units. */
+  inflationRaw: bigint;
   epochMinDuration: bigint;
   nextEpochEstimate: Date | null;
   validatorMinStake: string;
@@ -237,6 +241,7 @@ export interface DelegatorClaimOptions {
 export interface StakingActions {
   validatorJoin: (options: ValidatorJoinOptions) => Promise<ValidatorJoinResult>;
   getValidatorRegistrationContext: () => Promise<OperatorRegistrationContext>;
+  validatorPrime: (options: ValidatorPrimeOptions) => Promise<StakingTransactionResult>;
   /** @deprecated Use initiateOperatorTransfer followed by completeOperatorTransfer. */
   setOperator: (options: SetOperatorOptions) => Promise<StakingTransactionResult>;
   getOperatorTransferContext: (validator: Address) => Promise<OperatorRegistrationContext>;
@@ -244,6 +249,7 @@ export interface StakingActions {
   completeOperatorTransfer: (options: CompleteOperatorTransferOptions) => Promise<StakingTransactionResult>;
   cancelOperatorTransfer: (options: CancelOperatorTransferOptions) => Promise<StakingTransactionResult>;
   getPendingOperator: (validator: Address) => Promise<PendingOperatorInfo>;
+  setIdentity: (options: SetIdentityOptions) => Promise<StakingTransactionResult>;
   validatorDeposit: (options: ValidatorDepositOptions) => Promise<StakingTransactionResult>;
   validatorExit: (options: ValidatorExitOptions) => Promise<StakingTransactionResult>;
   validatorClaim: (options?: ValidatorClaimOptions) => Promise<StakingTransactionResult & {claimedAmount: bigint}>;
@@ -252,6 +258,8 @@ export interface StakingActions {
   delegatorClaim: (options: DelegatorClaimOptions) => Promise<StakingTransactionResult>;
   /** Checks whether the address is a registered/joined validator wallet. */
   isValidator: (address: Address) => Promise<boolean>;
+  getCurrentEpoch: () => Promise<bigint>;
+  isValidatorBelowMin: (validator: Address) => Promise<boolean>;
   getValidatorInfo: (validator: Address) => Promise<ValidatorInfo>;
   getStakeInfo: (delegator: Address, validator: Address) => Promise<StakeInfo>;
   getEpochInfo: () => Promise<EpochInfo>;
@@ -260,6 +268,9 @@ export interface StakingActions {
   getActiveValidatorsCount: () => Promise<bigint>;
   getJoinedValidators: () => Promise<Address[]>;
   getJoinedValidatorsCount: () => Promise<bigint>;
+  getQuarantinedValidators: () => Promise<Address[]>;
+  getBannedValidators: (startIndex?: bigint, size?: bigint) => Promise<BannedValidatorInfo[]>;
+  getQuarantinedValidatorsDetailed: (startIndex?: bigint, size?: bigint) => Promise<BannedValidatorInfo[]>;
   getStakingContract: () => StakingContract;
   parseStakingAmount: (amount: string | bigint) => bigint;
   formatStakingAmount: (amount: bigint) => string;

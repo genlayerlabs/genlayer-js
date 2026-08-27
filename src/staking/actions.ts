@@ -807,6 +807,8 @@ export const stakingActions = (
         currentEpoch: epoch,
         lastFinalizedEpoch: finalized,
         activeValidatorsCount: activeCount,
+        totalWeight: currentEpochData.weight,
+        inflationRaw: currentEpochData.inflation,
         epochMinDuration,
         nextEpochEstimate,
         validatorMinStake: formatStakingAmount(valMinStake),
