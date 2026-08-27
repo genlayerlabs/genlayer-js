@@ -2414,3 +2414,211 @@ describe("contractActions train lifecycle batches", () => {
     }]);
   });
 });
+
+/** Pre-train entrypoints as the studio-embedded consensus exposes them. */
+const CONSENSUS_MAIN_STUDIO_ABI = [
+  {
+    type: "function" as const,
+    name: "submitAppeal",
+    stateMutability: "payable" as const,
+    inputs: [{name: "_txId", type: "bytes32"}],
+    outputs: [],
+  },
+  {
+    type: "function" as const,
+    name: "finalizeTransaction",
+    stateMutability: "nonpayable" as const,
+    inputs: [{name: "_txId", type: "bytes32"}],
+    outputs: [],
+  },
+] as const;
+
+const FEE_MANAGEMENT_STUDIO_ABI = [
+  {
+    type: "function" as const,
+    name: "topUpAndSubmitAppeal",
+    stateMutability: "payable" as const,
+    inputs: [
+      {name: "_txId", type: "bytes32"},
+      {name: "_feesDistribution", type: "tuple", components: FEES_DISTRIBUTION_COMPONENTS},
+    ],
+    outputs: [],
+  },
+] as const;
+
+/**
+ * Mirrors the localnet/studionet chain config: ConsensusMain and ConsensusData
+ * resolve, but the fee manager, rounds storage, and appeals contracts carry no
+ * address, and ConsensusData answers no train lifecycle read.
+ */
+const setupStudioLifecycleHarness = () => {
+  const signTransaction = vi.fn().mockResolvedValue("0xsigned");
+  const sendRawTransaction = vi.fn().mockResolvedValue(MOCK_EVM_TX_HASH);
+  const waitForTransactionReceipt = vi.fn().mockResolvedValue({status: "success", logs: []});
+
+  const client = {
+    chain: {
+      id: 61_999,
+      isStudio: true,
+      consensusMainContract: {
+        address: MAIN_CONTRACT_ADDRESS,
+        abi: CONSENSUS_MAIN_STUDIO_ABI,
+        bytecode: "0x",
+      },
+      consensusDataContract: {
+        address: CONSENSUS_DATA_ADDRESS,
+        abi: [],
+        bytecode: "0x",
+      },
+      appealsContract: {address: undefined, abi: [], bytecode: "0x"},
+      feeManagerContract: {address: undefined, abi: [], bytecode: "0x"},
+      roundsStorageContract: {address: undefined, abi: [], bytecode: "0x"},
+    },
+    account: {
+      address: SENDER_ADDRESS,
+      type: "local",
+      signTransaction,
+    },
+    getCurrentNonce: vi.fn().mockResolvedValue(0n),
+    estimateTransactionGas: vi.fn().mockResolvedValue(21_000n),
+    sendRawTransaction,
+    request: vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "eth_gasPrice") return "0x1";
+      throw new Error(`Unexpected RPC method: ${method}`);
+    }),
+  };
+
+  // Any consensus read here is the regression: the pre-train deployment answers
+  // getTransactionLifecycle with a short tuple, which viem reports as
+  // "Position 63 is out of bounds (0 < position < 32)".
+  const readContract = vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
+    throw new Error(`Unexpected consensus read on Studio: ${functionName}`);
+  });
+  const publicClient = {
+    waitForTransactionReceipt,
+    getBlock: vi.fn().mockResolvedValue({number: 123n, timestamp: 456n}),
+    readContract,
+  };
+
+  return {
+    actions: contractActions(client as any, publicClient as any),
+    signTransaction,
+    sendRawTransaction,
+    waitForTransactionReceipt,
+    readContract,
+    client,
+    publicClient,
+  };
+};
+
+describe("contractActions Studio lifecycle compatibility", () => {
+  it("encodes submitAppeal(bytes32) without reading the train lifecycle", async () => {
+    const {actions, signTransaction, readContract} = setupStudioLifecycleHarness();
+
+    await expect(actions.appealTransaction({txId: MOCK_GENLAYER_TX_ID, value: 500n})).resolves.toBe(
+      MOCK_GENLAYER_TX_ID,
+    );
+
+    expect(readContract).not.toHaveBeenCalled();
+    const txRequest = signTransaction.mock.calls[0][0];
+    expect(txRequest.to).toBe(MAIN_CONTRACT_ADDRESS);
+    expect(txRequest.value).toBe(500n);
+    const decoded = decodeFunctionData({abi: CONSENSUS_MAIN_STUDIO_ABI, data: txRequest.data});
+    expect(decoded.functionName).toBe("submitAppeal");
+    expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID]);
+  });
+
+  it("defaults the Studio appeal value to zero when the caller omits it", async () => {
+    const {actions, signTransaction, readContract} = setupStudioLifecycleHarness();
+
+    await actions.appealTransaction({txId: MOCK_GENLAYER_TX_ID});
+
+    expect(readContract).not.toHaveBeenCalled();
+    expect(signTransaction.mock.calls[0][0].value).toBe(0n);
+  });
+
+  it("encodes topUpAndSubmitAppeal without a decision id", async () => {
+    const {actions, signTransaction, readContract} = setupStudioLifecycleHarness();
+
+    const txId = await actions.topUpAndSubmitAppeal({
+      txId: MOCK_GENLAYER_TX_ID,
+      value: 1234n,
+      distribution: {appealRounds: 1n, rotations: [0n, 1n]},
+    });
+
+    expect(txId).toBe(MOCK_GENLAYER_TX_ID);
+    expect(readContract).not.toHaveBeenCalled();
+    const txRequest = signTransaction.mock.calls[0][0];
+    expect(txRequest.value).toBe(1234n);
+    const decoded = decodeFunctionData({abi: FEE_MANAGEMENT_STUDIO_ABI as any, data: txRequest.data});
+    const [decodedTxId, distribution] = decoded.args as any[];
+    expect(decodedTxId).toBe(MOCK_GENLAYER_TX_ID);
+    expect(distribution.appealRounds).toBe(1n);
+    expect(distribution.rotations).toEqual([0n, 1n]);
+  });
+
+  it("encodes finalizeTransaction(bytes32) without a decision id", async () => {
+    const {actions, signTransaction, readContract} = setupStudioLifecycleHarness();
+
+    await expect(actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(
+      MOCK_EVM_TX_HASH,
+    );
+
+    expect(readContract).not.toHaveBeenCalled();
+    const decoded = decodeFunctionData({
+      abi: CONSENSUS_MAIN_STUDIO_ABI,
+      data: signTransaction.mock.calls[0][0].data,
+    });
+    expect(decoded.functionName).toBe("finalizeTransaction");
+    expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID]);
+  });
+
+  it("reports the missing appeal quote surface instead of decoding a train lifecycle", async () => {
+    const {actions, readContract} = setupStudioLifecycleHarness();
+
+    await expect(actions.getAppealCharge({txId: MOCK_GENLAYER_TX_ID})).rejects.toThrow(
+      /missing feeManagerContract\/roundsStorageContract/,
+    );
+    await expect(actions.getMinAppealBond({txId: MOCK_GENLAYER_TX_ID})).rejects.toThrow(
+      /missing feeManagerContract\/roundsStorageContract/,
+    );
+    expect(readContract).not.toHaveBeenCalled();
+  });
+
+  it("reports the missing appeals contract from canAppeal", async () => {
+    const {actions, readContract} = setupStudioLifecycleHarness();
+
+    await expect(actions.canAppeal({txId: MOCK_GENLAYER_TX_ID})).rejects.toThrow(
+      /missing appealsContract/,
+    );
+    expect(readContract).not.toHaveBeenCalled();
+  });
+
+  it("rejects the train-only batch actions with an actionable message and never broadcasts", async () => {
+    const {actions, signTransaction, readContract} = setupStudioLifecycleHarness();
+
+    await expect(actions.resolveTransactions({txIds: [MOCK_GENLAYER_TX_ID]})).rejects.toThrow(
+      /resolveTransactions not supported on this chain.*finalizeTransaction/s,
+    );
+    await expect(actions.finalizeDecisions({txIds: [MOCK_GENLAYER_TX_ID]})).rejects.toThrow(
+      /finalizeDecisions not supported on this chain.*finalizeTransaction/s,
+    );
+    expect(readContract).not.toHaveBeenCalled();
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
+
+  it("still threads the decision id through the train path on non-Studio chains", async () => {
+    const {actions, signTransaction, publicClient} = setupFeeManagementHarness();
+
+    await actions.appealTransaction({txId: MOCK_GENLAYER_TX_ID});
+
+    expect(publicClient.readContract).toHaveBeenCalledWith(
+      expect.objectContaining({functionName: "getTransactionLifecycle"}),
+    );
+    const decoded = decodeFunctionData({
+      abi: APPEAL_TRAIN_ABI,
+      data: signTransaction.mock.calls[0][0].data,
+    });
+    expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID, MOCK_DECISION_ID]);
+  });
+});

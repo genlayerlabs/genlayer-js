@@ -603,11 +603,17 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
     },
     /** Returns the full authoritative appeal charge (bond plus appeal funding). */
     getAppealCharge: async (args: {txId: `0x${string}`}): Promise<bigint> => {
+      if (client.chain.isStudio) {
+        throw new Error(STUDIO_APPEAL_QUOTE_UNSUPPORTED);
+      }
       const context = await _readAppealContext({client, publicClient, txId: args.txId});
       return context.requiredValue;
     },
     /** @deprecated Use getAppealCharge. This legacy name also returns bond plus appeal funding. */
     getMinAppealBond: async (args: {txId: `0x${string}`}): Promise<bigint> => {
+      if (client.chain.isStudio) {
+        throw new Error(STUDIO_APPEAL_QUOTE_UNSUPPORTED);
+      }
       const context = await _readAppealContext({client, publicClient, txId: args.txId});
       return context.requiredValue;
     },
@@ -803,6 +809,23 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       value?: bigint;
     }) => {
       const {account, txId} = args;
+      const senderAccount = account || client.account;
+
+      // Appeals don't go through _sendTransaction because submitAppeal emits
+      // AppealStarted/TransactionActivated events, not NewTransaction/CreatedTransaction.
+      // The appeal operates on the same GenLayer txId, so we return it directly.
+      if (client.chain.isStudio) {
+        await _sendConsensusCall({
+          client,
+          publicClient,
+          encodedData: _encodeStudioSubmitAppealData({client, txId}),
+          senderAccount,
+          value: args.value ?? 0n,
+          operationName: "Appeal",
+        });
+        return txId;
+      }
+
       const context = await _readAppealContext({
         client,
         publicClient,
@@ -811,14 +834,10 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       });
       const value = args.value ?? context.requiredValue;
 
-      const senderAccount = account || client.account;
       const encodedData = _encodeSubmitAppealData({
         txId,
         expectedDecisionId: context.decisionId,
       });
-      // Appeals don't go through _sendTransaction because submitAppeal emits
-      // AppealStarted/TransactionActivated events, not NewTransaction/CreatedTransaction.
-      // The appeal operates on the same GenLayer txId, so we return it directly.
       await _sendConsensusCall({
         client,
         publicClient,
@@ -863,6 +882,20 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       value?: bigint;
     }): Promise<`0x${string}`> => {
       const {account, txId, distribution} = args;
+      const senderAccount = account || client.account;
+
+      if (client.chain.isStudio) {
+        await _sendConsensusCall({
+          client,
+          publicClient,
+          encodedData: _encodeStudioTopUpAndSubmitAppealData({txId, distribution}),
+          senderAccount,
+          value: args.value ?? 0n,
+          operationName: "Top up and submit appeal",
+        });
+        return txId;
+      }
+
       const context = await _readAppealContext({
         client,
         publicClient,
@@ -871,7 +904,6 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       });
       const value = args.value ?? context.requiredValue;
 
-      const senderAccount = account || client.account;
       const encodedData = _encodeTopUpAndSubmitAppealData({
         txId,
         expectedDecisionId: context.decisionId,
@@ -893,11 +925,26 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       txId: `0x${string}`;
     }): Promise<`0x${string}`> => {
       const {account, txId} = args;
+      const senderAccount = account || client.account;
+
+      if (client.chain.isStudio) {
+        return _sendConsensusCall({
+          client,
+          publicClient,
+          encodedData: encodeFunctionData({
+            abi: client.chain.consensusMainContract?.abi as any,
+            functionName: "finalizeTransaction",
+            args: [txId],
+          }),
+          senderAccount,
+          operationName: "Finalize",
+        });
+      }
+
       const identity = await _readLifecycleIdentity({client, publicClient, txId});
       if (!identity.decisionActive) {
         throw new Error(`Transaction ${txId} has no active decision to finalize`);
       }
-      const senderAccount = account || client.account;
       const encodedData = encodeFunctionData({
         abi: CONSENSUS_FINALIZATION_TRAIN_ABI,
         functionName: "finalizeTransaction",
@@ -930,6 +977,9 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       account?: Account;
       txIds: readonly `0x${string}`[];
     }): Promise<`0x${string}`> => {
+      if (client.chain.isStudio) {
+        throw _studioTrainBatchError("resolveTransactions");
+      }
       if (args.txIds.length === 0) {
         throw new Error("resolveTransactions requires at least one txId.");
       }
@@ -964,6 +1014,9 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       account?: Account;
       txIds: readonly `0x${string}`[];
     }): Promise<`0x${string}`> => {
+      if (client.chain.isStudio) {
+        throw _studioTrainBatchError("finalizeDecisions");
+      }
       if (args.txIds.length === 0) {
         throw new Error("finalizeDecisions requires at least one txId.");
       }
@@ -1088,6 +1141,23 @@ const CONSENSUS_FEE_MANAGEMENT_ABI = [
     inputs: [
       {name: "_txId", type: "bytes32"},
       {name: "_expectedDecisionId", type: "uint256"},
+      {name: "_feesDistribution", type: "tuple", components: FEES_DISTRIBUTION_COMPONENTS},
+    ],
+    outputs: [],
+  },
+] as const;
+
+/**
+ * Pre-train fee-management appeal entrypoint, kept for the studio-embedded
+ * consensus: it has no decision identity to bind the appeal to.
+ */
+const CONSENSUS_FEE_MANAGEMENT_STUDIO_ABI = [
+  {
+    type: "function",
+    name: "topUpAndSubmitAppeal",
+    stateMutability: "payable",
+    inputs: [
+      {name: "_txId", type: "bytes32"},
       {name: "_feesDistribution", type: "tuple", components: FEES_DISTRIBUTION_COMPONENTS},
     ],
     outputs: [],
@@ -1992,6 +2062,50 @@ const _encodeSubmitAppealData = ({
     abi: CONSENSUS_APPEAL_TRAIN_ABI,
     functionName: "submitAppeal",
     args: [txId, expectedDecisionId],
+  });
+};
+
+/**
+ * Studio chains run the studio-embedded consensus, which predates the
+ * resolution-kernel train: ConsensusData exposes no getTransactionLifecycle and
+ * no estimateLatestAppealCharge, and the chain config carries no fee manager,
+ * rounds storage, or appeals contract. Appeal and finalization calls therefore
+ * keep their pre-train, decision-free shape there.
+ */
+const STUDIO_APPEAL_QUOTE_UNSUPPORTED =
+  "Appeal bond calculation not supported on this chain (missing feeManagerContract/roundsStorageContract)";
+
+const _studioTrainBatchError = (action: string): Error =>
+  new Error(
+    `${action} not supported on this chain (studio consensus predates the resolution-kernel train): ` +
+      "use finalizeTransaction for a studio transaction.",
+  );
+
+const _encodeStudioSubmitAppealData = ({
+  client,
+  txId,
+}: {
+  client: GenLayerClient<GenLayerChain>;
+  txId: `0x${string}`;
+}): `0x${string}` => {
+  return encodeFunctionData({
+    abi: client.chain.consensusMainContract?.abi as any,
+    functionName: "submitAppeal",
+    args: [txId],
+  });
+};
+
+const _encodeStudioTopUpAndSubmitAppealData = ({
+  txId,
+  distribution,
+}: {
+  txId: `0x${string}`;
+  distribution: FeesDistributionInput;
+}): `0x${string}` => {
+  return encodeFunctionData({
+    abi: CONSENSUS_FEE_MANAGEMENT_STUDIO_ABI,
+    functionName: "topUpAndSubmitAppeal",
+    args: [txId, createFeesDistribution(distribution)],
   });
 };
 
