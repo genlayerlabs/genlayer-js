@@ -456,10 +456,17 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
     getCurrentFeePolicy: async (): Promise<FeePolicyQuote> => {
       return readCurrentFeePolicy(client, publicClient);
     },
-    /** Builds a fee distribution with caps derived from the active fee policy. */
+    /**
+     * Builds a fee distribution with caps derived from the active fee policy.
+     * Omitted rotations fund the chain's configured consensus maximum.
+     */
     estimateFeesDistribution: async (args?: FeeEstimateOptions): Promise<FeesDistribution> => {
       const policy = await readCurrentFeePolicy(client, publicClient);
-      return buildEstimatedFeesDistribution(args, policy);
+      return buildEstimatedFeesDistribution(
+        args,
+        policy,
+        client.chain.defaultConsensusMaxRotations,
+      );
     },
     /**
      * Builds a complete transaction `fees` object, including feeValue.
@@ -468,7 +475,11 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
      */
     estimateTransactionFees: async (args?: FeeEstimateOptions): Promise<TransactionFeeEstimate> => {
       const policy = await readCurrentFeePolicy(client, publicClient);
-      const distribution = buildEstimatedFeesDistribution(args, policy);
+      const distribution = buildEstimatedFeesDistribution(
+        args,
+        policy,
+        client.chain.defaultConsensusMaxRotations,
+      );
 
       return {
         distribution,
@@ -489,7 +500,11 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       const policy = await readCurrentFeePolicy(client, publicClient);
       const {estimateOptions, observed, messageAllocations} =
         buildEstimatedFeesOptionsFromSimulation(args, policy);
-      const distribution = buildEstimatedFeesDistribution(estimateOptions, policy);
+      const distribution = buildEstimatedFeesDistribution(
+        estimateOptions,
+        policy,
+        client.chain.defaultConsensusMaxRotations,
+      );
 
       return {
         distribution,
@@ -523,7 +538,11 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       } = args;
 
       const policy = await readCurrentFeePolicy(client, publicClient);
-      const initialDistribution = buildEstimatedFeesDistribution(feeOptions, policy);
+      const initialDistribution = buildEstimatedFeesDistribution(
+        feeOptions,
+        policy,
+        client.chain.defaultConsensusMaxRotations,
+      );
       const initialEstimate: TransactionFeeEstimate = {
         distribution: initialDistribution,
         messageAllocations: feeOptions.messageAllocations,
@@ -591,7 +610,11 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
           },
           policy,
         );
-      const distribution = buildEstimatedFeesDistribution(estimateOptions, policy);
+      const distribution = buildEstimatedFeesDistribution(
+        estimateOptions,
+        policy,
+        client.chain.defaultConsensusMaxRotations,
+      );
 
       return {
         distribution,
@@ -1596,6 +1619,7 @@ const defaultExecutionBudgetPerRound = (policy: FeePolicyQuote): bigint => {
 const buildEstimatedFeesDistribution = (
   options: FeeEstimateOptions | undefined,
   policy: FeePolicyQuote,
+  defaultConsensusMaxRotations: number,
 ): FeesDistribution => {
   const headroomBps = toUInt(
     options?.priceCapHeadroomBps,
@@ -1628,6 +1652,20 @@ const buildEstimatedFeesDistribution = (
   const executionBudgetDefault = emitsMessages
     ? baseExecutionBudgetDefault + (policy.receiptGasPrice * DEFAULT_PARENT_MESSAGE_RECEIPT_HEADROOM)
     : baseExecutionBudgetDefault;
+  const appealRounds = toUInt(options?.appealRounds, "appealRounds", 0n);
+  const rotationsCount = Number(appealRounds + 1n);
+  if (!Number.isSafeInteger(rotationsCount)) {
+    throw new Error("rotations appealRounds is too large.");
+  }
+  let rotations = options?.rotations;
+  if (rotations === undefined) {
+    const defaultRotationBudget = toUInt(
+      defaultConsensusMaxRotations,
+      "defaultConsensusMaxRotations",
+      0n,
+    );
+    rotations = Array.from({length: rotationsCount}, () => defaultRotationBudget);
+  }
 
   return createFeesDistribution({
     leaderTimeunitsAllocation: options?.leaderTimeunitsAllocation ?? (
@@ -1636,11 +1674,11 @@ const buildEstimatedFeesDistribution = (
     validatorTimeunitsAllocation: options?.validatorTimeunitsAllocation ?? (
       policy.enabled ? DEFAULT_VALIDATOR_TIMEUNITS_ALLOCATION : 0n
     ),
-    appealRounds: options?.appealRounds,
+    appealRounds,
     executionBudgetPerRound: options?.executionBudgetPerRound ?? executionBudgetDefault,
     executionConsumed: options?.executionConsumed,
     totalMessageFees,
-    rotations: options?.rotations,
+    rotations,
     maxPriceGenPerTimeUnit:
       options?.maxPriceGenPerTimeUnit ?? withCapHeadroom(policy.genPerTimeUnit, headroomBps),
     storageFeeMaxGasPrice:

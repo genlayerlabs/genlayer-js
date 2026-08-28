@@ -113,7 +113,6 @@ values in wallet or app UI before signing.
 const estimate = await client.estimateTransactionFees({
   leaderTimeunitsAllocation: 100n,
   validatorTimeunitsAllocation: 200n,
-  rotations: [0n],
 });
 
 const txHash = await client.writeContract({
@@ -127,6 +126,10 @@ const txHash = await client.writeContract({
   },
 });
 ```
+
+When `rotations` is omitted from an estimate, the SDK funds every round through
+the chain's `defaultConsensusMaxRotations`. Pass `rotations` explicitly—including
+`[0n]`—when the transaction should use a lower rotation budget.
 
 If `fees.distribution` is provided without `feeValue`, the SDK derives the fee
 deposit from FeeManager on network backends, or from `sim_getFeeConfig` on

@@ -893,6 +893,85 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(estimateTransactionGas.mock.calls[0][0].value).toBe(11_000n);
   });
 
+  it("defaults direct fee estimates to the chain rotation budget for every appeal round", async () => {
+    const requestMock = vi.fn().mockResolvedValue({
+      enabled: false,
+      policy: {
+        genPerTimeUnit: "0",
+        storageUnitPrice: "0",
+        receiptGasPrice: "0",
+      },
+    });
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    const defaulted = await actions.estimateFeesDistribution({appealRounds: 2n});
+    const explicit = await actions.estimateFeesDistribution({rotations: [0n]});
+
+    expect(defaulted.rotations).toEqual([3n, 3n, 3n]);
+    expect(explicit.rotations).toEqual([0n]);
+  });
+
+  it("defaults simulation fee estimates to the chain rotation budget", async () => {
+    const requestMock = vi.fn().mockResolvedValue({
+      enabled: false,
+      policy: {
+        genPerTimeUnit: "0",
+        storageUnitPrice: "0",
+        receiptGasPrice: "0",
+      },
+    });
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    const fees = await actions.estimateTransactionFeesFromSimulation({
+      appealRounds: 1n,
+      simulation: {},
+    });
+
+    expect(fees.distribution.rotations).toEqual([3n, 3n]);
+  });
+
+  it("uses the chain rotation budget in write estimation requests and fallback results", async () => {
+    const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "sim_getFeeConfig") {
+        return {
+          enabled: false,
+          policy: {
+            genPerTimeUnit: "0",
+            storageUnitPrice: "0",
+            receiptGasPrice: "0",
+          },
+        };
+      }
+      if (method === "sim_estimateTransactionFees") return {};
+      if (method === "gen_call") return {data: "0x"};
+      throw new Error(`unexpected request ${method}`);
+    });
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    const fees = await actions.estimateTransactionFeesForWrite({
+      address: RECIPIENT_ADDRESS,
+      functionName: "ping",
+    });
+
+    const estimateRequest = requestMock.mock.calls.find(
+      ([call]) => call.method === "sim_estimateTransactionFees",
+    )?.[0];
+    expect(estimateRequest.params[0].fees.distribution.rotations).toEqual(["3"]);
+    expect(fees.distribution.rotations).toEqual([3n]);
+  });
+
   it("estimates fee distribution caps and fee value from FeeManager prices", async () => {
     const publicClient = {
       readContract: vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
@@ -1078,7 +1157,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(fees.distribution.storageFeeMaxGasPrice).toBe(20n);
     expect(fees.distribution.receiptFeeMaxGasPrice).toBe(30n);
     expect(fees.distribution.executionBudgetPerRound).toBe(3_000_000_000n);
-    expect(fees.feeValue).toBe(3_000_011_000n);
+    expect(fees.feeValue).toBe(12_000_044_000n);
   });
 
   it("prefers Studio's exposed message fee budget floor over local fallback math", async () => {
@@ -1108,7 +1187,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
 
     expect(fees.policy.executionBudgetFloor).toBe(700_000n);
     expect(fees.distribution.executionBudgetPerRound).toBe(3_000_000_000n);
-    expect(fees.feeValue).toBe(3_000_011_000n);
+    expect(fees.feeValue).toBe(12_000_044_000n);
   });
 
   it("builds a Studio trusted fee preset from a simulation fee report", async () => {
@@ -1252,7 +1331,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     });
     expect(fees.distribution.executionBudgetPerRound).toBe(expectedExecutionBudgetPerRound);
     expect(fees.distribution.totalMessageFees).toBe(6n);
-    expect(fees.feeValue).toBe(613_123n);
+    expect(fees.feeValue).toBe(2_452_474n);
   });
 
   it("uses the execution budget floor for simulation recommendations when observed usage is lower", async () => {
@@ -1389,7 +1468,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     const simCall = requestMock.mock.calls.find(([call]) => call.method === "sim_estimateTransactionFees")?.[0];
     expect(simCall).toBeDefined();
     expect(simCall.params[0].value).toBe("0x7");
-    expect(simCall.params[0].fees.feeValue).toBe("3000311110");
+    expect(simCall.params[0].fees.feeValue).toBe("12001244110");
     expect(simCall.params[0].fees.distribution.totalMessageFees).toBe("110");
     expect(simCall.params[0].fees.messageAllocations[0].budget).toBe("110");
     expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(602_117n);
@@ -1451,7 +1530,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(fees.messageAllocations?.[0].budget).toBe(50n);
     expect(fees.messageAllocations?.[0].feeParams).toBe(feeParams);
     expect(fees.distribution.totalMessageFees).toBe(50n);
-    expect(fees.feeValue).toBe(3_000_311_050n);
+    expect(fees.feeValue).toBe(12_001_244_050n);
   });
 
   it("keeps Studio fee estimation gasless when sim_getFeeConfig is disabled", async () => {
