@@ -52,9 +52,12 @@ Polls until the stored transaction state is finalized.
 ### getTransactionLifecycle
 
 `advanced.getTransactionLifecycle` exposes stored/projected status,
-resolution action/source, and active decision identity. Studio uses the
-node RPC; contract networks use one fixed-block lifecycle read. `Finalize`
-is an action, not a status or separate readiness field.
+resolution action/source, and active decision identity. Contract networks
+use one fixed-block lifecycle read. `Finalize` is an action, not a status
+or separate readiness field.
+A Studio deployment that does not yet serve `gen_getTransactionLifecycle`
+degrades to the stored status its consumer surface does prove, rather
+than failing the whole read.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

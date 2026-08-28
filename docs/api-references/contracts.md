@@ -188,7 +188,9 @@ should pass with the real transaction.
 
 ### getAppealCharge
 
-Returns the full authoritative appeal charge (bond plus appeal funding).
+Returns the full authoritative appeal charge (bond plus appeal funding)
+on resolution-kernel contract networks. Current Studio has no
+decision-bound quote surface.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -322,6 +324,9 @@ Claims a bounded number of reward epochs for a developer NFT. Returns the EVM tr
 ### appealTransaction
 
 Appeals a consensus transaction to trigger a new round of validation.
+Contract networks bind the call to the active decision and quote an
+omitted value. Current Studio uses its native decision-free entrypoint;
+its value defaults to zero when omitted.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -352,6 +357,9 @@ backends, or the target GenLayer tx id on Studio/localnet.
 
 Deposits appeal fee budget and submits an appeal in the same consensus call.
 Returns the existing GenLayer transaction id, matching appealTransaction.
+Contract networks bind the call to the active decision and quote an
+omitted value. Current Studio uses its native decision-free entrypoint;
+its value defaults to zero when omitted.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

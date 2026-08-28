@@ -1,6 +1,6 @@
 import {Address, defineChain} from "viem";
 import {GenLayerChain} from "@/types";
-import {withStudioConsensusMainTrainAbi} from "@/abi/studioConsensusTrain";
+import {withStudioConsensusMainAbi} from "@/abi/studioConsensus";
 
 // chains/localnet.ts
 const SIMULATOR_JSON_RPC_URL = "http://127.0.0.1:4000/api";
@@ -1381,11 +1381,6 @@ const CONSENSUS_MAIN_CONTRACT_BASE = {
           name: "_txId",
           type: "bytes32",
         },
-        {
-          internalType: "uint256",
-          name: "_expectedDecisionId",
-          type: "uint256",
-        },
       ],
       name: "submitAppeal",
       outputs: [],
@@ -1443,7 +1438,7 @@ const CONSENSUS_MAIN_CONTRACT_BASE = {
 
 const CONSENSUS_MAIN_CONTRACT = {
   ...CONSENSUS_MAIN_CONTRACT_BASE,
-  abi: withStudioConsensusMainTrainAbi(CONSENSUS_MAIN_CONTRACT_BASE.abi),
+  abi: withStudioConsensusMainAbi(CONSENSUS_MAIN_CONTRACT_BASE.abi),
 };
 
 const CONSENSUS_DATA_CONTRACT = {

@@ -299,7 +299,8 @@ console.log(tx.lifecycle);
 // {state: "decided", outcome: "accepted"}
 
 // Advanced protocol consumers can explicitly request timestamp projection and
-// the exact resolution action/source. The same shape works on Studio and train.
+// the exact resolution action/source. Current Studio can prove only the stored
+// status, so unsupported action/decision fields remain inactive there.
 const protocolLifecycle = await client.advanced.getTransactionLifecycle({ hash: txHash });
 console.log(protocolLifecycle.storedStatus);
 console.log(protocolLifecycle.projectedStatus);

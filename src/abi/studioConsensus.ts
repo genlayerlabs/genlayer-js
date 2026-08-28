@@ -37,11 +37,11 @@ const addTransactionParamsComponents = [
 ] as const;
 
 /**
- * Studio's v0.123 transaction surface. The bundled legacy ConsensusMain ABI
- * is retained for unrelated reads/events, while these entries replace every
- * transaction function whose v0.6 signature is authoritative at admission.
+ * Current Studio transaction surface. Fee-aware admission and top-up are
+ * already live, while appeal and finalization remain decision-free. Studio's
+ * decision-bound parity work is qualified and released independently.
  */
-export const studioConsensusMainTrainAbi = [
+export const studioConsensusMainAbi = [
   {
     type: "function",
     name: "addTransaction",
@@ -72,7 +72,6 @@ export const studioConsensusMainTrainAbi = [
     stateMutability: "payable",
     inputs: [
       {name: "_txId", type: "bytes32"},
-      {name: "_expectedDecisionId", type: "uint256"},
       {name: "_feesDistribution", type: "tuple", components: feesDistributionComponents},
     ],
     outputs: [],
@@ -81,34 +80,26 @@ export const studioConsensusMainTrainAbi = [
     type: "function",
     name: "submitAppeal",
     stateMutability: "payable",
-    inputs: [
-      {name: "_txId", type: "bytes32"},
-      {name: "_expectedDecisionId", type: "uint256"},
-    ],
+    inputs: [{name: "_txId", type: "bytes32"}],
     outputs: [],
   },
   {
     type: "function",
     name: "finalizeTransaction",
     stateMutability: "nonpayable",
-    inputs: [
-      {name: "_txId", type: "bytes32"},
-      {name: "_expectedDecisionId", type: "uint256"},
-    ],
+    inputs: [{name: "_txId", type: "bytes32"}],
     outputs: [],
   },
 ] as const satisfies Abi;
 
-const overriddenNames = new Set(
-  studioConsensusMainTrainAbi.map((entry) => entry.name),
-);
+const overriddenNames = new Set(studioConsensusMainAbi.map((entry) => entry.name));
 
-export const withStudioConsensusMainTrainAbi = (base: readonly unknown[]): Abi => {
+export const withStudioConsensusMainAbi = (base: readonly unknown[]): Abi => {
   const retained = base.filter((rawEntry) => {
     const entry = rawEntry as {type?: string; name?: string};
     return entry.type !== "function" ||
       entry.name === undefined ||
-      !overriddenNames.has(entry.name as typeof studioConsensusMainTrainAbi[number]["name"]);
+      !overriddenNames.has(entry.name as typeof studioConsensusMainAbi[number]["name"]);
   });
-  return [...retained, ...studioConsensusMainTrainAbi] as Abi;
+  return [...retained, ...studioConsensusMainAbi] as Abi;
 };
