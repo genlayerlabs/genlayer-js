@@ -666,6 +666,18 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
     },
     /** Checks if a transaction can be appealed. */
     canAppeal: async (args: {txId: `0x${string}`}): Promise<boolean> => {
+      if (client.chain.isStudio) {
+        try {
+          await _readAppealContext({client, publicClient, txId: args.txId});
+          return true;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (/no active decision to appeal|CanNotAppeal|cannot appeal/i.test(message)) {
+            return false;
+          }
+          throw error;
+        }
+      }
       if (!client.chain.appealsContract?.address) {
         throw new Error("canAppeal not supported on this chain (missing appealsContract)");
       }
@@ -898,23 +910,14 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       const {account, txId} = args;
       const senderAccount = account || client.account;
 
-      if (client.chain.isStudio) {
-        return _sendConsensusCall({
-          client,
-          publicClient,
-          encodedData: encodeFunctionData({
-            abi: client.chain.consensusMainContract?.abi as any,
-            functionName: "finalizeTransaction",
-            args: [txId],
-          }),
-          senderAccount,
-          operationName: "Finalize",
-        });
-      }
-
       const identity = await _readLifecycleIdentity({client, publicClient, txId});
       if (!identity.decisionActive) {
         throw new Error(`Transaction ${txId} has no active decision to finalize`);
+      }
+      if (identity.resolutionAction !== 6) {
+        throw new Error(
+          `Transaction ${txId} is not ready to finalize (resolution action ${identity.resolutionAction})`,
+        );
       }
       const encodedData = encodeFunctionData({
         abi: CONSENSUS_FINALIZATION_TRAIN_ABI,
@@ -1004,6 +1007,12 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       identities.forEach((identity, index) => {
         if (!identity.decisionActive) {
           throw new Error(`Transaction ${args.txIds[index]} has no active decision to finalize`);
+        }
+        if (identity.resolutionAction !== 6) {
+          throw new Error(
+            `Transaction ${args.txIds[index]} is not ready to finalize ` +
+              `(resolution action ${identity.resolutionAction})`,
+          );
         }
       });
       const encodedData = encodeFunctionData({
@@ -2021,8 +2030,8 @@ const _encodeSubmitAppealData = ({
 
 const _studioTrainBatchError = (action: string): Error =>
   new Error(
-    `${action} not supported on this chain (studio consensus predates the resolution-kernel train): ` +
-      "use finalizeTransaction for a studio transaction.",
+    `${action} is not exposed by Studio's embedded consensus: ` +
+      "use finalizeTransaction for an individual Studio transaction.",
   );
 
 const ROUND_PAGE_SIZE = 64n;

@@ -1860,7 +1860,13 @@ const trainLifecycle = ({action = 6, decisionActive = true}: {action?: number; d
   decisionActive,
 });
 
-const setupFinalizeHarness = ({receiptStatus = "success"}: {receiptStatus?: string} = {}) => {
+const setupFinalizeHarness = ({
+  receiptStatus = "success",
+  resolutionAction = 6,
+}: {
+  receiptStatus?: string;
+  resolutionAction?: number;
+} = {}) => {
   const signTransaction = vi.fn().mockResolvedValue("0xsigned");
   const sendRawTransaction = vi.fn().mockResolvedValue(MOCK_EVM_TX_HASH);
   const waitForTransactionReceipt = vi.fn().mockResolvedValue({status: receiptStatus, logs: []});
@@ -1895,7 +1901,9 @@ const setupFinalizeHarness = ({receiptStatus = "success"}: {receiptStatus?: stri
   };
 
   const readContract = vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
-    if (functionName === "getTransactionLifecycle") return trainLifecycle();
+    if (functionName === "getTransactionLifecycle") {
+      return trainLifecycle({action: resolutionAction});
+    }
     throw new Error(`Unexpected contract read: ${functionName}`);
   });
   const publicClient = {
@@ -2373,6 +2381,15 @@ describe("contractActions finalizeTransaction", () => {
       actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID}),
     ).rejects.toThrow(/Finalize reverted/);
   });
+
+  it("does not broadcast when the lifecycle action is not Finalize", async () => {
+    const {actions, signTransaction} = setupFinalizeHarness({resolutionAction: 0});
+
+    await expect(
+      actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID}),
+    ).rejects.toThrow(/not ready to finalize.*resolution action 0/i);
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
 });
 
 describe("contractActions finalizeIdlenessTxs", () => {
@@ -2415,13 +2432,16 @@ describe("contractActions train lifecycle batches", () => {
   });
 });
 
-/** Legacy finalization entrypoint still exposed by the studio-embedded consensus. */
+/** Exact-decision finalization entrypoint exposed by Studio's v0.123 train. */
 const CONSENSUS_MAIN_STUDIO_ABI = [
   {
     type: "function" as const,
     name: "finalizeTransaction",
     stateMutability: "nonpayable" as const,
-    inputs: [{name: "_txId", type: "bytes32"}],
+    inputs: [
+      {name: "_txId", type: "bytes32"},
+      {name: "_expectedDecisionId", type: "uint256"},
+    ],
     outputs: [],
   },
 ] as const;
@@ -2431,7 +2451,7 @@ const CONSENSUS_MAIN_STUDIO_ABI = [
  * resolve, while lifecycle identity and appeal quotes are exposed by Studio's
  * train-compatible RPC projection rather than EVM reads.
  */
-const setupStudioLifecycleHarness = () => {
+const setupStudioLifecycleHarness = ({resolutionAction = 0}: {resolutionAction?: number} = {}) => {
   const signTransaction = vi.fn().mockResolvedValue("0xsigned");
   const sendRawTransaction = vi.fn().mockResolvedValue(MOCK_EVM_TX_HASH);
   const waitForTransactionReceipt = vi.fn().mockResolvedValue({status: "success", logs: []});
@@ -2468,7 +2488,7 @@ const setupStudioLifecycleHarness = () => {
         return {
           storedStatusCode: 5,
           projectedStatusCode: 5,
-          resolutionActionCode: 0,
+          resolutionActionCode: resolutionAction,
           resolutionSourceCode: 6,
           decisionId: MOCK_DECISION_ID.toString(),
           decisionActive: true,
@@ -2487,8 +2507,8 @@ const setupStudioLifecycleHarness = () => {
     }),
   };
 
-  // Studio lifecycle reads must stay on its RPC projection rather than trying
-  // to decode the embedded pre-train ConsensusData tuple.
+  // Studio lifecycle reads stay on its authoritative RPC projection; the
+  // embedded ConsensusData address is not a state-authoritative EVM contract.
   const readContract = vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
     throw new Error(`Unexpected consensus read on Studio: ${functionName}`);
   });
@@ -2510,6 +2530,13 @@ const setupStudioLifecycleHarness = () => {
 };
 
 describe("contractActions Studio lifecycle compatibility", () => {
+  it("answers canAppeal from Studio's authoritative decision quote", async () => {
+    const {actions, readContract} = setupStudioLifecycleHarness();
+
+    await expect(actions.canAppeal({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(true);
+    expect(readContract).not.toHaveBeenCalled();
+  });
+
   it("encodes submitAppeal with Studio's active decision id", async () => {
     const {actions, signTransaction, readContract} = setupStudioLifecycleHarness();
 
@@ -2556,8 +2583,10 @@ describe("contractActions Studio lifecycle compatibility", () => {
     expect(distribution.rotations).toEqual([0n, 1n]);
   });
 
-  it("encodes finalizeTransaction(bytes32) without a decision id", async () => {
-    const {actions, signTransaction, readContract} = setupStudioLifecycleHarness();
+  it("encodes finalizeTransaction with Studio's active decision id", async () => {
+    const {actions, signTransaction, readContract} = setupStudioLifecycleHarness({
+      resolutionAction: 6,
+    });
 
     await expect(actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(
       MOCK_EVM_TX_HASH,
@@ -2569,7 +2598,7 @@ describe("contractActions Studio lifecycle compatibility", () => {
       data: signTransaction.mock.calls[0][0].data,
     });
     expect(decoded.functionName).toBe("finalizeTransaction");
-    expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID]);
+    expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID, MOCK_DECISION_ID]);
   });
 
   it("reads appeal charges from Studio's authoritative RPC projection", async () => {
@@ -2580,23 +2609,14 @@ describe("contractActions Studio lifecycle compatibility", () => {
     expect(readContract).not.toHaveBeenCalled();
   });
 
-  it("reports the missing appeals contract from canAppeal", async () => {
-    const {actions, readContract} = setupStudioLifecycleHarness();
-
-    await expect(actions.canAppeal({txId: MOCK_GENLAYER_TX_ID})).rejects.toThrow(
-      /missing appealsContract/,
-    );
-    expect(readContract).not.toHaveBeenCalled();
-  });
-
   it("rejects the train-only batch actions with an actionable message and never broadcasts", async () => {
     const {actions, signTransaction, readContract} = setupStudioLifecycleHarness();
 
     await expect(actions.resolveTransactions({txIds: [MOCK_GENLAYER_TX_ID]})).rejects.toThrow(
-      /resolveTransactions not supported on this chain.*finalizeTransaction/s,
+      /resolveTransactions is not exposed by Studio's embedded consensus.*finalizeTransaction/s,
     );
     await expect(actions.finalizeDecisions({txIds: [MOCK_GENLAYER_TX_ID]})).rejects.toThrow(
-      /finalizeDecisions not supported on this chain.*finalizeTransaction/s,
+      /finalizeDecisions is not exposed by Studio's embedded consensus.*finalizeTransaction/s,
     );
     expect(readContract).not.toHaveBeenCalled();
     expect(signTransaction).not.toHaveBeenCalled();
