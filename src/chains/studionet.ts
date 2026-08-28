@@ -1381,6 +1381,11 @@ const CONSENSUS_MAIN_CONTRACT = {
           name: "_txId",
           type: "bytes32",
         },
+        {
+          internalType: "uint256",
+          name: "_expectedDecisionId",
+          type: "uint256",
+        },
       ],
       name: "submitAppeal",
       outputs: [],

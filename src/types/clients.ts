@@ -39,6 +39,7 @@ export type GenLayerMethod =
   | {method: "gen_getContractSchemaForCode"; params: [contractCode: string]}
   | {method: "gen_getContractCode"; params: [address: Address] | [{address: Address}]}
   | {method: "gen_getTransactionLifecycle"; params: [{txId: TransactionHash; timestamp?: number}]}
+  | {method: "gen_estimateLatestAppealCharge"; params: [{txId: TransactionHash}]}
   | {method: "sim_getTransactionsForAddress"; params: [address: Address, filter?: "all" | "from" | "to"]}
   | {method: "eth_getTransactionCount"; params: [address: Address, block: string]}
   | {method: "eth_estimateGas"; params: [transactionParams: any]}

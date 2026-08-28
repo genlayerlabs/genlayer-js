@@ -11,6 +11,7 @@ import {
   CalldataEncodable,
   Address,
   TransactionHashVariant,
+  TransactionHash,
   TransactionFeeOptions,
   TransactionFeeEstimate,
   FeeEstimateOptions,
@@ -603,17 +604,11 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
     },
     /** Returns the full authoritative appeal charge (bond plus appeal funding). */
     getAppealCharge: async (args: {txId: `0x${string}`}): Promise<bigint> => {
-      if (client.chain.isStudio) {
-        throw new Error(STUDIO_APPEAL_QUOTE_UNSUPPORTED);
-      }
       const context = await _readAppealContext({client, publicClient, txId: args.txId});
       return context.requiredValue;
     },
     /** @deprecated Use getAppealCharge. This legacy name also returns bond plus appeal funding. */
     getMinAppealBond: async (args: {txId: `0x${string}`}): Promise<bigint> => {
-      if (client.chain.isStudio) {
-        throw new Error(STUDIO_APPEAL_QUOTE_UNSUPPORTED);
-      }
       const context = await _readAppealContext({client, publicClient, txId: args.txId});
       return context.requiredValue;
     },
@@ -814,18 +809,6 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       // Appeals don't go through _sendTransaction because submitAppeal emits
       // AppealStarted/TransactionActivated events, not NewTransaction/CreatedTransaction.
       // The appeal operates on the same GenLayer txId, so we return it directly.
-      if (client.chain.isStudio) {
-        await _sendConsensusCall({
-          client,
-          publicClient,
-          encodedData: _encodeStudioSubmitAppealData({client, txId}),
-          senderAccount,
-          value: args.value ?? 0n,
-          operationName: "Appeal",
-        });
-        return txId;
-      }
-
       const context = await _readAppealContext({
         client,
         publicClient,
@@ -883,18 +866,6 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
     }): Promise<`0x${string}`> => {
       const {account, txId, distribution} = args;
       const senderAccount = account || client.account;
-
-      if (client.chain.isStudio) {
-        await _sendConsensusCall({
-          client,
-          publicClient,
-          encodedData: _encodeStudioTopUpAndSubmitAppealData({txId, distribution}),
-          senderAccount,
-          value: args.value ?? 0n,
-          operationName: "Top up and submit appeal",
-        });
-        return txId;
-      }
 
       const context = await _readAppealContext({
         client,
@@ -1141,23 +1112,6 @@ const CONSENSUS_FEE_MANAGEMENT_ABI = [
     inputs: [
       {name: "_txId", type: "bytes32"},
       {name: "_expectedDecisionId", type: "uint256"},
-      {name: "_feesDistribution", type: "tuple", components: FEES_DISTRIBUTION_COMPONENTS},
-    ],
-    outputs: [],
-  },
-] as const;
-
-/**
- * Pre-train fee-management appeal entrypoint, kept for the studio-embedded
- * consensus: it has no decision identity to bind the appeal to.
- */
-const CONSENSUS_FEE_MANAGEMENT_STUDIO_ABI = [
-  {
-    type: "function",
-    name: "topUpAndSubmitAppeal",
-    stateMutability: "payable",
-    inputs: [
-      {name: "_txId", type: "bytes32"},
       {name: "_feesDistribution", type: "tuple", components: FEES_DISTRIBUTION_COMPONENTS},
     ],
     outputs: [],
@@ -2065,49 +2019,11 @@ const _encodeSubmitAppealData = ({
   });
 };
 
-/**
- * Studio chains run the studio-embedded consensus, which predates the
- * resolution-kernel train: ConsensusData exposes no getTransactionLifecycle and
- * no estimateLatestAppealCharge, and the chain config carries no fee manager,
- * rounds storage, or appeals contract. Appeal and finalization calls therefore
- * keep their pre-train, decision-free shape there.
- */
-const STUDIO_APPEAL_QUOTE_UNSUPPORTED =
-  "Appeal bond calculation not supported on this chain (missing feeManagerContract/roundsStorageContract)";
-
 const _studioTrainBatchError = (action: string): Error =>
   new Error(
     `${action} not supported on this chain (studio consensus predates the resolution-kernel train): ` +
       "use finalizeTransaction for a studio transaction.",
   );
-
-const _encodeStudioSubmitAppealData = ({
-  client,
-  txId,
-}: {
-  client: GenLayerClient<GenLayerChain>;
-  txId: `0x${string}`;
-}): `0x${string}` => {
-  return encodeFunctionData({
-    abi: client.chain.consensusMainContract?.abi as any,
-    functionName: "submitAppeal",
-    args: [txId],
-  });
-};
-
-const _encodeStudioTopUpAndSubmitAppealData = ({
-  txId,
-  distribution,
-}: {
-  txId: `0x${string}`;
-  distribution: FeesDistributionInput;
-}): `0x${string}` => {
-  return encodeFunctionData({
-    abi: CONSENSUS_FEE_MANAGEMENT_STUDIO_ABI,
-    functionName: "topUpAndSubmitAppeal",
-    args: [txId, createFeesDistribution(distribution)],
-  });
-};
 
 const ROUND_PAGE_SIZE = 64n;
 
@@ -2228,6 +2144,32 @@ const _readLifecycleIdentity = async ({
   blockNumber?: bigint;
   blockTimestamp?: bigint;
 }): Promise<LifecycleIdentity> => {
+  if (client.chain.isStudio) {
+    const lifecycle = await client.request({
+      method: "gen_getTransactionLifecycle",
+      params: [{txId: txId as TransactionHash}],
+    }) as {
+      resolutionActionCode: unknown;
+      decisionActive: unknown;
+      decisionId: unknown;
+      evaluatedAt: unknown;
+    };
+    if (typeof lifecycle.decisionActive !== "boolean") {
+      throw new Error(
+        `Invalid Studio lifecycle decisionActive: ${String(lifecycle.decisionActive)}`,
+      );
+    }
+    const decisionActive = lifecycle.decisionActive;
+    return {
+      blockNumber: 0n,
+      blockTimestamp: BigInt(lifecycle.evaluatedAt as string | number | bigint),
+      resolutionAction: Number(lifecycle.resolutionActionCode),
+      attemptId: `0x${"00".repeat(32)}`,
+      decisionActive,
+      decisionId: decisionActive ? BigInt(lifecycle.decisionId as string) : 0n,
+    };
+  }
+
   const consensusDataAddress = client.chain.consensusDataContract?.address as Address | undefined;
   if (!consensusDataAddress || consensusDataAddress === zeroAddress) {
     throw new Error("ConsensusData contract is not configured for this chain");
@@ -2282,6 +2224,23 @@ const _readAppealContext = async ({
 
   if (!includeQuote) {
     return {...identity, requiredValue: 0n};
+  }
+
+  if (client.chain.isStudio) {
+    const quote = await client.request({
+      method: "gen_estimateLatestAppealCharge",
+      params: [{txId: txId as TransactionHash}],
+    }) as {decisionId: unknown; bond: unknown; funding: unknown};
+    const quoteDecisionId = BigInt(quote.decisionId as string);
+    if (quoteDecisionId !== identity.decisionId) {
+      throw new Error(
+        `Appeal decision changed while reading ${txId}: expected ${identity.decisionId}, received ${quoteDecisionId}`,
+      );
+    }
+    return {
+      ...identity,
+      requiredValue: BigInt(quote.bond as string) + BigInt(quote.funding as string),
+    };
   }
 
   const consensusDataAddress = client.chain.consensusDataContract!.address as Address;
