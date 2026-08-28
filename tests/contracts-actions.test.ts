@@ -1,6 +1,14 @@
 import {describe, it, expect, vi} from "vitest";
-import {decodeAbiParameters, decodeFunctionData, encodeFunctionData, keccak256, toHex} from "viem";
+import {
+  decodeAbiParameters,
+  decodeFunctionData,
+  encodeFunctionData,
+  keccak256,
+  MethodNotFoundRpcError,
+  toHex,
+} from "viem";
 import {contractActions} from "../src/contracts/actions";
+import {TransactionStatus, transactionsStatusNameToNumber} from "../src/types/transactions";
 import {NFT_MINTER_ABI} from "../src/abi/nftMinter";
 import {
   CALL_KEY_DEPLOY,
@@ -2451,12 +2459,27 @@ const CONSENSUS_MAIN_STUDIO_ABI = [
  * resolve, while lifecycle identity and appeal quotes are exposed by Studio's
  * train-compatible RPC projection rather than EVM reads.
  */
-const setupStudioLifecycleHarness = ({resolutionAction = 0}: {resolutionAction?: number} = {}) => {
+const setupStudioLifecycleHarness = ({
+  resolutionAction = 0,
+  lifecycleRpcError,
+  studioStatus = TransactionStatus.ACCEPTED,
+}: {
+  resolutionAction?: number;
+  /** Thrown instead of answering gen_getTransactionLifecycle. */
+  lifecycleRpcError?: unknown;
+  studioStatus?: TransactionStatus;
+} = {}) => {
   const signTransaction = vi.fn().mockResolvedValue("0xsigned");
   const sendRawTransaction = vi.fn().mockResolvedValue(MOCK_EVM_TX_HASH);
   const waitForTransactionReceipt = vi.fn().mockResolvedValue({status: "success", logs: []});
+  const getTransaction = vi.fn().mockResolvedValue({
+    txId: MOCK_GENLAYER_TX_ID,
+    status: Number(transactionsStatusNameToNumber[studioStatus]),
+    statusName: studioStatus,
+  });
 
   const client = {
+    getTransaction,
     chain: {
       id: 61_999,
       isStudio: true,
@@ -2485,6 +2508,7 @@ const setupStudioLifecycleHarness = ({resolutionAction = 0}: {resolutionAction?:
     request: vi.fn().mockImplementation(async ({method}: {method: string}) => {
       if (method === "eth_gasPrice") return "0x1";
       if (method === "gen_getTransactionLifecycle") {
+        if (lifecycleRpcError !== undefined) throw lifecycleRpcError;
         return {
           storedStatusCode: 5,
           projectedStatusCode: 5,
@@ -2524,6 +2548,7 @@ const setupStudioLifecycleHarness = ({resolutionAction = 0}: {resolutionAction?:
     sendRawTransaction,
     waitForTransactionReceipt,
     readContract,
+    getTransaction,
     client,
     publicClient,
   };
@@ -2635,5 +2660,73 @@ describe("contractActions Studio lifecycle compatibility", () => {
       data: signTransaction.mock.calls[0][0].data,
     });
     expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID, MOCK_DECISION_ID]);
+  });
+});
+
+/** The raw JSON-RPC error the SDK transport throws before viem types it. */
+const RAW_METHOD_NOT_FOUND = {code: -32601, message: "Method not found"};
+
+describe("contractActions Studio lifecycle degradation", () => {
+  it("reports no decision instead of failing when Studio omits the lifecycle RPC", async () => {
+    const {actions, getTransaction, readContract} = setupStudioLifecycleHarness({
+      lifecycleRpcError: new MethodNotFoundRpcError(new Error("Method not found"), {
+        method: "gen_getTransactionLifecycle",
+      }),
+    });
+
+    await expect(actions.canAppeal({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(false);
+    expect(getTransaction).toHaveBeenCalledWith({hash: MOCK_GENLAYER_TX_ID});
+    expect(readContract).not.toHaveBeenCalled();
+  });
+
+  it("recognizes the untyped -32601 error the SDK transport raises", async () => {
+    const {actions, getTransaction} = setupStudioLifecycleHarness({
+      lifecycleRpcError: RAW_METHOD_NOT_FOUND,
+    });
+
+    await expect(actions.canAppeal({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(false);
+    expect(getTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses to appeal a decision it cannot read instead of signing a zero decision id", async () => {
+    const {actions, signTransaction} = setupStudioLifecycleHarness({
+      lifecycleRpcError: RAW_METHOD_NOT_FOUND,
+    });
+
+    await expect(actions.appealTransaction({txId: MOCK_GENLAYER_TX_ID, value: 500n})).rejects.toThrow(
+      /has no active decision to appeal/,
+    );
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
+
+  it("refuses to finalize a decision it cannot read", async () => {
+    const {actions, signTransaction} = setupStudioLifecycleHarness({
+      lifecycleRpcError: RAW_METHOD_NOT_FOUND,
+    });
+
+    await expect(actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID})).rejects.toThrow(
+      /has no active decision to finalize/,
+    );
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
+
+  it("propagates a lifecycle RPC failure that is not a missing method", async () => {
+    const {actions, getTransaction} = setupStudioLifecycleHarness({
+      lifecycleRpcError: {code: -32000, message: "execution reverted"},
+    });
+
+    await expect(
+      actions.appealTransaction({txId: MOCK_GENLAYER_TX_ID, value: 500n}),
+    ).rejects.toEqual({code: -32000, message: "execution reverted"});
+    expect(getTransaction).not.toHaveBeenCalled();
+  });
+
+  it("re-raises the original RPC error when the Studio status is unreadable", async () => {
+    const harness = setupStudioLifecycleHarness({lifecycleRpcError: RAW_METHOD_NOT_FOUND});
+    harness.getTransaction.mockResolvedValue({txId: MOCK_GENLAYER_TX_ID, status: "NOT_A_STATUS"});
+
+    await expect(harness.actions.canAppeal({txId: MOCK_GENLAYER_TX_ID})).rejects.toEqual(
+      RAW_METHOD_NOT_FOUND,
+    );
   });
 });

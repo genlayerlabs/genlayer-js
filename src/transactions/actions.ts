@@ -22,6 +22,7 @@ import {sleep} from "../utils/async";
 import {GenLayerChain} from "@/types";
 import {Abi, PublicClient, Address, keccak256, concat, stringToBytes, toBytes, zeroAddress} from "viem";
 import {decodeLocalnetTransaction, decodeTransaction, simplifyTransactionReceipt} from "./decoders";
+import {isMethodNotFoundError, readStudioLifecycleFallback} from "./lifecycleFallback";
 import {
   ADDRESS_MANAGER_TRAIN_ABI,
   CONSENSUS_DATA_BIG_ROUNDS_TRAIN_ABI,
@@ -315,6 +316,10 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
      * resolution action/source, and active decision identity. Studio uses the
      * node RPC; contract networks use one fixed-block lifecycle read. `Finalize`
      * is an action, not a status or separate readiness field.
+     *
+     * A Studio deployment that does not yet serve `gen_getTransactionLifecycle`
+     * degrades to the stored status its consumer surface does prove, rather
+     * than failing the whole read.
      */
     getTransactionLifecycle: async ({
       hash,
@@ -324,12 +329,18 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
       timestamp?: number;
     }): Promise<TransactionProtocolLifecycle> => {
       if (client.chain.isStudio) {
-        const raw = await client.request({
-          method: "gen_getTransactionLifecycle",
-          params: [{txId: hash, ...(timestamp === undefined ? {} : {
-            timestamp: protocolInteger(timestamp, "timestamp"),
-          })}],
-        }) as RawProtocolLifecycle;
+        let raw: RawProtocolLifecycle;
+        try {
+          raw = await client.request({
+            method: "gen_getTransactionLifecycle",
+            params: [{txId: hash, ...(timestamp === undefined ? {} : {
+              timestamp: protocolInteger(timestamp, "timestamp"),
+            })}],
+          }) as RawProtocolLifecycle;
+        } catch (error) {
+          if (!isMethodNotFoundError(error)) throw error;
+          raw = await readStudioLifecycleFallback({client, hash, timestamp, cause: error});
+        }
         return normalizeProtocolLifecycle(raw);
       }
       const consensusDataAddress = client.chain.consensusDataContract?.address as Address;

@@ -40,6 +40,7 @@ import {
   normalizeTransactionFees,
   NormalizedTransactionFees,
 } from "@/transactions/fees";
+import {isMethodNotFoundError, readStudioLifecycleFallback} from "@/transactions/lifecycleFallback";
 import {CONSENSUS_DATA_TRAIN_ABI, ROUNDS_STORAGE_TRAIN_READ_ABI} from "@/abi/consensusTrain";
 
 const prefixHex = (hex: string): `0x${string}` => {
@@ -2131,6 +2132,9 @@ const _readRoundDataSnapshot = async ({
   };
 };
 
+/** Studio has no per-attempt identity to report; the train reads a real one. */
+const ZERO_ATTEMPT_ID = `0x${"00".repeat(32)}` as `0x${string}`;
+
 type LifecycleIdentity = {
   blockNumber: bigint;
   blockTimestamp: bigint;
@@ -2154,15 +2158,37 @@ const _readLifecycleIdentity = async ({
   blockTimestamp?: bigint;
 }): Promise<LifecycleIdentity> => {
   if (client.chain.isStudio) {
-    const lifecycle = await client.request({
-      method: "gen_getTransactionLifecycle",
-      params: [{txId: txId as TransactionHash}],
-    }) as {
+    type StudioLifecycleIdentity = {
       resolutionActionCode: unknown;
       decisionActive: unknown;
       decisionId: unknown;
       evaluatedAt: unknown;
     };
+    let lifecycle: StudioLifecycleIdentity;
+    try {
+      lifecycle = await client.request({
+        method: "gen_getTransactionLifecycle",
+        params: [{txId: txId as TransactionHash}],
+      }) as StudioLifecycleIdentity;
+    } catch (error) {
+      if (!isMethodNotFoundError(error)) throw error;
+      // A Studio deployment without the lifecycle RPC proves no decision
+      // identity at all. Report that gap instead of inventing a decision id:
+      // a fabricated id would be signed into an appeal or a finalization.
+      const fallback = await readStudioLifecycleFallback({
+        client,
+        hash: txId as TransactionHash,
+        cause: error,
+      });
+      return {
+        blockNumber: 0n,
+        blockTimestamp: BigInt(fallback.evaluatedAt),
+        resolutionAction: fallback.resolutionActionCode,
+        attemptId: ZERO_ATTEMPT_ID,
+        decisionActive: false,
+        decisionId: 0n,
+      };
+    }
     if (typeof lifecycle.decisionActive !== "boolean") {
       throw new Error(
         `Invalid Studio lifecycle decisionActive: ${String(lifecycle.decisionActive)}`,
@@ -2173,7 +2199,7 @@ const _readLifecycleIdentity = async ({
       blockNumber: 0n,
       blockTimestamp: BigInt(lifecycle.evaluatedAt as string | number | bigint),
       resolutionAction: Number(lifecycle.resolutionActionCode),
-      attemptId: `0x${"00".repeat(32)}`,
+      attemptId: ZERO_ATTEMPT_ID,
       decisionActive,
       decisionId: decisionActive ? BigInt(lifecycle.decisionId as string) : 0n,
     };

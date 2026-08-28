@@ -23,7 +23,13 @@ import { receiptActions, transactionActions, isSuccessful } from "../src/transac
 import { decodeTransaction, simplifyTransactionReceipt } from "../src/transactions/decoders";
 import { localnet } from "../src/chains/localnet";
 import type { GenLayerRawTransaction } from "../src/types/transactions";
-import {decodeFunctionResult, encodeFunctionResult, keccak256, stringToBytes} from "viem";
+import {
+  decodeFunctionResult,
+  encodeFunctionResult,
+  keccak256,
+  MethodNotFoundRpcError,
+  stringToBytes,
+} from "viem";
 import {CONSENSUS_DATA_BIG_ROUNDS_TRAIN_ABI, CONSENSUS_DATA_TRAIN_ABI} from "../src/abi/consensusTrain";
 
 const mockFetch = vi.fn();
@@ -882,6 +888,90 @@ describe("getTransaction train lifecycle", () => {
     expect(publicClient.readContract).not.toHaveBeenCalled();
     expect(lifecycle).not.toHaveProperty("finalization");
     expect(lifecycle).not.toHaveProperty("canFinalize");
+  });
+
+  it("synthesizes the lifecycle from the Studio transaction when the RPC is absent", async () => {
+    const hash = makeLightTx().txId as any;
+    const request = vi.fn().mockRejectedValue(
+      new MethodNotFoundRpcError(new Error("Method not found"), {
+        method: "gen_getTransactionLifecycle",
+      }),
+    );
+    const getTransaction = vi.fn().mockResolvedValue({status: TransactionStatus.ACCEPTED});
+    const publicClient = {getBlock: vi.fn(), readContract: vi.fn()} as any;
+    const client = {chain: {isStudio: true}, request, getTransaction} as any;
+
+    const lifecycle = await transactionActions(client, publicClient).advanced.getTransactionLifecycle({
+      hash,
+      timestamp: 500,
+    });
+
+    // Studio's consumer surface proves the stored status and nothing else: no
+    // projection, no resolution action, and no decision identity to report.
+    expect(lifecycle).toEqual({
+      storedStatus: "Accepted",
+      storedStatusCode: 5,
+      projectedStatus: "Accepted",
+      projectedStatusCode: 5,
+      resolutionAction: "NoOp",
+      resolutionActionCode: 0,
+      resolutionSource: "Unspecified",
+      resolutionSourceCode: 0,
+      decisionId: null,
+      decisionActive: false,
+      evaluatedAt: 500,
+    });
+    expect(getTransaction).toHaveBeenCalledWith({hash});
+    expect(publicClient.readContract).not.toHaveBeenCalled();
+  });
+
+  it("maps Studio's ACTIVATED state onto the protocol Pending status", async () => {
+    const hash = makeLightTx().txId as any;
+    const before = Math.floor(Date.now() / 1000);
+    const request = vi.fn().mockRejectedValue({code: -32601, message: "Method not found"});
+    const client = {
+      chain: {isStudio: true},
+      request,
+      getTransaction: vi.fn().mockResolvedValue({status: "ACTIVATED"}),
+    } as any;
+
+    const lifecycle = await transactionActions(client, {} as any).advanced.getTransactionLifecycle({
+      hash,
+    });
+
+    expect(lifecycle.storedStatus).toBe("Pending");
+    expect(lifecycle.projectedStatus).toBe("Pending");
+    expect(lifecycle.decisionActive).toBe(false);
+    expect(lifecycle.evaluatedAt).toBeGreaterThanOrEqual(before);
+  });
+
+  it("propagates a Studio lifecycle failure that is not a missing method", async () => {
+    const hash = makeLightTx().txId as any;
+    const getTransaction = vi.fn();
+    const client = {
+      chain: {isStudio: true},
+      request: vi.fn().mockRejectedValue({code: -32000, message: "execution reverted"}),
+      getTransaction,
+    } as any;
+
+    await expect(
+      transactionActions(client, {} as any).advanced.getTransactionLifecycle({hash}),
+    ).rejects.toEqual({code: -32000, message: "execution reverted"});
+    expect(getTransaction).not.toHaveBeenCalled();
+  });
+
+  it("re-raises the original RPC error when the Studio status is unreadable", async () => {
+    const hash = makeLightTx().txId as any;
+    const cause = {code: -32601, message: "Method not found"};
+    const client = {
+      chain: {isStudio: true},
+      request: vi.fn().mockRejectedValue(cause),
+      getTransaction: vi.fn().mockResolvedValue({status: "NOT_A_STATUS"}),
+    } as any;
+
+    await expect(
+      transactionActions(client, {} as any).advanced.getTransactionLifecycle({hash}),
+    ).rejects.toEqual(cause);
   });
 
   it("uses block time by default and nulls an inactive decision identity", async () => {
