@@ -54,7 +54,7 @@ describe.each([
   ["localnet", localnet],
   ["studionet", studionet],
 ])("%s Studio consensus ABI", (_name, chain) => {
-  it("exports Studio's fee-aware, decision-free transaction signatures", () => {
+  it("exports Studio's fee-aware, decision-bound transaction signatures", () => {
     const functions = new Map(
       (chain.consensusMainContract!.abi as readonly TestAbiEntry[])
         .filter((entry) => entry.type === "function" && entry.name)
@@ -66,9 +66,9 @@ describe.each([
     expect(inputTypes("addTransaction")).toEqual(["tuple"]);
     expect(inputTypes("deploySalted")).toEqual(["tuple"]);
     expect(inputTypes("topUpFees")).toEqual(["bytes32", "tuple"]);
-    expect(inputTypes("topUpAndSubmitAppeal")).toEqual(["bytes32", "tuple"]);
-    expect(inputTypes("submitAppeal")).toEqual(["bytes32"]);
-    expect(inputTypes("finalizeTransaction")).toEqual(["bytes32"]);
+    expect(inputTypes("topUpAndSubmitAppeal")).toEqual(["bytes32", "uint256", "tuple"]);
+    expect(inputTypes("submitAppeal")).toEqual(["bytes32", "uint256"]);
+    expect(inputTypes("finalizeTransaction")).toEqual(["bytes32", "uint256"]);
 
     const addParams = functions.get("addTransaction")!.inputs![0].components!;
     expect(addParams.map((component) => component.type)).toEqual([
