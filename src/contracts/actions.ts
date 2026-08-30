@@ -1493,6 +1493,10 @@ const extractStudioFeePolicy = (config: unknown): FeePolicyQuote => {
   const genPerTimeUnit = bigintFromUnknown(policyRecord.genPerTimeUnit, "policy.genPerTimeUnit");
   const storageUnitPrice = bigintFromUnknown(policyRecord.storageUnitPrice, "policy.storageUnitPrice");
   const receiptGasPrice = bigintFromUnknown(policyRecord.receiptGasPrice, "policy.receiptGasPrice");
+  const timeUnitOverlayBps = bigintFromUnknown(
+    policyRecord.timeUnitOverlayBps,
+    "policy.timeUnitOverlayBps",
+  );
   const intrinsicGas = bigintFromUnknown(policyRecord.intrinsicGas, "policy.intrinsicGas", DEFAULT_INTRINSIC_GAS);
   const bootloaderOverhead = bigintFromUnknown(
     policyRecord.bootloaderOverhead,
@@ -1546,6 +1550,7 @@ const extractStudioFeePolicy = (config: unknown): FeePolicyQuote => {
     storageUnitPrice,
     receiptGasPrice,
     executionBudgetFloor,
+    timeUnitOverlayBps,
   };
 };
 
@@ -1596,6 +1601,9 @@ const readCurrentFeePolicy = async (
     storageUnitPrice,
     receiptGasPrice,
     executionBudgetFloor: maxBigint(executionBudgetFloor, localExecutionBudgetFloor),
+    // Live networks quote through FeeManager.calculateRoundFees; this field is
+    // only consumed by Studio's local mirror.
+    timeUnitOverlayBps: 0n,
   };
 };
 
@@ -1939,6 +1947,14 @@ const calculateFeeForRound = (
   leaderTimeunitsAllocation + (numOfValidators * validatorTimeunitsAllocation)
 );
 
+const validatorsPerRoundSafe = (round: number): bigint => (
+  VALIDATORS_PER_ROUND[Math.min(Math.max(round, 0), VALIDATORS_PER_ROUND.length - 1)]
+);
+
+const successfulAppealProfit = (appealBond: bigint): bigint => (
+  appealBond + (appealBond / 2n)
+);
+
 const calculateLocalRoundFees = (
   distribution: FeesDistribution,
   numOfInitialValidators: number,
@@ -1967,11 +1983,8 @@ const calculateLocalRoundFees = (
   }
 
   const startIndex = validatorIndex(numOfInitialValidators);
-  if (startIndex + Number(distribution.appealRounds * 2n) >= VALIDATORS_PER_ROUND.length) {
-    throw new Error("InvalidNumOfValidators");
-  }
 
-  let total = calculateFeeForRound(
+  let taxableWork = calculateFeeForRound(
     VALIDATORS_PER_ROUND[startIndex],
     distribution.rotations[0] + 1n,
     distribution.leaderTimeunitsAllocation,
@@ -1987,24 +2000,47 @@ const calculateLocalRoundFees = (
       rotationsThisRound = 1n;
     }
 
-    total += calculateFeeForRound(
-      VALIDATORS_PER_ROUND[startIndex + offset],
+    // Consensus indexes appeal/next-normal committees by absolute round and
+    // saturates at the published ladder; only round zero uses the requested
+    // initial committee.
+    taxableWork += calculateFeeForRound(
+      validatorsPerRoundSafe(offset),
       rotationsThisRound,
       distribution.leaderTimeunitsAllocation,
       distribution.validatorTimeunitsAllocation,
     );
   }
 
-  if (policy.genPerTimeUnit > 0n) {
-    total *= policy.genPerTimeUnit;
+  const priceCap = distribution.maxPriceGenPerTimeUnit;
+  if (priceCap > 0n) {
+    taxableWork *= priceCap;
   }
+
+  let appealProfitReserve = 0n;
+  for (let appealOrdinal = 0; appealOrdinal < Number(distribution.appealRounds); appealOrdinal++) {
+    const nextNormalBond = calculateFeeForRound(
+      validatorsPerRoundSafe((appealOrdinal + 1) * 2),
+      distribution.rotations[appealOrdinal + 1] + 1n,
+      distribution.leaderTimeunitsAllocation,
+      distribution.validatorTimeunitsAllocation,
+    ) * (priceCap > 0n ? priceCap : 1n);
+    appealProfitReserve += successfulAppealProfit(nextNormalBond);
+  }
+
+  const overlayBps = policy.timeUnitOverlayBps ?? 0n;
+  if (overlayBps < 0n || overlayBps >= 10_000n) {
+    throw new Error("InvalidTimeUnitOverlayBps");
+  }
+  const overlay = overlayBps === 0n
+    ? 0n
+    : (taxableWork * overlayBps) / (10_000n - overlayBps);
 
   const leaderRounds = distribution.rotations.reduce(
     (sum, rotations) => sum + rotations + 1n,
     distribution.appealRounds,
   );
-  total += distribution.executionBudgetPerRound * leaderRounds;
-  return total;
+  return taxableWork + appealProfitReserve + overlay +
+    (distribution.executionBudgetPerRound * leaderRounds);
 };
 
 const _resolveTransactionFees = async ({

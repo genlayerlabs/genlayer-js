@@ -461,6 +461,8 @@ export type FeePolicyQuote = {
   storageUnitPrice: bigint;
   receiptGasPrice: bigint;
   executionBudgetFloor: bigint;
+  /** Combined developer/DAO share, grossed up over taxable time-unit work. */
+  timeUnitOverlayBps?: bigint;
 };
 
 export type FeeEstimateOptions = FeesDistributionInput & {

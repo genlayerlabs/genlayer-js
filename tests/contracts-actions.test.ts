@@ -893,6 +893,46 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(estimateTransactionGas.mock.calls[0][0].value).toBe(11_000n);
   });
 
+  it("matches the consensus cap, overlay, appeal reserve, and round ladder locally on Studio", async () => {
+    const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "sim_getFeeConfig") {
+        return {
+          enabled: true,
+          policy: {
+            genPerTimeUnit: "10",
+            storageUnitPrice: "0",
+            receiptGasPrice: "0",
+            timeUnitOverlayBps: "1500",
+          },
+        };
+      }
+      if (method === "eth_gasPrice") return "0x1";
+      throw new Error(`unexpected request ${method}`);
+    });
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    const fees = await actions.estimateTransactionFees({
+      leaderTimeunitsAllocation: 100n,
+      validatorTimeunitsAllocation: 200n,
+      appealRounds: 1n,
+      rotations: [0n, 0n],
+      executionBudgetPerRound: 0n,
+      maxPriceGenPerTimeUnit: 12n,
+      storageFeeMaxGasPrice: 0n,
+      receiptFeeMaxGasPrice: 0n,
+    });
+
+    // Taxable work: (5-validator round 0 + absolute rounds 1 and 2) * cap
+    // = (1100 + 1500 + 2300) * 12 = 58800.
+    // Appeal profit reserve: 1.5 * (2300 * 12) = 41400.
+    // Overlay: floor(58800 * 1500 / 8500) = 10376.
+    expect(fees.feeValue).toBe(110_576n);
+  });
+
   it("defaults direct fee estimates to the chain rotation budget for every appeal round", async () => {
     const requestMock = vi.fn().mockResolvedValue({
       enabled: false,
@@ -1004,6 +1044,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
       storageUnitPrice: 20n,
       receiptGasPrice: 30n,
       executionBudgetFloor: expectedLocalFloor,
+      timeUnitOverlayBps: 0n,
     });
     expect(fees.distribution.maxPriceGenPerTimeUnit).toBe(12n);
     expect(fees.distribution.storageFeeMaxGasPrice).toBe(24n);
