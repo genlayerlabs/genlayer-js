@@ -83,6 +83,12 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       consensusMaxRotations?: number;
       validUntil?: BigNumberish;
       fees?: TransactionFeeOptions;
+      /**
+       * Explicit gas limit for the outer EVM `addTransaction` call.
+       * This is the same transaction-level `gas` override exposed by viem's
+       * `sendTransaction`; it does not change GenLayer protocol fee budgets.
+       */
+      gas?: bigint;
     }) => Promise<any>;
     simulateWriteContract: <
       RawReturn extends boolean | undefined = undefined,
@@ -111,6 +117,8 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       consensusMaxRotations?: number;
       validUntil?: BigNumberish;
       fees?: TransactionFeeOptions;
+      /** Explicit gas limit for the outer EVM `addTransaction` call. */
+      gas?: bigint;
     }) => Promise<`0x${string}`>;
     getTransaction: (args: {hash: TransactionHash}) => Promise<GenLayerTransaction>;
     getCurrentNonce: (args: {address: Address}) => Promise<number>;

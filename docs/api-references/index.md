@@ -103,6 +103,12 @@ const receipt = await client.waitForTransactionReceipt({
 
 ```
 
+`writeContract` and `deployContract` accept an optional top-level `gas` value.
+It is the gas limit for the outer EVM `addTransaction` call and is separate from
+the GenLayer protocol budgets supplied through `fees`. Without an override, the
+SDK estimates this gas and applies safety headroom; an estimation failure stops
+before broadcast instead of using a guessed fallback.
+
 ### Checking execution results
 
 A transaction can be finalized by consensus but still have a failed execution. Always check `txExecutionResult` before reading contract state:

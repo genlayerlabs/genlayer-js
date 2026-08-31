@@ -358,6 +358,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       consensusMaxRotations?: number;
       validUntil?: BigNumberish;
       fees?: TransactionFeeOptions;
+      gas?: bigint;
     }): Promise<`0x${string}`> => {
       const {
         account,
@@ -370,6 +371,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         consensusMaxRotations = client.chain.defaultConsensusMaxRotations,
         validUntil,
         fees,
+        gas,
       } = args;
 
       const data = [calldata.encode(calldata.makeCalldataObject(functionName, callArgs, kwargs)), leaderOnly];
@@ -396,6 +398,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         publicClient,
         transactionVariants,
         senderAccount,
+        gas,
       });
     },
     /** Deploys a new intelligent contract to GenLayer. Returns the transaction hash. */
@@ -408,6 +411,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       consensusMaxRotations?: number;
       validUntil?: BigNumberish;
       fees?: TransactionFeeOptions;
+      gas?: bigint;
     }) => {
       const {
         account,
@@ -418,6 +422,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         consensusMaxRotations = client.chain.defaultConsensusMaxRotations,
         validUntil,
         fees,
+        gas,
       } = args;
 
       const data = [
@@ -448,6 +453,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         publicClient,
         transactionVariants,
         senderAccount,
+        gas,
       });
     },
     /** Returns the active fee price policy used to build user-side caps. */
@@ -2262,17 +2268,23 @@ const _sendTransaction = async ({
   publicClient,
   transactionVariants,
   senderAccount,
+  gas,
 }: {
   client: GenLayerClient<GenLayerChain>;
   publicClient: PublicClient;
   transactionVariants: EncodedTransactionVariant[];
   senderAccount?: Account;
+  /** Explicit gas limit for the outer EVM `addTransaction` call. */
+  gas?: bigint;
 }) => {
   if (!client.chain.consensusMainContract?.address) {
     throw new Error(`Consensus main contract address not found in chain config for "${client.chain.name}".`);
   }
   if (transactionVariants.length === 0) {
     throw new Error("No transaction variants available to send.");
+  }
+  if (gas !== undefined && gas <= 0n) {
+    throw new Error("gas must be a positive bigint.");
   }
 
   const validatedSenderAccount = validateAccount(senderAccount);
@@ -2318,20 +2330,26 @@ const _sendTransaction = async ({
   };
 
   const sendWithEncodedData = async (transactionVariant: EncodedTransactionVariant) => {
-    let estimatedGas: bigint;
-    let gasEstimationError: string | undefined;
-    try {
-      estimatedGas = await client.estimateTransactionGas({
-        from: validatedSenderAccount.address,
-        to: client.chain.consensusMainContract?.address as Address,
-        data: transactionVariant.encodedData,
-        value: transactionVariant.value,
-      });
-      estimatedGas = withTransactionGasHeadroom(estimatedGas);
-    } catch (err) {
-      gasEstimationError = stringifyRpcError(err);
-      console.error("Gas estimation failed, using default 200_000:", err);
-      estimatedGas = 200_000n;
+    let transactionGas = gas;
+    if (transactionGas === undefined) {
+      try {
+        transactionGas = withTransactionGasHeadroom(
+          await client.estimateTransactionGas({
+            from: validatedSenderAccount.address,
+            to: client.chain.consensusMainContract?.address as Address,
+            data: transactionVariant.encodedData,
+            value: transactionVariant.value,
+          }),
+        );
+      } catch (err) {
+        const estimationError = stringifyRpcError(err);
+        throw new Error(
+          "Gas estimation failed for the outer EVM transaction; no transaction was sent. " +
+          "Inspect the revert and, if estimation is unreliable, retry with an explicit gas value." +
+          (estimationError ? ` Original error: ${estimationError}` : ""),
+          {cause: err},
+        );
+      }
     }
 
     // For local accounts, build transaction request directly to avoid viem's
@@ -2352,7 +2370,7 @@ const _sendTransaction = async ({
         type: "legacy" as const,
         nonce: Number(nonce),
         value: transactionVariant.value,
-        gas: estimatedGas,
+        gas: transactionGas,
         gasPrice: BigInt(gasPriceHex),
         chainId: client.chain.id,
       };
@@ -2371,9 +2389,7 @@ const _sendTransaction = async ({
 
       if (receipt.status === "reverted") {
         throw new Error(
-          `Transaction reverted: EVM tx ${txHash} to consensus contract ${client.chain.consensusMainContract?.address} was reverted.${
-            gasEstimationError ? ` Gas estimation error: ${gasEstimationError}` : ""
-          }`,
+          `Transaction reverted: EVM tx ${txHash} to consensus contract ${client.chain.consensusMainContract?.address} was reverted.`,
         );
       }
 
@@ -2414,7 +2430,7 @@ const _sendTransaction = async ({
       to: client.chain.consensusMainContract?.address as Address,
       data: transactionVariant.encodedData,
       value: `0x${transactionVariant.value.toString(16)}`,
-      gas: `0x${estimatedGas.toString(16)}`,
+      gas: `0x${transactionGas.toString(16)}`,
       nonce: `0x${nonceBigInt.toString(16)}`,
       type: "0x0", // legacy tx
       chainId: `0x${client.chain.id.toString(16)}`,
@@ -2438,9 +2454,7 @@ const _sendTransaction = async ({
 
     if (externalReceipt.status === "reverted") {
       throw new Error(
-        `Transaction reverted: EVM tx ${evmTxHash} to consensus contract ${client.chain.consensusMainContract?.address} was reverted.${
-          gasEstimationError ? ` Gas estimation error: ${gasEstimationError}` : ""
-        }`,
+        `Transaction reverted: EVM tx ${evmTxHash} to consensus contract ${client.chain.consensusMainContract?.address} was reverted.`,
       );
     }
 

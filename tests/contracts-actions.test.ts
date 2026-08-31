@@ -663,6 +663,63 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(encodedData.slice(0, 10)).toBe(selectorForV5);
   });
 
+  it("uses an explicit writeContract gas limit without estimating", async () => {
+    const signTransaction = vi.fn().mockRejectedValue(new Error("stop_after_encoding"));
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_V5,
+      signTransactionMock: signTransaction,
+    });
+
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        value: 0n,
+        gas: 32_000_000n,
+      }),
+    ).rejects.toThrow("stop_after_encoding");
+
+    expect(estimateTransactionGas).not.toHaveBeenCalled();
+    expect(signTransaction).toHaveBeenCalledWith(expect.objectContaining({gas: 32_000_000n}));
+  });
+
+  it("uses an explicit deployContract gas limit without estimating", async () => {
+    const signTransaction = vi.fn().mockRejectedValue(new Error("stop_after_encoding"));
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_V5,
+      signTransactionMock: signTransaction,
+    });
+
+    await expect(
+      actions.deployContract({
+        code: "print('hello')",
+        gas: 31_000_000n,
+      }),
+    ).rejects.toThrow("stop_after_encoding");
+
+    expect(estimateTransactionGas).not.toHaveBeenCalled();
+    expect(signTransaction).toHaveBeenCalledWith(expect.objectContaining({gas: 31_000_000n}));
+  });
+
+  it.each([0n, -1n])("rejects a non-positive gas limit (%s)", async (gas) => {
+    const signTransaction = vi.fn();
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_V5,
+      signTransactionMock: signTransaction,
+    });
+
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        gas,
+      }),
+    ).rejects.toThrow("gas must be a positive bigint");
+
+    expect(estimateTransactionGas).not.toHaveBeenCalled();
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
+
   it("encodes addTransaction with 6 args when ABI has 6 inputs", async () => {
     const {actions, estimateTransactionGas} = setupWriteContractHarness({
       initialAbi: ADD_TRANSACTION_ABI_V6,
@@ -1737,8 +1794,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     ).rejects.toThrow("Transaction reverted");
   });
 
-  it("decodes BudgetTooLow selector from gas estimation failures", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("decodes estimation failures and stops before broadcast", async () => {
     const signTransaction = vi.fn().mockResolvedValue("0xsigned");
     const {actions, estimateTransactionGas, client} = setupWriteContractHarness({
       initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
@@ -1750,9 +1806,10 @@ describe("contractActions addTransaction ABI compatibility", () => {
 
     await expect(
       actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping", value: 0n}),
-    ).rejects.toThrow(/BudgetTooLow/);
+    ).rejects.toThrow(/no transaction was sent[\s\S]*BudgetTooLow/);
 
-    consoleError.mockRestore();
+    expect(signTransaction).not.toHaveBeenCalled();
+    expect((client as any).sendRawTransaction).not.toHaveBeenCalled();
   });
 
   it("throws when external wallet receipt has no NewTransaction event", async () => {
