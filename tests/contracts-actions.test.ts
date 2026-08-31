@@ -148,6 +148,9 @@ const INTERNAL_MESSAGE_FEE_PARAMS_ABI = [
       {name: "appealRounds", type: "uint256"},
       {name: "executionBudgetPerRound", type: "uint256"},
       {name: "rotations", type: "uint256[]"},
+      {name: "maxPriceGenPerTimeUnit", type: "uint256"},
+      {name: "storageFeeMaxGasPrice", type: "uint256"},
+      {name: "receiptFeeMaxGasPrice", type: "uint256"},
     ],
   },
 ] as const;
@@ -593,6 +596,9 @@ describe("contractActions addTransaction ABI compatibility", () => {
       appealRounds: 1n,
       executionBudgetPerRound: 20n,
       rotations: [2n, 3n],
+      maxPriceGenPerTimeUnit: 30n,
+      storageFeeMaxGasPrice: 40n,
+      receiptFeeMaxGasPrice: 50n,
     });
 
     const [decoded] = decodeAbiParameters(INTERNAL_MESSAGE_FEE_PARAMS_ABI, encoded) as any;
@@ -601,6 +607,9 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(decoded.appealRounds).toBe(1n);
     expect(decoded.executionBudgetPerRound).toBe(20n);
     expect(decoded.rotations).toEqual([2n, 3n]);
+    expect(decoded.maxPriceGenPerTimeUnit).toBe(30n);
+    expect(decoded.storageFeeMaxGasPrice).toBe(40n);
+    expect(decoded.receiptFeeMaxGasPrice).toBe(50n);
   });
 
   it("encodes external message fee params as the consensus tuple", () => {

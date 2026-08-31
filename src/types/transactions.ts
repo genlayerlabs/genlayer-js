@@ -422,6 +422,9 @@ export type InternalMessageFeeParamsInput = {
   appealRounds?: BigNumberish;
   executionBudgetPerRound?: BigNumberish;
   rotations?: BigNumberish[];
+  maxPriceGenPerTimeUnit?: BigNumberish;
+  storageFeeMaxGasPrice?: BigNumberish;
+  receiptFeeMaxGasPrice?: BigNumberish;
 };
 
 export type ExternalMessageFeeParamsInput = {
