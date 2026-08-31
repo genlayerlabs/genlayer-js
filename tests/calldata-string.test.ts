@@ -1,6 +1,6 @@
 import {describe, it, expect} from "vitest";
-import {toString} from "../src/abi/calldata/string";
-import {CalldataAddress} from "../src/types/calldata";
+import {toString} from "@/abi/calldata/string";
+import {CalldataAddress} from "@/types/calldata";
 
 describe("calldata toString", () => {
   it("zero-pads byte strings", () => {
