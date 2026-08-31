@@ -117,7 +117,6 @@ values in wallet or app UI before signing.
 const estimate = await client.estimateTransactionFees({
   leaderTimeunitsAllocation: 100n,
   validatorTimeunitsAllocation: 200n,
-  rotations: [0n],
 });
 
 const txHash = await client.writeContract({
@@ -131,6 +130,10 @@ const txHash = await client.writeContract({
   },
 });
 ```
+
+When `rotations` is omitted from an estimate, the SDK funds every round through
+the chain's `defaultConsensusMaxRotations`. Pass `rotations` explicitly—including
+`[0n]`—when the transaction should use a lower rotation budget.
 
 If `fees.distribution` is provided without `feeValue`, the SDK derives the fee
 deposit from FeeManager on network backends, or from `sim_getFeeConfig` on
@@ -267,11 +270,10 @@ transaction hash; on Studio/localnet it is the target GenLayer transaction id.
 A transaction can be finalized by consensus but still have a failed execution. Always check `txExecutionResult` before reading contract state:
 
 ```typescript
-import { ExecutionResult, TransactionStatus } from "genlayer-js/types";
+import { ExecutionResult } from "genlayer-js/types";
 
-const receipt = await client.waitForTransactionReceipt({
+const receipt = await client.waitForFinalization({
   hash: txHash,
-  status: TransactionStatus.FINALIZED,
 });
 
 if (receipt.txExecutionResultName === ExecutionResult.FINISHED_WITH_RETURN) {
@@ -296,6 +298,27 @@ Transactions can emit messages to other contracts. These messages create new chi
 
 ```typescript
 const tx = await client.getTransaction({ hash: txHash });
+
+// The default model is derived from the exact stored state. Processing entries
+// have a phase; decided entries have an outcome.
+console.log(tx.lifecycle);
+// {state: "processing", phase: "revealing"}
+// {state: "decided", outcome: "accepted"}
+
+// Advanced protocol consumers can explicitly request timestamp projection and
+// the exact resolution action/source. Current Studio can prove only the stored
+// status, so unsupported action/decision fields remain inactive there.
+const protocolLifecycle = await client.advanced.getTransactionLifecycle({ hash: txHash });
+console.log(protocolLifecycle.storedStatus);
+console.log(protocolLifecycle.projectedStatus);
+console.log(protocolLifecycle.resolutionSource);
+if (protocolLifecycle.resolutionAction === "Finalize") {
+  // Finalize is the protocol's current action/capability, not a transaction status.
+}
+
+// The train retains the authoritative execution hash, not the old receipt
+// bytes. `txReceipt` is therefore unavailable on train transactions.
+console.log(tx.txExecutionHash);
 
 // Messages emitted by the contract during execution
 console.log(tx.messages);
@@ -428,8 +451,11 @@ const epochInfo = await client.getEpochInfo();
 //   totalClaimed: "500 GEN",         // Total claimed rewards
 // }
 
-// Get active validators
+// Get validators currently eligible for consensus duties
 const validators = await client.getActiveValidators();
+
+// Inspect every identity in the append-only joined registry
+const joinedValidators = await client.getJoinedValidators();
 
 // Check if address is a validator
 const isValidator = await client.isValidator("0x...");

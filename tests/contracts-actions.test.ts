@@ -1,5 +1,11 @@
 import {describe, it, expect, vi} from "vitest";
-import {decodeAbiParameters, decodeFunctionData, encodeFunctionData, keccak256, toHex} from "viem";
+import {
+  decodeAbiParameters,
+  decodeFunctionData,
+  encodeFunctionData,
+  keccak256,
+  toHex,
+} from "viem";
 import {contractActions} from "../src/contracts/actions";
 import {NFT_MINTER_ABI} from "../src/abi/nftMinter";
 import {
@@ -20,8 +26,11 @@ const SENDER_ADDRESS = "0x0000000000000000000000000000000000000002";
 const RECIPIENT_ADDRESS = "0x0000000000000000000000000000000000000003";
 const ADDRESS_MANAGER_ADDRESS = "0x0000000000000000000000000000000000000004";
 const NFT_MINTER_ADDRESS = "0x0000000000000000000000000000000000000005";
+const CONSENSUS_DATA_ADDRESS = "0x0000000000000000000000000000000000000006";
 const MOCK_GENLAYER_TX_ID = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const MOCK_EVM_TX_HASH = "0x1234000000000000000000000000000000000000000000000000000000001234";
+const MOCK_DECISION_ID = 42n;
+const MOCK_ATTEMPT_ID = `0x${"bb".repeat(32)}` as const;
 
 const NEW_TRANSACTION_EVENT_ABI = {
   type: "event" as const,
@@ -180,18 +189,6 @@ const ADD_TRANSACTION_ABI_WITH_FEES = [
     outputs: [],
   },
 ] as const;
-
-const selectorForV5 = encodeFunctionData({
-  abi: ADD_TRANSACTION_ABI_V5 as any,
-  functionName: "addTransaction",
-  args: [SENDER_ADDRESS, RECIPIENT_ADDRESS, 5, 3, "0x"],
-}).slice(0, 10);
-
-const selectorForV6 = encodeFunctionData({
-  abi: ADD_TRANSACTION_ABI_V6 as any,
-  functionName: "addTransaction",
-  args: [SENDER_ADDRESS, RECIPIENT_ADDRESS, 5, 3, "0x", 0n],
-}).slice(0, 10);
 
 const selectorForFees = encodeFunctionData({
   abi: ADD_TRANSACTION_ABI_WITH_FEES as any,
@@ -646,7 +643,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(deriveExternalMessageCallKey("0x123456")).toBe(CALL_KEY_UNNAMED);
   });
 
-  it("encodes addTransaction with 5 args when ABI has 5 inputs", async () => {
+  it("uses the train tuple layout even when embedded chain metadata is stale v5", async () => {
     const {actions, estimateTransactionGas} = setupWriteContractHarness({
       initialAbi: ADD_TRANSACTION_ABI_V5,
     });
@@ -660,10 +657,10 @@ describe("contractActions addTransaction ABI compatibility", () => {
     ).rejects.toThrow("stop_after_encoding");
 
     const encodedData = estimateTransactionGas.mock.calls[0][0].data as `0x${string}`;
-    expect(encodedData.slice(0, 10)).toBe(selectorForV5);
+    expect(encodedData.slice(0, 10)).toBe(selectorForFees);
   });
 
-  it("encodes addTransaction with 6 args when ABI has 6 inputs", async () => {
+  it("uses the train tuple layout even when embedded chain metadata is stale v6", async () => {
     const {actions, estimateTransactionGas} = setupWriteContractHarness({
       initialAbi: ADD_TRANSACTION_ABI_V6,
     });
@@ -677,7 +674,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     ).rejects.toThrow("stop_after_encoding");
 
     const encodedData = estimateTransactionGas.mock.calls[0][0].data as `0x${string}`;
-    expect(encodedData.slice(0, 10)).toBe(selectorForV6);
+    expect(encodedData.slice(0, 10)).toBe(selectorForFees);
   });
 
   it("encodes addTransaction with v0.6 fee params when ABI has tuple input", async () => {
@@ -896,6 +893,85 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(estimateTransactionGas.mock.calls[0][0].value).toBe(11_000n);
   });
 
+  it("defaults direct fee estimates to the chain rotation budget for every appeal round", async () => {
+    const requestMock = vi.fn().mockResolvedValue({
+      enabled: false,
+      policy: {
+        genPerTimeUnit: "0",
+        storageUnitPrice: "0",
+        receiptGasPrice: "0",
+      },
+    });
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    const defaulted = await actions.estimateFeesDistribution({appealRounds: 2n});
+    const explicit = await actions.estimateFeesDistribution({rotations: [0n]});
+
+    expect(defaulted.rotations).toEqual([3n, 3n, 3n]);
+    expect(explicit.rotations).toEqual([0n]);
+  });
+
+  it("defaults simulation fee estimates to the chain rotation budget", async () => {
+    const requestMock = vi.fn().mockResolvedValue({
+      enabled: false,
+      policy: {
+        genPerTimeUnit: "0",
+        storageUnitPrice: "0",
+        receiptGasPrice: "0",
+      },
+    });
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    const fees = await actions.estimateTransactionFeesFromSimulation({
+      appealRounds: 1n,
+      simulation: {},
+    });
+
+    expect(fees.distribution.rotations).toEqual([3n, 3n]);
+  });
+
+  it("uses the chain rotation budget in write estimation requests and fallback results", async () => {
+    const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "sim_getFeeConfig") {
+        return {
+          enabled: false,
+          policy: {
+            genPerTimeUnit: "0",
+            storageUnitPrice: "0",
+            receiptGasPrice: "0",
+          },
+        };
+      }
+      if (method === "sim_estimateTransactionFees") return {};
+      if (method === "gen_call") return {data: "0x"};
+      throw new Error(`unexpected request ${method}`);
+    });
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    const fees = await actions.estimateTransactionFeesForWrite({
+      address: RECIPIENT_ADDRESS,
+      functionName: "ping",
+    });
+
+    const estimateRequest = requestMock.mock.calls.find(
+      ([call]) => call.method === "sim_estimateTransactionFees",
+    )?.[0];
+    expect(estimateRequest.params[0].fees.distribution.rotations).toEqual(["3"]);
+    expect(fees.distribution.rotations).toEqual([3n]);
+  });
+
   it("estimates fee distribution caps and fee value from FeeManager prices", async () => {
     const publicClient = {
       readContract: vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
@@ -1081,7 +1157,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(fees.distribution.storageFeeMaxGasPrice).toBe(20n);
     expect(fees.distribution.receiptFeeMaxGasPrice).toBe(30n);
     expect(fees.distribution.executionBudgetPerRound).toBe(3_000_000_000n);
-    expect(fees.feeValue).toBe(3_000_011_000n);
+    expect(fees.feeValue).toBe(12_000_044_000n);
   });
 
   it("prefers Studio's exposed message fee budget floor over local fallback math", async () => {
@@ -1111,7 +1187,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
 
     expect(fees.policy.executionBudgetFloor).toBe(700_000n);
     expect(fees.distribution.executionBudgetPerRound).toBe(3_000_000_000n);
-    expect(fees.feeValue).toBe(3_000_011_000n);
+    expect(fees.feeValue).toBe(12_000_044_000n);
   });
 
   it("builds a Studio trusted fee preset from a simulation fee report", async () => {
@@ -1255,7 +1331,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     });
     expect(fees.distribution.executionBudgetPerRound).toBe(expectedExecutionBudgetPerRound);
     expect(fees.distribution.totalMessageFees).toBe(6n);
-    expect(fees.feeValue).toBe(613_123n);
+    expect(fees.feeValue).toBe(2_452_474n);
   });
 
   it("uses the execution budget floor for simulation recommendations when observed usage is lower", async () => {
@@ -1392,7 +1468,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     const simCall = requestMock.mock.calls.find(([call]) => call.method === "sim_estimateTransactionFees")?.[0];
     expect(simCall).toBeDefined();
     expect(simCall.params[0].value).toBe("0x7");
-    expect(simCall.params[0].fees.feeValue).toBe("3000311110");
+    expect(simCall.params[0].fees.feeValue).toBe("12001244110");
     expect(simCall.params[0].fees.distribution.totalMessageFees).toBe("110");
     expect(simCall.params[0].fees.messageAllocations[0].budget).toBe("110");
     expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(602_117n);
@@ -1454,7 +1530,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(fees.messageAllocations?.[0].budget).toBe(50n);
     expect(fees.messageAllocations?.[0].feeParams).toBe(feeParams);
     expect(fees.distribution.totalMessageFees).toBe(50n);
-    expect(fees.feeValue).toBe(3_000_311_050n);
+    expect(fees.feeValue).toBe(12_001_244_050n);
   });
 
   it("keeps Studio fee estimation gasless when sim_getFeeConfig is disabled", async () => {
@@ -1490,11 +1566,10 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(fees.feeValue).toBe(0n);
   });
 
-  it("retries with v6 signature when v5 signature fails with ABI mismatch", async () => {
+  it("does not retry an obsolete selector when the exact train call fails", async () => {
     const signTransaction = vi
       .fn()
-      .mockRejectedValueOnce(new Error("Invalid pointer in tuple at location 128 in payload"))
-      .mockRejectedValueOnce(new Error("stop_after_retry"));
+      .mockRejectedValueOnce(new Error("Invalid pointer in tuple at location 128 in payload"));
     const {actions, estimateTransactionGas} = setupWriteContractHarness({
       initialAbi: ADD_TRANSACTION_ABI_V5,
       signTransactionMock: signTransaction,
@@ -1506,68 +1581,12 @@ describe("contractActions addTransaction ABI compatibility", () => {
         functionName: "ping",
         value: 0n,
       }),
-    ).rejects.toThrow("stop_after_retry");
+    ).rejects.toThrow("Invalid pointer in tuple");
 
-    expect(signTransaction).toHaveBeenCalledTimes(2);
+    expect(signTransaction).toHaveBeenCalledTimes(1);
     const firstEncodedData = signTransaction.mock.calls[0][0].data as `0x${string}`;
-    const secondEncodedData = signTransaction.mock.calls[1][0].data as `0x${string}`;
-    expect(firstEncodedData.slice(0, 10)).toBe(selectorForV5);
-    expect(secondEncodedData.slice(0, 10)).toBe(selectorForV6);
-    expect(estimateTransactionGas).toHaveBeenCalledTimes(2);
-  });
-
-  it("retries when ABI mismatch details are on error.details (viem InternalRpcError shape)", async () => {
-    const signTransaction = vi
-      .fn()
-      .mockRejectedValueOnce({
-        shortMessage: "An internal error was received.",
-        details: "Invalid pointer in tuple at location 128 in payload",
-      })
-      .mockRejectedValueOnce(new Error("stop_after_retry"));
-    const {actions} = setupWriteContractHarness({
-      initialAbi: ADD_TRANSACTION_ABI_V5,
-      signTransactionMock: signTransaction as any,
-    });
-
-    await expect(
-      actions.writeContract({
-        address: RECIPIENT_ADDRESS,
-        functionName: "ping",
-        value: 0n,
-      }),
-    ).rejects.toThrow("stop_after_retry");
-
-    expect(signTransaction).toHaveBeenCalledTimes(2);
-    const firstEncodedData = signTransaction.mock.calls[0][0].data as `0x${string}`;
-    const secondEncodedData = signTransaction.mock.calls[1][0].data as `0x${string}`;
-    expect(firstEncodedData.slice(0, 10)).toBe(selectorForV5);
-    expect(secondEncodedData.slice(0, 10)).toBe(selectorForV6);
-  });
-
-  it("retries with v5 signature when v6 signature fails with ABI mismatch", async () => {
-    const signTransaction = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("Invalid pointer in tuple at location 128 in payload"))
-      .mockRejectedValueOnce(new Error("stop_after_retry"));
-    const {actions, estimateTransactionGas} = setupWriteContractHarness({
-      initialAbi: ADD_TRANSACTION_ABI_V6,
-      signTransactionMock: signTransaction,
-    });
-
-    await expect(
-      actions.writeContract({
-        address: RECIPIENT_ADDRESS,
-        functionName: "ping",
-        value: 0n,
-      }),
-    ).rejects.toThrow("stop_after_retry");
-
-    expect(signTransaction).toHaveBeenCalledTimes(2);
-    const firstEncodedData = signTransaction.mock.calls[0][0].data as `0x${string}`;
-    const secondEncodedData = signTransaction.mock.calls[1][0].data as `0x${string}`;
-    expect(firstEncodedData.slice(0, 10)).toBe(selectorForV6);
-    expect(secondEncodedData.slice(0, 10)).toBe(selectorForV5);
-    expect(estimateTransactionGas).toHaveBeenCalledTimes(2);
+    expect(firstEncodedData.slice(0, 10)).toBe(selectorForFees);
+    expect(estimateTransactionGas).toHaveBeenCalledTimes(1);
   });
 
   it("uses direct eth_sendTransaction for non-local accounts without prepareTransactionRequest", async () => {
@@ -1635,7 +1654,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     });
   });
 
-  it("retries alternate ABI for injected-wallet errors with nested invalid pointer details", async () => {
+  it("does not retry an obsolete selector for injected-wallet errors", async () => {
     const sentPayloads: `0x${string}`[] = [];
     const request = vi.fn().mockImplementation(async ({method, params}: {method: string; params?: any[]}) => {
       if (method === "eth_gasPrice") {
@@ -1646,19 +1665,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
         const payload = params?.[0];
         sentPayloads.push(payload?.data);
 
-        if (sentPayloads.length === 1) {
-          throw {
-            code: -32603,
-            message: "Internal JSON-RPC error.",
-            data: {
-              originalError: {
-                message: "Invalid pointer in tuple at location 128 in payload",
-              },
-            },
-          };
-        }
-
-        return MOCK_EVM_TX_HASH;
+        throw new Error("Internal JSON-RPC error: invalid tuple pointer");
       }
 
       throw new Error(`Unexpected RPC method: ${method}`);
@@ -1688,17 +1695,12 @@ describe("contractActions addTransaction ABI compatibility", () => {
     };
 
     const actions = contractActions(client as any, mockPublicClient as any);
-    const txHash = await actions.writeContract({
-      address: RECIPIENT_ADDRESS,
-      functionName: "ping",
-      value: 0n,
-    });
+    await expect(
+      actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping", value: 0n}),
+    ).rejects.toThrow("invalid tuple pointer");
 
-    // Should return GenLayer txId, not the EVM hash
-    expect(txHash).toBe(MOCK_GENLAYER_TX_ID);
-    expect(sentPayloads).toHaveLength(2);
-    expect(sentPayloads[0].slice(0, 10)).toBe(selectorForV5);
-    expect(sentPayloads[1].slice(0, 10)).toBe(selectorForV6);
+    expect(sentPayloads).toHaveLength(1);
+    expect(sentPayloads[0].slice(0, 10)).toBe(selectorForFees);
   });
 
   it("throws when external wallet transaction is reverted", async () => {
@@ -1797,14 +1799,38 @@ const FINALIZE_TX_ABI = [
     type: "function" as const,
     name: "finalizeTransaction",
     stateMutability: "nonpayable" as const,
-    inputs: [{name: "_txId", type: "bytes32"}],
+    inputs: [
+      {name: "_txId", type: "bytes32"},
+      {name: "_expectedDecisionId", type: "uint256"},
+    ],
     outputs: [],
   },
   {
     type: "function" as const,
-    name: "finalizeIdlenessTxs",
+    name: "resolveTransactions",
     stateMutability: "nonpayable" as const,
-    inputs: [{name: "_txIds", type: "bytes32[]"}],
+    inputs: [{
+      name: "_commands",
+      type: "tuple[]",
+      components: [
+        {name: "txId", type: "bytes32"},
+        {name: "expectedAttemptId", type: "bytes32"},
+      ],
+    }],
+    outputs: [],
+  },
+  {
+    type: "function" as const,
+    name: "finalizeDecisions",
+    stateMutability: "nonpayable" as const,
+    inputs: [{
+      name: "_commands",
+      type: "tuple[]",
+      components: [
+        {name: "txId", type: "bytes32"},
+        {name: "expectedDecisionId", type: "uint256"},
+      ],
+    }],
     outputs: [],
   },
 ];
@@ -1826,7 +1852,21 @@ const FEE_MANAGEMENT_ABI = [
     stateMutability: "payable" as const,
     inputs: [
       {name: "_txId", type: "bytes32"},
+      {name: "_expectedDecisionId", type: "uint256"},
       {name: "_feesDistribution", type: "tuple", components: FEES_DISTRIBUTION_COMPONENTS},
+    ],
+    outputs: [],
+  },
+] as const;
+
+const APPEAL_TRAIN_ABI = [
+  {
+    type: "function" as const,
+    name: "submitAppeal",
+    stateMutability: "payable" as const,
+    inputs: [
+      {name: "_txId", type: "bytes32"},
+      {name: "_expectedDecisionId", type: "uint256"},
     ],
     outputs: [],
   },
@@ -1835,13 +1875,19 @@ const FEE_MANAGEMENT_ABI = [
 const finalizeTransactionSelector = encodeFunctionData({
   abi: FINALIZE_TX_ABI as any,
   functionName: "finalizeTransaction",
-  args: [MOCK_GENLAYER_TX_ID],
+  args: [MOCK_GENLAYER_TX_ID, MOCK_DECISION_ID],
 }).slice(0, 10);
 
-const finalizeIdlenessSelector = encodeFunctionData({
+const resolveTransactionsSelector = encodeFunctionData({
   abi: FINALIZE_TX_ABI as any,
-  functionName: "finalizeIdlenessTxs",
-  args: [[MOCK_GENLAYER_TX_ID]],
+  functionName: "resolveTransactions",
+  args: [[{txId: MOCK_GENLAYER_TX_ID, expectedAttemptId: MOCK_ATTEMPT_ID}]],
+}).slice(0, 10);
+
+const finalizeDecisionsSelector = encodeFunctionData({
+  abi: FINALIZE_TX_ABI as any,
+  functionName: "finalizeDecisions",
+  args: [[{txId: MOCK_GENLAYER_TX_ID, expectedDecisionId: MOCK_DECISION_ID}]],
 }).slice(0, 10);
 
 const topUpFeesSelector = encodeFunctionData({
@@ -1869,6 +1915,7 @@ const topUpAndSubmitAppealSelector = encodeFunctionData({
   functionName: "topUpAndSubmitAppeal",
   args: [
     MOCK_GENLAYER_TX_ID,
+    MOCK_DECISION_ID,
     {
       leaderTimeunitsAllocation: 0n,
       validatorTimeunitsAllocation: 0n,
@@ -1884,7 +1931,27 @@ const topUpAndSubmitAppealSelector = encodeFunctionData({
   ],
 }).slice(0, 10);
 
-const setupFinalizeHarness = ({receiptStatus = "success"}: {receiptStatus?: string} = {}) => {
+const trainLifecycle = ({action = 6, decisionActive = true}: {action?: number; decisionActive?: boolean} = {}) => ({
+  storedStatus: 5,
+  resolution: {
+    projectedStatus: 5,
+    action,
+    attemptId: MOCK_ATTEMPT_ID,
+  },
+  latestDecision: {
+    exists: decisionActive,
+    decisionId: decisionActive ? MOCK_DECISION_ID : 0n,
+  },
+  decisionActive,
+});
+
+const setupFinalizeHarness = ({
+  receiptStatus = "success",
+  resolutionAction = 6,
+}: {
+  receiptStatus?: string;
+  resolutionAction?: number;
+} = {}) => {
   const signTransaction = vi.fn().mockResolvedValue("0xsigned");
   const sendRawTransaction = vi.fn().mockResolvedValue(MOCK_EVM_TX_HASH);
   const waitForTransactionReceipt = vi.fn().mockResolvedValue({status: receiptStatus, logs: []});
@@ -1896,6 +1963,11 @@ const setupFinalizeHarness = ({receiptStatus = "success"}: {receiptStatus?: stri
       consensusMainContract: {
         address: MAIN_CONTRACT_ADDRESS,
         abi: FINALIZE_TX_ABI,
+        bytecode: "0x",
+      },
+      consensusDataContract: {
+        address: CONSENSUS_DATA_ADDRESS,
+        abi: [],
         bytecode: "0x",
       },
     },
@@ -1913,18 +1985,30 @@ const setupFinalizeHarness = ({receiptStatus = "success"}: {receiptStatus?: stri
     }),
   };
 
-  const publicClient = {waitForTransactionReceipt};
+  const readContract = vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
+    if (functionName === "getTransactionLifecycle") {
+      return trainLifecycle({action: resolutionAction});
+    }
+    throw new Error(`Unexpected contract read: ${functionName}`);
+  });
+  const publicClient = {
+    waitForTransactionReceipt,
+    getBlock: vi.fn().mockResolvedValue({number: 123n, timestamp: 456n}),
+    readContract,
+  };
   const actions = contractActions(client as any, publicClient as any);
 
-  return {actions, signTransaction, sendRawTransaction, waitForTransactionReceipt, estimateTransactionGas, client};
+  return {actions, signTransaction, sendRawTransaction, waitForTransactionReceipt, estimateTransactionGas, client, publicClient};
 };
 
 const setupFeeManagementHarness = ({
   receiptStatus = "success",
   isStudio = false,
+  decisionActive = true,
 }: {
   receiptStatus?: string;
   isStudio?: boolean;
+  decisionActive?: boolean;
 } = {}) => {
   const signTransaction = vi.fn().mockResolvedValue("0xsigned");
   const sendRawTransaction = vi.fn().mockResolvedValue(MOCK_EVM_TX_HASH);
@@ -1940,6 +2024,21 @@ const setupFeeManagementHarness = ({
         abi: FEE_MANAGEMENT_ABI,
         bytecode: "0x",
       },
+      consensusDataContract: {
+        address: CONSENSUS_DATA_ADDRESS,
+        abi: [],
+        bytecode: "0x",
+      },
+      appealsContract: {
+        address: RECIPIENT_ADDRESS,
+        abi: [],
+        bytecode: "0x",
+      },
+      feeManagerContract: {
+        address: ADDRESS_MANAGER_ADDRESS,
+        abi: [],
+        bytecode: "0x",
+      },
     },
     account: {
       address: SENDER_ADDRESS,
@@ -1955,10 +2054,22 @@ const setupFeeManagementHarness = ({
     }),
   };
 
-  const publicClient = {waitForTransactionReceipt};
+  const readContract = vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
+    if (functionName === "getTransactionLifecycle") return trainLifecycle({decisionActive});
+    if (functionName === "estimateLatestAppealCharge") {
+      return [MOCK_DECISION_ID, 1000n, 234n, 999n];
+    }
+    if (functionName === "canAppeal") return true;
+    throw new Error(`Unexpected contract read: ${functionName}`);
+  });
+  const publicClient = {
+    waitForTransactionReceipt,
+    getBlock: vi.fn().mockResolvedValue({number: 123n, timestamp: 456n}),
+    readContract,
+  };
   const actions = contractActions(client as any, publicClient as any);
 
-  return {actions, signTransaction, sendRawTransaction, waitForTransactionReceipt, estimateTransactionGas, client};
+  return {actions, signTransaction, sendRawTransaction, waitForTransactionReceipt, estimateTransactionGas, client, publicClient};
 };
 
 describe("contractActions getContractCode", () => {
@@ -2091,7 +2202,109 @@ describe("contractActions getContractSchemaForCode", () => {
   });
 });
 
+describe("contractActions bounded round reads", () => {
+  const validators = Array.from(
+    {length: 65},
+    (_, index) => `0x${(index + 10).toString(16).padStart(40, "0")}`,
+  );
+  const voteHashes = validators.map((_, index) =>
+    `0x${(index + 1).toString(16).padStart(64, "0")}`,
+  );
+  const resultHashes = validators.map((_, index) =>
+    `0x${(index + 101).toString(16).padStart(64, "0")}`,
+  );
+
+  const setup = () => {
+    const readContract = vi.fn().mockImplementation(async ({functionName, args}: any) => {
+      if (functionName === "getRoundNumber") return 3n;
+      if (functionName === "getLeaderIndex") return 2n;
+      if (functionName === "getVotesCommitted") return 65n;
+      if (functionName === "getVotesRevealed") return 64n;
+      if (functionName === "getAppealBond") return 99n;
+      if (functionName === "getRotationsLeft") return 4n;
+      if (functionName === "getResult") return 1;
+      if (functionName === "getValidatorVotes") return validators.map(() => 1);
+      if (functionName === "getValidatorVotesHash") return voteHashes;
+      if (functionName === "getValidatorResultHash") return resultHashes;
+      if (functionName === "getRoundValidatorsPage") {
+        const offset = Number(args[2]);
+        const limit = Number(args[3]);
+        return [validators.slice(offset, offset + limit), BigInt(validators.length)];
+      }
+      throw new Error(`Unexpected read ${functionName}`);
+    });
+    const publicClient = {
+      getBlock: vi.fn().mockResolvedValue({number: 123n, timestamp: 456n}),
+      readContract,
+    };
+    const client = {
+      chain: {
+        roundsStorageContract: {address: ADDRESS_MANAGER_ADDRESS, abi: []},
+      },
+    };
+    return {actions: contractActions(client as any, publicClient as any), readContract};
+  };
+
+  it("reconstructs getRoundData through fixed-block pages and split arrays", async () => {
+    const {actions, readContract} = setup();
+
+    const roundData = await actions.getRoundData({txId: MOCK_GENLAYER_TX_ID, round: 3n});
+
+    expect(roundData.roundValidators).toEqual(validators);
+    expect(roundData.validatorVotes).toHaveLength(65);
+    expect(roundData.validatorVotesHash).toEqual(voteHashes);
+    expect(roundData.validatorResultHash).toEqual(resultHashes);
+    expect(readContract.mock.calls.filter(([call]) => call.functionName === "getRoundValidatorsPage"))
+      .toHaveLength(2);
+    expect(readContract.mock.calls.every(([call]) => call.blockNumber === 123n)).toBe(true);
+    expect(readContract.mock.calls.some(([call]) => call.functionName === "getRoundData")).toBe(false);
+  });
+
+  it("preserves the legacy getLastRoundData tuple shape without the aggregate getter", async () => {
+    const {actions, readContract} = setup();
+
+    const lastRound = await actions.getLastRoundData({txId: MOCK_GENLAYER_TX_ID});
+
+    expect(lastRound[0]).toBe(3n);
+    expect(lastRound[1].roundValidators).toEqual(validators);
+    expect(lastRound.round).toBe(3n);
+    expect(lastRound.roundData).toBe(lastRound[1]);
+    expect(readContract.mock.calls.some(([call]) => call.functionName === "getLastRoundData"))
+      .toBe(false);
+  });
+});
+
 describe("contractActions fee management", () => {
+  it("quotes the full authoritative appeal charge", async () => {
+    const {actions, client} = setupFeeManagementHarness();
+    delete (client.chain as any).feeManagerContract;
+
+    await expect(actions.getAppealCharge({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(1234n);
+    await expect(actions.getMinAppealBond({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(1234n);
+  });
+
+  it("encodes submitAppeal with the active decision id and quoted funding", async () => {
+    const {actions, signTransaction} = setupFeeManagementHarness();
+
+    await expect(actions.appealTransaction({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(
+      MOCK_GENLAYER_TX_ID,
+    );
+
+    const txRequest = signTransaction.mock.calls[0][0];
+    expect(txRequest.value).toBe(1234n);
+    const decoded = decodeFunctionData({abi: APPEAL_TRAIN_ABI, data: txRequest.data});
+    expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID, MOCK_DECISION_ID]);
+  });
+
+  it("returns false from canAppeal when no decision is active", async () => {
+    const {actions, publicClient} = setupFeeManagementHarness({decisionActive: false});
+
+    await expect(actions.canAppeal({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(false);
+    expect(publicClient.readContract).not.toHaveBeenCalledWith(
+      expect.objectContaining({functionName: "canAppeal"}),
+    );
+  });
+
   it("encodes topUpFees(bytes32, FeesDistribution) and returns the EVM tx hash", async () => {
     const {actions, signTransaction, sendRawTransaction} = setupFeeManagementHarness();
 
@@ -2135,7 +2348,7 @@ describe("contractActions fee management", () => {
     expect(distribution.receiptFeeMaxGasPrice).toBe(36n);
   });
 
-  it("encodes topUpAndSubmitAppeal(bytes32, FeesDistribution) and returns the GenLayer tx id", async () => {
+  it("encodes topUpAndSubmitAppeal with the active decision id", async () => {
     const {actions, signTransaction, sendRawTransaction} = setupFeeManagementHarness();
 
     const txId = await actions.topUpAndSubmitAppeal({
@@ -2158,8 +2371,9 @@ describe("contractActions fee management", () => {
       abi: FEE_MANAGEMENT_ABI as any,
       data: txRequest.data,
     });
-    const [decodedTxId, distribution] = decoded.args as any[];
+    const [decodedTxId, expectedDecisionId, distribution] = decoded.args as any[];
     expect(decodedTxId).toBe(MOCK_GENLAYER_TX_ID);
+    expect(expectedDecisionId).toBe(MOCK_DECISION_ID);
     expect(distribution.appealRounds).toBe(1n);
     expect(distribution.rotations).toEqual([0n, 1n]);
   });
@@ -2231,7 +2445,7 @@ describe("contractActions fee management", () => {
 });
 
 describe("contractActions finalizeTransaction", () => {
-  it("encodes finalizeTransaction(bytes32) and returns EVM tx hash", async () => {
+  it("encodes finalizeTransaction with the active decision id", async () => {
     const {actions, signTransaction, sendRawTransaction} = setupFinalizeHarness();
 
     const evmHash = await actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID});
@@ -2241,6 +2455,8 @@ describe("contractActions finalizeTransaction", () => {
     const txRequest = signTransaction.mock.calls[0][0];
     expect(txRequest.to).toBe(MAIN_CONTRACT_ADDRESS);
     expect(txRequest.data.slice(0, 10)).toBe(finalizeTransactionSelector);
+    const decoded = decodeFunctionData({abi: FINALIZE_TX_ABI as any, data: txRequest.data});
+    expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID, MOCK_DECISION_ID]);
     expect(txRequest.value).toBe(0n);
   });
 
@@ -2250,25 +2466,260 @@ describe("contractActions finalizeTransaction", () => {
       actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID}),
     ).rejects.toThrow(/Finalize reverted/);
   });
+
+  it("does not broadcast when the lifecycle action is not Finalize", async () => {
+    const {actions, signTransaction} = setupFinalizeHarness({resolutionAction: 0});
+
+    await expect(
+      actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID}),
+    ).rejects.toThrow(/not ready to finalize.*resolution action 0/i);
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
 });
 
 describe("contractActions finalizeIdlenessTxs", () => {
-  it("encodes finalizeIdlenessTxs(bytes32[]) and returns EVM tx hash", async () => {
-    const {actions, signTransaction, sendRawTransaction} = setupFinalizeHarness();
-
-    const evmHash = await actions.finalizeIdlenessTxs({txIds: [MOCK_GENLAYER_TX_ID]});
-
-    expect(evmHash).toBe(MOCK_EVM_TX_HASH);
-    expect(sendRawTransaction).toHaveBeenCalledTimes(1);
-    const txRequest = signTransaction.mock.calls[0][0];
-    expect(txRequest.data.slice(0, 10)).toBe(finalizeIdlenessSelector);
-  });
-
-  it("rejects an empty batch upfront", async () => {
+  it("fails with actionable train replacements and never broadcasts", async () => {
     const {actions, signTransaction} = setupFinalizeHarness();
     await expect(
-      actions.finalizeIdlenessTxs({txIds: []}),
-    ).rejects.toThrow(/at least one txId/);
+      actions.finalizeIdlenessTxs({txIds: [MOCK_GENLAYER_TX_ID]}),
+    ).rejects.toThrow(/resolveTransactions.*finalizeDecisions/);
     expect(signTransaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("contractActions train lifecycle batches", () => {
+  it("encodes resolveTransactions with fixed-block attempt identities", async () => {
+    const {actions, signTransaction} = setupFinalizeHarness();
+
+    await actions.resolveTransactions({txIds: [MOCK_GENLAYER_TX_ID]});
+
+    const txRequest = signTransaction.mock.calls[0][0];
+    expect(txRequest.data.slice(0, 10)).toBe(resolveTransactionsSelector);
+    const decoded = decodeFunctionData({abi: FINALIZE_TX_ABI as any, data: txRequest.data});
+    expect(decoded.args?.[0]).toEqual([{
+      txId: MOCK_GENLAYER_TX_ID,
+      expectedAttemptId: MOCK_ATTEMPT_ID,
+    }]);
+  });
+
+  it("encodes finalizeDecisions with fixed-block decision identities", async () => {
+    const {actions, signTransaction} = setupFinalizeHarness();
+
+    await actions.finalizeDecisions({txIds: [MOCK_GENLAYER_TX_ID]});
+
+    const txRequest = signTransaction.mock.calls[0][0];
+    expect(txRequest.data.slice(0, 10)).toBe(finalizeDecisionsSelector);
+    const decoded = decodeFunctionData({abi: FINALIZE_TX_ABI as any, data: txRequest.data});
+    expect(decoded.args?.[0]).toEqual([{
+      txId: MOCK_GENLAYER_TX_ID,
+      expectedDecisionId: MOCK_DECISION_ID,
+    }]);
+  });
+});
+
+/** Current Studio entrypoints intentionally remain independent of the v0.6 train. */
+const CONSENSUS_MAIN_STUDIO_ABI = [
+  {
+    type: "function" as const,
+    name: "submitAppeal",
+    stateMutability: "payable" as const,
+    inputs: [{name: "_txId", type: "bytes32"}],
+    outputs: [],
+  },
+  {
+    type: "function" as const,
+    name: "finalizeTransaction",
+    stateMutability: "nonpayable" as const,
+    inputs: [{name: "_txId", type: "bytes32"}],
+    outputs: [],
+  },
+] as const;
+
+const FEE_MANAGEMENT_STUDIO_ABI = [
+  {
+    type: "function" as const,
+    name: "topUpAndSubmitAppeal",
+    stateMutability: "payable" as const,
+    inputs: [
+      {name: "_txId", type: "bytes32"},
+      {name: "_feesDistribution", type: "tuple", components: FEES_DISTRIBUTION_COMPONENTS},
+    ],
+    outputs: [],
+  },
+] as const;
+
+/**
+ * Mirrors the localnet/studionet chain config: ConsensusMain and ConsensusData
+ * resolve, but the fee manager, rounds storage, and appeals contracts carry no
+ * address. Studio stays a consumer of this SDK without joining this train.
+ */
+const setupStudioLifecycleHarness = () => {
+  const signTransaction = vi.fn().mockResolvedValue("0xsigned");
+  const sendRawTransaction = vi.fn().mockResolvedValue(MOCK_EVM_TX_HASH);
+  const waitForTransactionReceipt = vi.fn().mockResolvedValue({status: "success", logs: []});
+
+  const client = {
+    chain: {
+      id: 61_999,
+      isStudio: true,
+      consensusMainContract: {
+        address: MAIN_CONTRACT_ADDRESS,
+        abi: CONSENSUS_MAIN_STUDIO_ABI,
+        bytecode: "0x",
+      },
+      consensusDataContract: {
+        address: CONSENSUS_DATA_ADDRESS,
+        abi: [],
+        bytecode: "0x",
+      },
+      appealsContract: {address: undefined, abi: [], bytecode: "0x"},
+      feeManagerContract: {address: undefined, abi: [], bytecode: "0x"},
+      roundsStorageContract: {address: undefined, abi: [], bytecode: "0x"},
+    },
+    account: {
+      address: SENDER_ADDRESS,
+      type: "local",
+      signTransaction,
+    },
+    getCurrentNonce: vi.fn().mockResolvedValue(0n),
+    estimateTransactionGas: vi.fn().mockResolvedValue(21_000n),
+    sendRawTransaction,
+    request: vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "eth_gasPrice") return "0x1";
+      throw new Error(`Unexpected RPC method: ${method}`);
+    }),
+  };
+
+  // Any train lifecycle read here is a regression: current Studio is a consumer
+  // of this SDK, not a member of the resolution-kernel landing cut.
+  const readContract = vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
+    throw new Error(`Unexpected consensus read on Studio: ${functionName}`);
+  });
+  const publicClient = {
+    waitForTransactionReceipt,
+    getBlock: vi.fn().mockResolvedValue({number: 123n, timestamp: 456n}),
+    readContract,
+  };
+
+  return {
+    actions: contractActions(client as any, publicClient as any),
+    signTransaction,
+    sendRawTransaction,
+    waitForTransactionReceipt,
+    readContract,
+    client,
+    publicClient,
+  };
+};
+
+describe("contractActions current Studio surface", () => {
+  it("encodes Studio's native submitAppeal(bytes32) without a train lifecycle read", async () => {
+    const {actions, signTransaction, readContract} = setupStudioLifecycleHarness();
+
+    await expect(actions.appealTransaction({txId: MOCK_GENLAYER_TX_ID, value: 500n})).resolves.toBe(
+      MOCK_GENLAYER_TX_ID,
+    );
+
+    expect(readContract).not.toHaveBeenCalled();
+    const txRequest = signTransaction.mock.calls[0][0];
+    expect(txRequest.to).toBe(MAIN_CONTRACT_ADDRESS);
+    expect(txRequest.value).toBe(500n);
+    const decoded = decodeFunctionData({abi: CONSENSUS_MAIN_STUDIO_ABI, data: txRequest.data});
+    expect(decoded.functionName).toBe("submitAppeal");
+    expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID]);
+  });
+
+  it("defaults the Studio appeal value to zero when the caller omits it", async () => {
+    const {actions, signTransaction, readContract} = setupStudioLifecycleHarness();
+
+    await actions.appealTransaction({txId: MOCK_GENLAYER_TX_ID});
+
+    expect(readContract).not.toHaveBeenCalled();
+    expect(signTransaction.mock.calls[0][0].value).toBe(0n);
+  });
+
+  it("encodes Studio's native topUpAndSubmitAppeal without a decision id", async () => {
+    const {actions, signTransaction, readContract} = setupStudioLifecycleHarness();
+
+    const txId = await actions.topUpAndSubmitAppeal({
+      txId: MOCK_GENLAYER_TX_ID,
+      value: 1234n,
+      distribution: {appealRounds: 1n, rotations: [0n, 1n]},
+    });
+
+    expect(txId).toBe(MOCK_GENLAYER_TX_ID);
+    expect(readContract).not.toHaveBeenCalled();
+    const txRequest = signTransaction.mock.calls[0][0];
+    expect(txRequest.value).toBe(1234n);
+    const decoded = decodeFunctionData({abi: FEE_MANAGEMENT_STUDIO_ABI as any, data: txRequest.data});
+    const [decodedTxId, distribution] = decoded.args as any[];
+    expect(decodedTxId).toBe(MOCK_GENLAYER_TX_ID);
+    expect(distribution.appealRounds).toBe(1n);
+    expect(distribution.rotations).toEqual([0n, 1n]);
+  });
+
+  it("encodes Studio's native finalizeTransaction(bytes32)", async () => {
+    const {actions, signTransaction, readContract} = setupStudioLifecycleHarness();
+
+    await expect(actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(
+      MOCK_EVM_TX_HASH,
+    );
+
+    expect(readContract).not.toHaveBeenCalled();
+    const decoded = decodeFunctionData({
+      abi: CONSENSUS_MAIN_STUDIO_ABI,
+      data: signTransaction.mock.calls[0][0].data,
+    });
+    expect(decoded.functionName).toBe("finalizeTransaction");
+    expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID]);
+  });
+
+  it("reports that the current Studio has no authoritative appeal quote", async () => {
+    const {actions, readContract} = setupStudioLifecycleHarness();
+
+    await expect(actions.getAppealCharge({txId: MOCK_GENLAYER_TX_ID})).rejects.toThrow(
+      /missing feeManagerContract\/roundsStorageContract/,
+    );
+    await expect(actions.getMinAppealBond({txId: MOCK_GENLAYER_TX_ID})).rejects.toThrow(
+      /missing feeManagerContract\/roundsStorageContract/,
+    );
+    expect(readContract).not.toHaveBeenCalled();
+  });
+
+  it("reports the missing appeals contract from canAppeal", async () => {
+    const {actions, readContract} = setupStudioLifecycleHarness();
+
+    await expect(actions.canAppeal({txId: MOCK_GENLAYER_TX_ID})).rejects.toThrow(
+      /missing appealsContract/,
+    );
+    expect(readContract).not.toHaveBeenCalled();
+  });
+
+  it("rejects the train-only batch actions with an actionable message and never broadcasts", async () => {
+    const {actions, signTransaction, readContract} = setupStudioLifecycleHarness();
+
+    await expect(actions.resolveTransactions({txIds: [MOCK_GENLAYER_TX_ID]})).rejects.toThrow(
+      /resolveTransactions is not exposed by Studio's embedded consensus.*finalizeTransaction/s,
+    );
+    await expect(actions.finalizeDecisions({txIds: [MOCK_GENLAYER_TX_ID]})).rejects.toThrow(
+      /finalizeDecisions is not exposed by Studio's embedded consensus.*finalizeTransaction/s,
+    );
+    expect(readContract).not.toHaveBeenCalled();
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
+
+  it("still threads the decision id through the train path on non-Studio chains", async () => {
+    const {actions, signTransaction, publicClient} = setupFeeManagementHarness();
+
+    await actions.appealTransaction({txId: MOCK_GENLAYER_TX_ID});
+
+    expect(publicClient.readContract).toHaveBeenCalledWith(
+      expect.objectContaining({functionName: "getTransactionLifecycle"}),
+    );
+    const decoded = decodeFunctionData({
+      abi: APPEAL_TRAIN_ABI,
+      data: signTransaction.mock.calls[0][0].data,
+    });
+    expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID, MOCK_DECISION_ID]);
   });
 });

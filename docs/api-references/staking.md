@@ -17,11 +17,15 @@ Joins as a validator with the specified stake amount.
 
 ### validatorDeposit
 
-Adds additional self-stake to an active validator position.
+Adds additional self-stake to an active validator position. The
+underlying Staking contract requires msg.sender == ValidatorWallet,
+so the call is routed through the wallet's own validatorDeposit
+forwarder (which re-enters Staking with the correct sender).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | amount | `bigint \| string` | yes |  |
+| validator | `Address` | yes |  |
 
 **Returns:** `StakingTransactionResult`
 
@@ -29,11 +33,13 @@ Adds additional self-stake to an active validator position.
 
 ### validatorExit
 
-Exits a validator position by burning the specified shares.
+Exits a validator position by burning the specified shares. Same
+msg.sender constraint as validatorDeposit — routed via the wallet.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | shares | `bigint \| string` | yes |  |
+| validator | `Address` | yes |  |
 
 **Returns:** `StakingTransactionResult`
 
@@ -65,7 +71,7 @@ Primes a validator for participation in the next epoch.
 
 ### setOperator
 
-Sets the operator address for a validator wallet.
+@deprecated Use initiateOperatorTransfer followed by completeOperatorTransfer.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -73,6 +79,57 @@ Sets the operator address for a validator wallet.
 | operator | `Address` | yes |  |
 
 **Returns:** `StakingTransactionResult`
+
+---
+
+### initiateOperatorTransfer
+
+Starts the two-step operator rotation. The proof is checked against the
+wallet-bound context before submission so a registration built for the
+wrong registrar fails locally instead of as an opaque on-chain revert.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| options | `InitiateOperatorTransferOptions` | yes |  |
+
+**Returns:** `StakingTransactionResult`
+
+---
+
+### completeOperatorTransfer
+
+Completes a pending rotation. Callable by the wallet owner or the pending
+operator, and only once the factory's operatorTransferDelay has elapsed.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| options | `CompleteOperatorTransferOptions` | yes |  |
+
+**Returns:** `StakingTransactionResult`
+
+---
+
+### cancelOperatorTransfer
+
+Abandons a pending rotation, leaving the current operator in place.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| options | `CancelOperatorTransferOptions` | yes |  |
+
+**Returns:** `StakingTransactionResult`
+
+---
+
+### getPendingOperator
+
+Reads the pending operator and when its transfer was initiated.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| validator | `Address` | yes |  |
+
+**Returns:** `PendingOperatorInfo`
 
 ---
 
@@ -138,7 +195,7 @@ Claims pending delegator withdrawals.
 
 ### isValidator
 
-Checks if an address is an active validator.
+Checks whether an address is a registered/joined validator wallet.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -157,6 +214,28 @@ Returns comprehensive information about a validator including stake, identity, a
 | validator | `Address` | yes |  |
 
 **Returns:** `ValidatorInfo`
+
+---
+
+### getCurrentEpoch
+
+Returns the current epoch number.
+
+_No parameters._
+
+**Returns:** `bigint`
+
+---
+
+### isValidatorBelowMin
+
+Checks whether a validator's self-stake is below the configured validator minimum.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| validator | `Address` | yes |  |
+
+**Returns:** `boolean`
 
 ---
 
@@ -197,7 +276,7 @@ Returns detailed data for a specific epoch.
 
 ### getActiveValidators
 
-Returns addresses of all currently active validators.
+Returns validators currently eligible for consensus duties.
 
 _No parameters._
 
@@ -207,7 +286,27 @@ _No parameters._
 
 ### getActiveValidatorsCount
 
-Returns the count of active validators.
+Returns the count of validators currently eligible for consensus duties.
+
+_No parameters._
+
+**Returns:** `bigint`
+
+---
+
+### getJoinedValidators
+
+Returns every validator identity in the append-only joined registry.
+
+_No parameters._
+
+**Returns:** `Address[]`
+
+---
+
+### getJoinedValidatorsCount
+
+Returns the size of the append-only joined validator registry.
 
 _No parameters._
 

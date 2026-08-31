@@ -4,7 +4,7 @@ Methods for deploying, reading, writing, and simulating GenLayer intelligent con
 
 ### getContractCode
 
-Retrieves the source code of a deployed contract. Localnet only.
+Retrieves the source code of a deployed contract.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -16,7 +16,7 @@ Retrieves the source code of a deployed contract. Localnet only.
 
 ### getContractSchema
 
-Gets the schema (methods and constructor) of a deployed contract. Localnet only.
+Gets the schema (methods and constructor) of a deployed contract.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -28,7 +28,7 @@ Gets the schema (methods and constructor) of a deployed contract. Localnet only.
 
 ### getContractSchemaForCode
 
-Generates a schema for contract code without deploying it. Localnet only.
+Generates a schema for contract code without deploying it.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -70,10 +70,15 @@ Simulates a state-modifying contract call without executing on-chain.
 | args | `CalldataEncodable[]` | no |  |
 | kwargs | `Map<string, CalldataEncodable> \| {[key: string]: CalldataEncodable}` | no |  |
 | rawReturn | `RawReturn` | no |  |
+| includeReceipt | `IncludeReceipt` | no |  |
+| value | `BigNumberish` | no |  |
 | leaderOnly | `boolean` | no |  |
+| fees | `TransactionFeeOptions` | no |  |
 | transactionHashVariant | `TransactionHashVariant` | no |  |
 
-**Returns:** `RawReturn extends true ? 0x${string} : CalldataEncodable`
+**Returns:** `IncludeReceipt extends true
+      ? SimulateWriteContractResult<RawReturn>
+      : RawReturn extends true ? 0x${string} : CalldataEncodable`
 
 ---
 
@@ -88,9 +93,11 @@ Executes a state-modifying function on a contract through consensus. Returns the
 | functionName | `string` | yes |  |
 | args | `CalldataEncodable[]` | no |  |
 | kwargs | `Map<string, CalldataEncodable> \| {[key: string]: CalldataEncodable}` | no |  |
-| value | `bigint` | yes |  |
+| value | `bigint` | no |  |
 | leaderOnly | `boolean` | no |  |
 | consensusMaxRotations | `number` | no |  |
+| validUntil | `BigNumberish` | no |  |
+| fees | `TransactionFeeOptions` | no |  |
 
 **Returns:** `0x${string}`
 
@@ -108,12 +115,82 @@ Deploys a new intelligent contract to GenLayer. Returns the transaction hash.
 | kwargs | `Map<string, CalldataEncodable> \| {[key: string]: CalldataEncodable}` | no |  |
 | leaderOnly | `boolean` | no |  |
 | consensusMaxRotations | `number` | no |  |
+| validUntil | `BigNumberish` | no |  |
+| fees | `TransactionFeeOptions` | no |  |
 
 ---
 
-### getMinAppealBond
+### getCurrentFeePolicy
 
-Calculates the minimum bond required to appeal a transaction.
+Returns the active fee price policy used to build user-side caps.
+
+_No parameters._
+
+**Returns:** `FeePolicyQuote`
+
+---
+
+### estimateFeesDistribution
+
+Builds a fee distribution with caps derived from the active fee policy.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| args | `FeeEstimateOptions` | no |  |
+
+**Returns:** `FeesDistribution`
+
+---
+
+### estimateTransactionFees
+
+Builds a complete transaction `fees` object, including feeValue.
+Studio has no on-chain FeeManager in the chain definition, so this uses
+the same deterministic round-fee math as Studio trusted mode there.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| args | `FeeEstimateOptions` | no |  |
+
+**Returns:** `TransactionFeeEstimate`
+
+---
+
+### estimateTransactionFeesFromSimulation
+
+Builds a trusted fee preset from a representative Studio simulation.
+This turns the returned fee accounting/report into execution and message
+budgets while preserving mode-2 message allocations when the simulation
+was run with them.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| args | `SimulationFeeEstimateOptions` | yes |  |
+
+**Returns:** `TransactionFeeEstimate`
+
+---
+
+### estimateTransactionFeesForWrite
+
+Builds a trusted fee preset for a concrete write call in one step.
+The method first gives the simulation a baseline fee budget, then uses
+the returned Studio/GenVM fee accounting to derive the preset the dapp
+should pass with the real transaction.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| args | `WriteFeeEstimateOptions` | yes |  |
+
+**Returns:** `TransactionFeeEstimate`
+
+---
+
+### getAppealCharge
+
+Returns the full authoritative appeal charge (bond plus appeal funding)
+on resolution-kernel contract networks. Current Studio has no
+decision-bound quote surface.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -123,15 +200,229 @@ Calculates the minimum bond required to appeal a transaction.
 
 ---
 
+### getMinAppealBond
+
+@deprecated Use getAppealCharge. This legacy name also returns bond plus appeal funding.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| txId | ``0x${string}`` | yes |  |
+
+**Returns:** `bigint`
+
+---
+
+### getRoundNumber
+
+Returns the current consensus round number for a transaction.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| txId | ``0x${string}`` | yes |  |
+
+**Returns:** `bigint`
+
+---
+
+### getRoundData
+
+Returns detailed data for a specific consensus round.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| txId | ``0x${string}`` | yes |  |
+| round | `bigint` | yes |  |
+
+---
+
+### getLastRoundData
+
+Returns the current round number and its data for a transaction.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| txId | ``0x${string}`` | yes |  |
+
+---
+
+### canAppeal
+
+Checks if a transaction can be appealed.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| txId | ``0x${string}`` | yes |  |
+
+**Returns:** `boolean`
+
+---
+
+### getDeveloperNft
+
+Returns a developer's NFT reward record, or null when no NFT is registered.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| developer | `Address` | yes |  |
+
+**Returns:** `DeveloperNft | null`
+
+---
+
+### getClaimableRewardsFromFees
+
+Returns claimable developer-NFT rewards accrued from transaction fees.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| nftId | `BigNumberish` | yes |  |
+
+**Returns:** `bigint`
+
+---
+
+### getClaimableRewardsFromInflation
+
+Returns claimable developer-NFT rewards accrued from inflation.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| nftId | `BigNumberish` | yes |  |
+| numberOfEpochsToClaim | `BigNumberish` | yes |  |
+
+**Returns:** `bigint`
+
+---
+
+### claimNftRewards
+
+Claims all currently available rewards for a developer NFT. Returns the EVM transaction hash.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| account | `Account` | no |  |
+| nftId | `BigNumberish` | yes |  |
+
+**Returns:** `0x${string}`
+
+---
+
+### claimNftEpochs
+
+Claims a bounded number of reward epochs for a developer NFT. Returns the EVM transaction hash.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| account | `Account` | no |  |
+| nftId | `BigNumberish` | yes |  |
+| numberOfEpochsToClaim | `BigNumberish` | yes |  |
+
+**Returns:** `0x${string}`
+
+---
+
 ### appealTransaction
 
 Appeals a consensus transaction to trigger a new round of validation.
+Contract networks bind the call to the active decision and quote an
+omitted value. Current Studio uses its native decision-free entrypoint;
+its value defaults to zero when omitted.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | account | `Account` | no |  |
 | txId | ``0x${string}`` | yes |  |
 | value | `bigint` | no |  |
+
+---
+
+### topUpFees
+
+Deposits additional fee budget for an existing consensus transaction.
+Returns the backend RPC hash: an EVM transaction hash on network
+backends, or the target GenLayer tx id on Studio/localnet.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| account | `Account` | no |  |
+| txId | ``0x${string}`` | yes |  |
+| distribution | `FeesDistributionInput` | yes |  |
+| value | `bigint` | yes |  |
+
+**Returns:** `0x${string}`
+
+---
+
+### topUpAndSubmitAppeal
+
+Deposits appeal fee budget and submits an appeal in the same consensus call.
+Returns the existing GenLayer transaction id, matching appealTransaction.
+Contract networks bind the call to the active decision and quote an
+omitted value. Current Studio uses its native decision-free entrypoint;
+its value defaults to zero when omitted.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| account | `Account` | no |  |
+| txId | ``0x${string}`` | yes |  |
+| distribution | `FeesDistributionInput` | yes |  |
+| value | `bigint` | no |  |
+
+**Returns:** `0x${string}`
+
+---
+
+### finalizeTransaction
+
+Finalizes a single GenLayer transaction that is ready to be finalized. Returns the EVM transaction hash.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| account | `Account` | no |  |
+| txId | ``0x${string}`` | yes |  |
+
+**Returns:** `0x${string}`
+
+---
+
+### finalizeIdlenessTxs
+
+@deprecated The train separates attempt-bound resolution from
+decision-bound finalization. Use resolveTransactions or
+finalizeDecisions after classifying the lifecycle action.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| account | `Account` | no |  |
+| txIds | `readonly `0x${string}`[]` | yes |  |
+
+**Returns:** `0x${string}`
+
+---
+
+### resolveTransactions
+
+Resolves a batch of attempt-bound lifecycle actions.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| account | `Account` | no |  |
+| txIds | `readonly `0x${string}`[]` | yes |  |
+
+**Returns:** `0x${string}`
+
+---
+
+### finalizeDecisions
+
+Finalizes a batch of active, decision-bound transactions.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| account | `Account` | no |  |
+| txIds | `readonly `0x${string}`[]` | yes |  |
+
+**Returns:** `0x${string}`
 
 ---
 

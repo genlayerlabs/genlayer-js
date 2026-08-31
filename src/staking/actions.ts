@@ -1,8 +1,14 @@
 import {getContract, decodeEventLog, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress, GetContractReturnType, toHex, encodeFunctionData, BaseError, ContractFunctionRevertedError, decodeErrorResult, RawContractError, zeroAddress} from "viem";
 import {GenLayerClient, GenLayerChain, Address} from "@/types";
-import {STAKING_ABI, VALIDATOR_WALLET_ABI, STAKING_COMMIT_VIEWS_CURRENT_ABI} from "@/abi/staking";
+import {STAKING_ABI, VALIDATOR_WALLET_ABI} from "@/abi/staking";
 import {ADDRESS_MANAGER_ABI, CONSENSUS_ADDRESS_MANAGER_ABI} from "@/abi/vesting";
 import {parseStakingAmount, formatStakingAmount} from "./utils";
+
+// The joined validator registry is only readable in slices: committee capacity
+// is 1,543 and an address[] that long overruns the return-size limit. 64 is the
+// size the paged reads are written around, and the one genlayer-node uses for
+// the same walk.
+const VALIDATORS_JOINED_PAGE_SIZE = 64n;
 import {operatorAddressFromPublicKey, verifyOperatorRegistration} from "@/vesting/operatorRegistration";
 import {
   ValidatorInfo,
@@ -283,58 +289,6 @@ export const stakingActions = (
   };
 
   /**
-   * Which Claim/Commit layout the deployed staking contract uses.
-   *
-   * CON-715 widened both structs without renaming anything, and static tuples
-   * decode positionally, so the wrong shape does not fail — it silently returns
-   * neighbouring words (commit.input picks up claim.commit, i.e. an index where
-   * an amount belongs). Both shapes are deployed in the wild, so the layout is
-   * resolved from the chain rather than assumed, then cached for the client:
-   * getStakeInfo loops over every pending entry and must not re-probe each time.
-   *
-   * The probe only works in one direction. Reading the OLD layout with the
-   * CURRENT shape throws, because the response is shorter than the decoder
-   * expects; reading the CURRENT layout with the OLD shape succeeds and lies.
-   * So the current shape is always attempted first, and a decode failure — not
-   * a success — is what identifies a legacy chain.
-   */
-  let commitLayout: "current" | "legacy" | null = null;
-
-  const readCommitView = async (
-    functionName: "delegatorDeposit" | "delegatorWithdrawal" | "validatorDeposit" | "validatorWithdrawal",
-    args: readonly unknown[],
-  ): Promise<any> => {
-    const read = (layout: "current" | "legacy") =>
-      publicClient.readContract({
-        address: getStakingAddress(),
-        abi: (layout === "current" ? STAKING_COMMIT_VIEWS_CURRENT_ABI : STAKING_ABI) as any,
-        functionName,
-        args: args as any,
-      });
-
-    if (commitLayout) {
-      return read(commitLayout);
-    }
-
-    try {
-      const result = await read("current");
-      commitLayout = "current";
-      return result;
-    } catch (currentError) {
-      // Could be a legacy layout, or a genuine failure (bad index, RPC error).
-      // Only a successful legacy decode distinguishes them; otherwise surface
-      // the original error, which describes the current-shape attempt.
-      try {
-        const result = await read("legacy");
-        commitLayout = "legacy";
-        return result;
-      } catch {
-        throw currentError;
-      }
-    }
-  };
-
-  /**
    * Rotation is verified by the wallet, not the factory, so the registrar is the
    * wallet's own address. The owner is read from the wallet rather than assumed
    * to be the caller: the proof is bound to whoever `owner()` returns, and a
@@ -466,21 +420,12 @@ export const stakingActions = (
       return executeWrite({to: getStakingAddress(), data});
     },
 
-    /**
-     * Sets the operator address for a validator wallet in one call.
-     *
-     * Removed from consensus by CON-715 in favour of the two-step rotation
-     * below; against a deployment that dropped it this reverts with no reason,
-     * because the selector simply does not exist. Prefer
-     * initiateOperatorTransfer + completeOperatorTransfer.
-     */
+    /** @deprecated Use initiateOperatorTransfer followed by completeOperatorTransfer. */
     setOperator: async (options: SetOperatorOptions): Promise<StakingTransactionResult> => {
-      const data = encodeFunctionData({
-        abi: VALIDATOR_WALLET_ABI,
-        functionName: "setOperator",
-        args: [options.operator as ViemAddress],
-      });
-      return executeWrite({to: options.validator as ViemAddress, data});
+      throw new Error(
+        `setOperator cannot rotate ${options.validator} to ${options.operator} on the train: ` +
+          "create an operator possession proof, then call initiateOperatorTransfer and completeOperatorTransfer.",
+      );
     },
 
     getOperatorTransferContext,
@@ -618,7 +563,7 @@ export const stakingActions = (
       return executeWrite({to: getStakingAddress(), data});
     },
 
-    /** Checks if an address is an active validator. */
+    /** Checks whether an address is a registered/joined validator wallet. */
     isValidator: async (address: Address): Promise<boolean> => {
       const contract = getReadOnlyStakingContract();
       return contract.read.isValidator([address as ViemAddress]) as Promise<boolean>;
@@ -641,13 +586,14 @@ export const stakingActions = (
       });
 
       // Fetch all data in parallel
-      const [view, owner, operator, identityRaw, currentEpoch, validatorMinStake] = await Promise.all([
+      const [view, owner, operator, identityRaw, currentEpoch, validatorMinStake, banned] = await Promise.all([
         contract.read.validatorView([validator as ViemAddress]) as Promise<any>,
         walletContract.read.owner() as Promise<Address>,
         walletContract.read.operator() as Promise<Address>,
         walletContract.read.getIdentity().catch(() => null) as Promise<any>,
         contract.read.epoch() as Promise<bigint>,
         contract.read.validatorMinStake() as Promise<bigint>,
+        contract.read.isValidatorBanned([validator as ViemAddress]) as Promise<boolean>,
       ]);
 
       // Parse identity if available
@@ -674,10 +620,7 @@ export const stakingActions = (
       const pendingDeposits: PendingDeposit[] = [];
 
       for (let i = 0n; i < depositLen; i++) {
-        const [epoch, commit] = (await readCommitView("validatorDeposit", [validator as ViemAddress, i])) as [
-          bigint,
-          {input: bigint; output: bigint; epoch: bigint; linkToNextCommit: bigint},
-        ];
+        const [epoch, commit] = await contract.read.validatorDeposit([validator as ViemAddress, i]);
         pendingDeposits.push({
           epoch,
           stake: formatStakingAmount(commit.input),
@@ -691,10 +634,7 @@ export const stakingActions = (
       const pendingWithdrawals: PendingWithdrawal[] = [];
 
       for (let i = 0n; i < withdrawalLen; i++) {
-        const [epoch, commit] = (await readCommitView("validatorWithdrawal", [validator as ViemAddress, i])) as [
-          bigint,
-          {input: bigint; output: bigint; epoch: bigint; linkToNextCommit: bigint},
-        ];
+        const [epoch, commit] = await contract.read.validatorWithdrawal([validator as ViemAddress, i]);
         pendingWithdrawals.push({
           epoch,
           shares: commit.input,
@@ -719,8 +659,8 @@ export const stakingActions = (
         vWithdrawalRaw: view.vWithdrawal,
         ePrimed: view.ePrimed,
         live: view.live,
-        banned: view.eBanned > 0n,
-        bannedEpoch: view.eBanned > 0n ? view.eBanned : undefined,
+        banned,
+        bannedEpoch: banned ? view.eBanned : undefined,
         needsPriming,
         currentEpoch,
         validatorMinStake: formatStakingAmount(validatorMinStake),
@@ -767,14 +707,11 @@ export const stakingActions = (
       const pendingDeposits: PendingDeposit[] = [];
 
       for (let i = 0n; i < depositLen; i++) {
-        const [claim, commit] = (await readCommitView("delegatorDeposit", [
+        const [claim, commit] = await contract.read.delegatorDeposit([
           delegator as ViemAddress,
           validator as ViemAddress,
           i,
-        ])) as [
-          {quantity: bigint; commit: bigint},
-          {input: bigint; output: bigint; epoch: bigint; linkToNextCommit: bigint},
-        ];
+        ]);
         pendingDeposits.push({
           epoch: commit.epoch,
           stake: formatStakingAmount(commit.input),
@@ -791,14 +728,11 @@ export const stakingActions = (
       const pendingWithdrawals: PendingWithdrawal[] = [];
 
       for (let i = 0n; i < withdrawalLen; i++) {
-        const [claim, commit] = (await readCommitView("delegatorWithdrawal", [
+        const [claim, commit] = await contract.read.delegatorWithdrawal([
           delegator as ViemAddress,
           validator as ViemAddress,
           i,
-        ])) as [
-          {quantity: bigint; commit: bigint},
-          {input: bigint; output: bigint; epoch: bigint; linkToNextCommit: bigint},
-        ];
+        ]);
         pendingWithdrawals.push({
           epoch: commit.epoch,
           shares: claim.quantity,
@@ -835,7 +769,7 @@ export const stakingActions = (
       ] = await Promise.all([
         contract.read.epoch() as Promise<bigint>,
         contract.read.finalized() as Promise<bigint>,
-        contract.read.activeValidatorsCount() as Promise<bigint>,
+        contract.read.selectableValidatorsCount() as Promise<bigint>,
         contract.read.epochMinDuration() as Promise<bigint>,
         contract.read.epochZeroMinDuration() as Promise<bigint>,
         contract.read.epochOdd() as Promise<any>,
@@ -873,6 +807,8 @@ export const stakingActions = (
         currentEpoch: epoch,
         lastFinalizedEpoch: finalized,
         activeValidatorsCount: activeCount,
+        totalWeight: currentEpochData.weight,
+        inflationRaw: currentEpochData.inflation,
         epochMinDuration,
         nextEpochEstimate,
         validatorMinStake: formatStakingAmount(valMinStake),
@@ -920,17 +856,37 @@ export const stakingActions = (
       };
     },
 
-    /** Returns addresses of all currently active validators. */
+    /** Returns validators currently eligible for consensus duties. */
     getActiveValidators: async (): Promise<Address[]> => {
       const contract = getReadOnlyStakingContract();
-      const validators = (await contract.read.activeValidators()) as Address[];
+      return contract.read.selectableValidators() as Promise<Address[]>;
+    },
+
+    /** Returns the count of validators currently eligible for consensus duties. */
+    getActiveValidatorsCount: async (): Promise<bigint> => {
+      const contract = getReadOnlyStakingContract();
+      return contract.read.selectableValidatorsCount() as Promise<bigint>;
+    },
+
+    /** Returns every validator identity in the append-only joined registry. */
+    getJoinedValidators: async (): Promise<Address[]> => {
+      const contract = getReadOnlyStakingContract();
+      const total = (await contract.read.validatorsJoinedCount()) as bigint;
+      const validators: Address[] = [];
+
+      for (let start = 0n; start < total; start += VALIDATORS_JOINED_PAGE_SIZE) {
+        const page = (await contract.read.getValidatorsJoined([start, VALIDATORS_JOINED_PAGE_SIZE])) as Address[];
+        if (page.length === 0) break;
+        validators.push(...page);
+      }
+
       return validators.filter(v => v !== "0x0000000000000000000000000000000000000000");
     },
 
-    /** Returns the count of active validators. */
-    getActiveValidatorsCount: async (): Promise<bigint> => {
+    /** Returns the size of the append-only joined validator registry. */
+    getJoinedValidatorsCount: async (): Promise<bigint> => {
       const contract = getReadOnlyStakingContract();
-      return contract.read.activeValidatorsCount() as Promise<bigint>;
+      return contract.read.validatorsJoinedCount() as Promise<bigint>;
     },
 
     /** Returns addresses of validators currently in quarantine. */

@@ -15,6 +15,10 @@ import {
   BigNumberish,
   FeesDistributionInput,
   SimulateWriteContractResult,
+  ConsensusRoundData,
+  ConsensusLastRoundData,
+  TransactionProtocolLifecycle,
+  TransactionProtocolLifecycleArgs,
 } from "./transactions";
 import {GenLayerChain} from "./chains";
 import {Address, Account} from "./accounts";
@@ -34,6 +38,8 @@ export type GenLayerMethod =
   | {method: "gen_getContractSchema"; params: [address: Address] | [{address: Address}] | [{code: string}]}
   | {method: "gen_getContractSchemaForCode"; params: [contractCode: string]}
   | {method: "gen_getContractCode"; params: [address: Address] | [{address: Address}]}
+  | {method: "gen_getTransactionLifecycle"; params: [{txId: TransactionHash; timestamp?: number}]}
+  | {method: "gen_estimateLatestAppealCharge"; params: [{txId: TransactionHash}]}
   | {method: "sim_getTransactionsForAddress"; params: [address: Address, filter?: "all" | "from" | "to"]}
   | {method: "eth_getTransactionCount"; params: [address: Address, block: string]}
   | {method: "eth_estimateGas"; params: [transactionParams: any]}
@@ -113,6 +119,10 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       fees?: TransactionFeeOptions;
     }) => Promise<`0x${string}`>;
     getTransaction: (args: {hash: TransactionHash}) => Promise<GenLayerTransaction>;
+    advanced: {
+      /** Protocol lifecycle read with projection and resolution action details. */
+      getTransactionLifecycle: (args: TransactionProtocolLifecycleArgs) => Promise<TransactionProtocolLifecycle>;
+    };
     getCurrentNonce: (args: {address: Address}) => Promise<number>;
     transfer: (args: {to: Address; value: bigint}) => Promise<TransactionReceipt>;
     estimateTransactionGas: (transactionParams: {
@@ -130,6 +140,18 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       retries?: number;
       fullTransaction?: boolean;
     }) => Promise<GenLayerTransaction>;
+    waitForDecision: (args: {
+      hash: TransactionHash;
+      interval?: number;
+      retries?: number;
+      fullTransaction?: boolean;
+    }) => Promise<GenLayerTransaction>;
+    waitForFinalization: (args: {
+      hash: TransactionHash;
+      interval?: number;
+      retries?: number;
+      fullTransaction?: boolean;
+    }) => Promise<GenLayerTransaction>;
     getContractSchema: (address: Address) => Promise<ContractSchema>;
     getContractSchemaForCode: (contractCode: string | Uint8Array) => Promise<ContractSchema>;
     getContractCode: (address: Address) => Promise<string>;
@@ -142,8 +164,8 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     getTransactionQueuePosition: (args: {hash: TransactionHash}) => Promise<number>;
     cancelTransaction: (args: {hash: TransactionHash}) => Promise<{transaction_hash: string; status: string}>;
     getRoundNumber: (args: {txId: `0x${string}`}) => Promise<bigint>;
-    getRoundData: (args: {txId: `0x${string}`; round: bigint}) => Promise<any>;
-    getLastRoundData: (args: {txId: `0x${string}`}) => Promise<any>;
+    getRoundData: (args: {txId: `0x${string}`; round: bigint}) => Promise<ConsensusRoundData>;
+    getLastRoundData: (args: {txId: `0x${string}`}) => Promise<ConsensusLastRoundData>;
     canAppeal: (args: {txId: `0x${string}`}) => Promise<boolean>;
     getDeveloperNft: (args: {developer: Address}) => Promise<DeveloperNft | null>;
     getClaimableRewardsFromFees: (args: {nftId: BigNumberish}) => Promise<bigint>;
@@ -185,6 +207,16 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       account?: Account;
       txIds: readonly `0x${string}`[];
     }) => Promise<`0x${string}`>;
+    resolveTransactions: (args: {
+      account?: Account;
+      txIds: readonly `0x${string}`[];
+    }) => Promise<`0x${string}`>;
+    finalizeDecisions: (args: {
+      account?: Account;
+      txIds: readonly `0x${string}`[];
+    }) => Promise<`0x${string}`>;
+    getAppealCharge: (args: {txId: `0x${string}`}) => Promise<bigint>;
+    /** @deprecated Use getAppealCharge. This alias returns bond plus appeal funding. */
     getMinAppealBond: (args: {txId: `0x${string}`}) => Promise<bigint>;
     getCurrentFeePolicy: () => Promise<FeePolicyQuote>;
     estimateFeesDistribution: (args?: FeeEstimateOptions) => Promise<TransactionFeeEstimate["distribution"]>;
