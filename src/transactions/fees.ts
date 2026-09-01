@@ -143,6 +143,44 @@ export const createFeesDistribution = (input: FeesDistributionInput = {}): FeesD
   };
 };
 
+/**
+ * Normalizes the delta accepted by ConsensusMainWithFees.topUpFees.
+ *
+ * Existing fee-aware transactions must not resubmit or extend their appeal
+ * schedule, so an omitted schedule is encoded as appealRounds=0/rotations=[].
+ * An explicit non-empty schedule remains available for the consensus path
+ * that initializes fee state on a transaction whose distribution is empty.
+ */
+export const createTopUpFeesDistribution = (
+  input: FeesDistributionInput = {},
+): FeesDistribution => {
+  const appealRounds = toUInt(input.appealRounds, "fees.distribution.appealRounds");
+  let rotations: bigint[];
+  if (input.rotations === undefined || input.rotations.length === 0) {
+    if (appealRounds !== 0n) {
+      throw new Error(
+        "fees.distribution.rotations must contain appealRounds + 1 entries when appealRounds is non-zero.",
+      );
+    }
+    rotations = [];
+  } else {
+    rotations = normalizeRotations(input.rotations, appealRounds, "fees.distribution.rotations");
+  }
+
+  return {
+    leaderTimeunitsAllocation: toUInt(input.leaderTimeunitsAllocation, "fees.distribution.leaderTimeunitsAllocation"),
+    validatorTimeunitsAllocation: toUInt(input.validatorTimeunitsAllocation, "fees.distribution.validatorTimeunitsAllocation"),
+    appealRounds,
+    executionBudgetPerRound: toUInt(input.executionBudgetPerRound, "fees.distribution.executionBudgetPerRound"),
+    executionConsumed: toUInt(input.executionConsumed, "fees.distribution.executionConsumed"),
+    totalMessageFees: toUInt(input.totalMessageFees, "fees.distribution.totalMessageFees"),
+    rotations,
+    maxPriceGenPerTimeUnit: toUInt(input.maxPriceGenPerTimeUnit, "fees.distribution.maxPriceGenPerTimeUnit"),
+    storageFeeMaxGasPrice: toUInt(input.storageFeeMaxGasPrice, "fees.distribution.storageFeeMaxGasPrice"),
+    receiptFeeMaxGasPrice: toUInt(input.receiptFeeMaxGasPrice, "fees.distribution.receiptFeeMaxGasPrice"),
+  };
+};
+
 export const encodeInternalMessageFeeParams = (input: InternalMessageFeeParamsInput = {}) => {
   const appealRounds = toUInt(input.appealRounds, "internalMessageFeeParams.appealRounds");
   return encodeAbiParameters(

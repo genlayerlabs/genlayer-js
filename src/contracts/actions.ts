@@ -35,6 +35,7 @@ import {toJsonSafeDeep, b64ToArray, arrayToB64} from "@/utils/jsonifier";
 import {
   CALL_KEY_WILDCARD,
   createFeesDistribution,
+  createTopUpFeesDistribution,
   MESSAGE_ALLOCATION_ROOT_PARENT_INDEX,
   normalizeMessageFeeAllocations,
   normalizeTransactionFees,
@@ -2367,7 +2368,7 @@ const _encodeTopUpFeesData = ({
   return encodeFunctionData({
     abi: CONSENSUS_FEE_MANAGEMENT_ABI,
     functionName: "topUpFees",
-    args: [txId, createFeesDistribution(distribution)],
+    args: [txId, createTopUpFeesDistribution(distribution)],
   });
 };
 
@@ -2400,7 +2401,16 @@ const _waitForSentEnvelope = async ({
   operationName: string;
   revertDetails?: string;
 }) => {
-  const receipt = await publicClient.waitForTransactionReceipt({hash: evmHash});
+  const receipt = await publicClient.waitForTransactionReceipt({
+    hash: evmHash,
+    ...(client.chain.isStudio ? {
+      // Studio returns the envelope hash before its EVM transaction index is
+      // necessarily visible. viem's default six retries cover only ~12s and
+      // Studio reports that transient as ResourceNotFoundRpcError.
+      retryCount: 120,
+      retryDelay: 500,
+    } : {}),
+  });
   if (receipt.status !== "reverted") return receipt;
 
   let studioReason: string | undefined;

@@ -12,6 +12,7 @@ import {
   CALL_KEY_DEPLOY,
   CALL_KEY_UNNAMED,
   CALL_KEY_WILDCARD,
+  createTopUpFeesDistribution,
   DEPLOY_CALL_KEY,
   deployCallKey,
   deriveExternalMessageCallKey,
@@ -1821,7 +1822,11 @@ describe("contractActions addTransaction ABI compatibility", () => {
       actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping", value: 0n}),
     ).rejects.toThrow(/InsufficientFees/);
 
-    expect(publicClient.waitForTransactionReceipt).toHaveBeenCalledWith({hash: MOCK_EVM_TX_HASH});
+    expect(publicClient.waitForTransactionReceipt).toHaveBeenCalledWith({
+      hash: MOCK_EVM_TX_HASH,
+      retryCount: 120,
+      retryDelay: 500,
+    });
   });
 
   it("decodes BudgetTooLow selector from gas estimation failures", async () => {
@@ -2365,6 +2370,22 @@ describe("contractActions bounded round reads", () => {
 });
 
 describe("contractActions fee management", () => {
+  it("normalizes ordinary top-ups without resubmitting the appeal schedule", () => {
+    expect(createTopUpFeesDistribution({executionBudgetPerRound: 123n})).toMatchObject({
+      appealRounds: 0n,
+      rotations: [],
+      executionBudgetPerRound: 123n,
+    });
+  });
+
+  it("requires an explicit complete schedule when initializing appeal rounds", () => {
+    expect(() => createTopUpFeesDistribution({appealRounds: 1n})).toThrow(
+      /rotations must contain appealRounds \+ 1 entries/,
+    );
+    expect(createTopUpFeesDistribution({appealRounds: 1n, rotations: [0n, 2n]}))
+      .toMatchObject({appealRounds: 1n, rotations: [0n, 2n]});
+  });
+
   it("quotes the full authoritative appeal charge", async () => {
     const {actions, client} = setupFeeManagementHarness();
     delete (client.chain as any).feeManagerContract;
@@ -2402,12 +2423,8 @@ describe("contractActions fee management", () => {
       txId: MOCK_GENLAYER_TX_ID,
       value: 999n,
       distribution: {
-        leaderTimeunitsAllocation: 100n,
-        validatorTimeunitsAllocation: 200n,
-        appealRounds: 1n,
         executionBudgetPerRound: 500_000n,
         totalMessageFees: 30n,
-        rotations: [0n, 2n],
         maxPriceGenPerTimeUnit: 12n,
         storageFeeMaxGasPrice: 24n,
         receiptFeeMaxGasPrice: 36n,
@@ -2427,12 +2444,12 @@ describe("contractActions fee management", () => {
     });
     const [txId, distribution] = decoded.args as any[];
     expect(txId).toBe(MOCK_GENLAYER_TX_ID);
-    expect(distribution.leaderTimeunitsAllocation).toBe(100n);
-    expect(distribution.validatorTimeunitsAllocation).toBe(200n);
-    expect(distribution.appealRounds).toBe(1n);
+    expect(distribution.leaderTimeunitsAllocation).toBe(0n);
+    expect(distribution.validatorTimeunitsAllocation).toBe(0n);
+    expect(distribution.appealRounds).toBe(0n);
     expect(distribution.executionBudgetPerRound).toBe(500_000n);
     expect(distribution.totalMessageFees).toBe(30n);
-    expect(distribution.rotations).toEqual([0n, 2n]);
+    expect(distribution.rotations).toEqual([]);
     expect(distribution.maxPriceGenPerTimeUnit).toBe(12n);
     expect(distribution.storageFeeMaxGasPrice).toBe(24n);
     expect(distribution.receiptFeeMaxGasPrice).toBe(36n);
@@ -2490,7 +2507,11 @@ describe("contractActions fee management", () => {
     });
 
     expect(hash).toBe(MOCK_EVM_TX_HASH);
-    expect(waitForTransactionReceipt).toHaveBeenCalledWith({hash: MOCK_EVM_TX_HASH});
+    expect(waitForTransactionReceipt).toHaveBeenCalledWith({
+      hash: MOCK_EVM_TX_HASH,
+      retryCount: 120,
+      retryDelay: 500,
+    });
   });
 
   it("surfaces Studio's receipt-level revert reason", async () => {
@@ -2544,7 +2565,11 @@ describe("contractActions fee management", () => {
     expect(request).toHaveBeenCalledWith(expect.objectContaining({
       method: "eth_sendTransaction",
     }));
-    expect(waitForTransactionReceipt).toHaveBeenCalledWith({hash: MOCK_EVM_TX_HASH});
+    expect(waitForTransactionReceipt).toHaveBeenCalledWith({
+      hash: MOCK_EVM_TX_HASH,
+      retryCount: 120,
+      retryDelay: 500,
+    });
   });
 });
 
