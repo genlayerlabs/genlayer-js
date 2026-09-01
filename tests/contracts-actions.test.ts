@@ -2416,6 +2416,20 @@ describe("contractActions fee management", () => {
     );
   });
 
+  it("reads canAppeal from the configured Appeals contract for the active decision", async () => {
+    const {actions, publicClient} = setupFeeManagementHarness();
+
+    await expect(actions.canAppeal({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(true);
+    expect(publicClient.readContract).toHaveBeenCalledWith(
+      expect.objectContaining({
+        address: RECIPIENT_ADDRESS,
+        functionName: "canAppeal",
+        args: [MOCK_GENLAYER_TX_ID, MOCK_DECISION_ID],
+        blockNumber: 123n,
+      }),
+    );
+  });
+
   it("encodes topUpFees(bytes32, FeesDistribution) and returns the EVM tx hash", async () => {
     const {actions, signTransaction, sendRawTransaction} = setupFeeManagementHarness();
 
