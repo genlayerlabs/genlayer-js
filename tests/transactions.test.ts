@@ -685,6 +685,7 @@ describe("getTriggeredTransactionIds", () => {
     const childHash = ("0x" + "22".repeat(32)) as any;
     const decisionHash = ("0x" + "33".repeat(32)) as any;
     const consensusAddress = "0x0000000000000000000000000000000000000010";
+    const messagePaymentsAddress = "0x0000000000000000000000000000000000000020";
     const internalMessageTopic = keccak256(
       stringToBytes("InternalMessageProcessed(bytes32,address,address)"),
     );
@@ -697,7 +698,7 @@ describe("getTriggeredTransactionIds", () => {
     const getTransactionReceipt = vi.fn().mockResolvedValue({
       logs: [
         {
-          address: consensusAddress,
+          address: messagePaymentsAddress,
           topics: [internalMessageTopic, childHash],
         },
       ],
