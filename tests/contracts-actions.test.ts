@@ -1789,6 +1789,41 @@ describe("contractActions addTransaction ABI compatibility", () => {
     ).rejects.toThrow("Transaction reverted");
   });
 
+  it("surfaces Studio's receipt-level reason for a rejected write", async () => {
+    const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "sim_getFeeConfig") {
+        return {
+          enabled: false,
+          policy: {
+            genPerTimeUnit: "0",
+            storageUnitPrice: "0",
+            receiptGasPrice: "0",
+          },
+        };
+      }
+      if (method === "eth_gasPrice") return "0x1";
+      if (method === "eth_getTransactionReceipt") {
+        return {status: "0x0", revertReason: "InsufficientFees"};
+      }
+      throw new Error(`Unexpected RPC method: ${method}`);
+    });
+    const publicClient = makeMockPublicClient({status: "reverted", logs: []});
+    const {actions, client} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      signTransactionMock: vi.fn().mockResolvedValue("0xsigned"),
+      publicClient,
+      isStudio: true,
+      requestMock,
+    });
+    (client as any).sendRawTransaction = vi.fn().mockResolvedValue(MOCK_EVM_TX_HASH);
+
+    await expect(
+      actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping", value: 0n}),
+    ).rejects.toThrow(/InsufficientFees/);
+
+    expect(publicClient.waitForTransactionReceipt).toHaveBeenCalledWith({hash: MOCK_EVM_TX_HASH});
+  });
+
   it("decodes BudgetTooLow selector from gas estimation failures", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const signTransaction = vi.fn().mockResolvedValue("0xsigned");
@@ -2055,10 +2090,12 @@ const setupFeeManagementHarness = ({
   receiptStatus = "success",
   isStudio = false,
   decisionActive = true,
+  studioRevertReason,
 }: {
   receiptStatus?: string;
   isStudio?: boolean;
   decisionActive?: boolean;
+  studioRevertReason?: string;
 } = {}) => {
   const signTransaction = vi.fn().mockResolvedValue("0xsigned");
   const sendRawTransaction = vi.fn().mockResolvedValue(MOCK_EVM_TX_HASH);
@@ -2100,6 +2137,9 @@ const setupFeeManagementHarness = ({
     sendRawTransaction,
     request: vi.fn().mockImplementation(async ({method}: {method: string}) => {
       if (method === "eth_gasPrice") return "0x1";
+      if (method === "eth_getTransactionReceipt") {
+        return {status: "0x0", revertReason: studioRevertReason};
+      }
       throw new Error(`Unexpected RPC method: ${method}`);
     }),
   };
@@ -2440,7 +2480,7 @@ describe("contractActions fee management", () => {
     ).rejects.toThrow(/Top up fees reverted/);
   });
 
-  it("returns the Studio RPC hash for fee management calls without waiting for an EVM receipt", async () => {
+  it("returns the Studio envelope hash after confirming its EVM receipt", async () => {
     const {actions, waitForTransactionReceipt} = setupFeeManagementHarness({isStudio: true});
 
     const hash = await actions.topUpFees({
@@ -2450,16 +2490,30 @@ describe("contractActions fee management", () => {
     });
 
     expect(hash).toBe(MOCK_EVM_TX_HASH);
-    expect(waitForTransactionReceipt).not.toHaveBeenCalled();
+    expect(waitForTransactionReceipt).toHaveBeenCalledWith({hash: MOCK_EVM_TX_HASH});
   });
 
-  it("returns the Studio RPC hash for external-wallet fee management calls without waiting for an EVM receipt", async () => {
+  it("surfaces Studio's receipt-level revert reason", async () => {
+    const {actions} = setupFeeManagementHarness({
+      isStudio: true,
+      receiptStatus: "reverted",
+      studioRevertReason: "TopUpCannotExtendSchedule",
+    });
+
+    await expect(actions.topUpFees({
+      txId: MOCK_GENLAYER_TX_ID,
+      value: 1n,
+      distribution: {},
+    })).rejects.toThrow(/TopUpCannotExtendSchedule/);
+  });
+
+  it("returns the Studio envelope hash for external-wallet fee management calls after its receipt", async () => {
     const request = vi.fn().mockImplementation(async ({method}: {method: string}) => {
       if (method === "eth_gasPrice") return "0x1";
       if (method === "eth_sendTransaction") return MOCK_EVM_TX_HASH;
       throw new Error(`Unexpected RPC method: ${method}`);
     });
-    const waitForTransactionReceipt = vi.fn();
+    const waitForTransactionReceipt = vi.fn().mockResolvedValue({status: "success", logs: []});
     const client = {
       chain: {
         id: 61_127,
@@ -2490,7 +2544,7 @@ describe("contractActions fee management", () => {
     expect(request).toHaveBeenCalledWith(expect.objectContaining({
       method: "eth_sendTransaction",
     }));
-    expect(waitForTransactionReceipt).not.toHaveBeenCalled();
+    expect(waitForTransactionReceipt).toHaveBeenCalledWith({hash: MOCK_EVM_TX_HASH});
   });
 });
 

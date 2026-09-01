@@ -874,8 +874,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
     },
     /**
      * Deposits additional fee budget for an existing consensus transaction.
-     * Returns the backend RPC hash: an EVM transaction hash on network
-     * backends, or the target GenLayer tx id on Studio/localnet.
+     * Returns the signed EVM envelope hash on every backend.
      */
     topUpFees: async (args: {
       account?: Account;
@@ -2388,6 +2387,45 @@ const _encodeTopUpAndSubmitAppealData = ({
   });
 };
 
+const _waitForSentEnvelope = async ({
+  client,
+  publicClient,
+  evmHash,
+  operationName,
+  revertDetails,
+}: {
+  client: GenLayerClient<GenLayerChain>;
+  publicClient: PublicClient;
+  evmHash: `0x${string}`;
+  operationName: string;
+  revertDetails?: string;
+}) => {
+  const receipt = await publicClient.waitForTransactionReceipt({hash: evmHash});
+  if (receipt.status !== "reverted") return receipt;
+
+  let studioReason: string | undefined;
+  if (client.chain.isStudio) {
+    try {
+      const rawReceipt = await client.request({
+        method: "eth_getTransactionReceipt",
+        params: [evmHash],
+      } as any) as Record<string, unknown> | null;
+      const reason = rawReceipt?.revertReason ?? rawReceipt?.error;
+      if (typeof reason === "string" && reason.trim() !== "") {
+        studioReason = reason;
+      }
+    } catch {
+      // The status-0 receipt is authoritative. Older Studio versions may not
+      // expose the additive revertReason field, so preserve the generic error.
+    }
+  }
+
+  const details = studioReason ?? revertDetails;
+  throw new Error(
+    `${operationName} reverted: EVM tx ${evmHash}${details ? `. ${details}` : ""}`,
+  );
+};
+
 const _sendEvmContractCall = async ({
   client,
   publicClient,
@@ -2439,13 +2477,7 @@ const _sendEvmContractCall = async ({
     };
     const serializedTransaction = await validatedAccount.signTransaction(txRequest);
     const evmHash = await client.sendRawTransaction({serializedTransaction});
-    if (client.chain.isStudio) {
-      return evmHash;
-    }
-    const receipt = await publicClient.waitForTransactionReceipt({hash: evmHash});
-    if (receipt.status === "reverted") {
-      throw new Error(`${operationName} reverted: EVM tx ${evmHash}`);
-    }
+    await _waitForSentEnvelope({client, publicClient, evmHash, operationName});
     return evmHash;
   }
 
@@ -2461,13 +2493,7 @@ const _sendEvmContractCall = async ({
       gasPrice: gasPriceHex as `0x${string}`,
     }],
   })) as `0x${string}`;
-  if (client.chain.isStudio) {
-    return evmHash;
-  }
-  const receipt = await publicClient.waitForTransactionReceipt({hash: evmHash});
-  if (receipt.status === "reverted") {
-    throw new Error(`${operationName} reverted: EVM tx ${evmHash}`);
-  }
+  await _waitForSentEnvelope({client, publicClient, evmHash, operationName});
   return evmHash;
 };
 
@@ -2531,13 +2557,7 @@ const _sendConsensusCall = async ({
     };
     const serializedTransaction = await validatedAccount.signTransaction(txRequest);
     const evmHash = await client.sendRawTransaction({serializedTransaction});
-    if (client.chain.isStudio) {
-      return evmHash;
-    }
-    const receipt = await publicClient.waitForTransactionReceipt({hash: evmHash});
-    if (receipt.status === "reverted") {
-      throw new Error(`${operationName} reverted: EVM tx ${evmHash}`);
-    }
+    await _waitForSentEnvelope({client, publicClient, evmHash, operationName});
     return evmHash;
   }
 
@@ -2551,13 +2571,7 @@ const _sendConsensusCall = async ({
       gas: `0x${estimatedGas.toString(16)}` as `0x${string}`,
     }],
   })) as `0x${string}`;
-  if (client.chain.isStudio) {
-    return evmHash;
-  }
-  const receipt = await publicClient.waitForTransactionReceipt({hash: evmHash});
-  if (receipt.status === "reverted") {
-    throw new Error(`${operationName} reverted: EVM tx ${evmHash}`);
-  }
+  await _waitForSentEnvelope({client, publicClient, evmHash, operationName});
   return evmHash;
 };
 
@@ -2694,23 +2708,15 @@ const _sendTransaction = async ({
 
       const serializedTransaction = await validatedSenderAccount.signTransaction(transactionRequest);
       const txHash = await client.sendRawTransaction({serializedTransaction: serializedTransaction});
+      const receipt = await _waitForSentEnvelope({
+        client,
+        publicClient,
+        evmHash: txHash,
+        operationName: "Transaction",
+        revertDetails: gasEstimationError ? `Gas estimation error: ${gasEstimationError}` : undefined,
+      });
 
-      if (client.chain.isStudio) {
-        // Studio RPCs process eth_sendRawTransaction internally. The returned
-        // hash is already the GenLayer tx hash; there is no separate EVM
-        // receipt to wait for or consensus event to extract.
-        return txHash;
-      }
-
-      const receipt = await publicClient.waitForTransactionReceipt({hash: txHash});
-
-      if (receipt.status === "reverted") {
-        throw new Error(
-          `Transaction reverted: EVM tx ${txHash} to consensus contract ${client.chain.consensusMainContract?.address} was reverted.${
-            gasEstimationError ? ` Gas estimation error: ${gasEstimationError}` : ""
-          }`,
-        );
-      }
+      if (client.chain.isStudio) return txHash;
 
       const txId = extractTxIdFromLogs(client, receipt.logs);
       if (!txId) {
@@ -2761,23 +2767,15 @@ const _sendTransaction = async ({
       params: [formattedRequest as any],
     })) as `0x${string}`;
 
-    if (client.chain.isStudio) {
-      // Studio RPCs process eth_sendRawTransaction internally (MetaMask signs
-      // and forwards). The returned hash IS the GenLayer tx hash — no need to
-      // wait for an EVM receipt or extract txId from logs.
-      return evmTxHash;
-    }
+    const externalReceipt = await _waitForSentEnvelope({
+      client,
+      publicClient,
+      evmHash: evmTxHash,
+      operationName: "Transaction",
+      revertDetails: gasEstimationError ? `Gas estimation error: ${gasEstimationError}` : undefined,
+    });
 
-    // On real testnets, extract GenLayer txId from the NewTransaction event.
-    const externalReceipt = await publicClient.waitForTransactionReceipt({hash: evmTxHash});
-
-    if (externalReceipt.status === "reverted") {
-      throw new Error(
-        `Transaction reverted: EVM tx ${evmTxHash} to consensus contract ${client.chain.consensusMainContract?.address} was reverted.${
-          gasEstimationError ? ` Gas estimation error: ${gasEstimationError}` : ""
-        }`,
-      );
-    }
+    if (client.chain.isStudio) return evmTxHash;
 
     const externalTxId = extractTxIdFromLogs(client, externalReceipt.logs);
     if (!externalTxId) {
