@@ -1949,19 +1949,6 @@ const FEE_MANAGEMENT_ABI = [
   },
 ] as const;
 
-const APPEAL_TRAIN_ABI = [
-  {
-    type: "function" as const,
-    name: "submitAppeal",
-    stateMutability: "payable" as const,
-    inputs: [
-      {name: "_txId", type: "bytes32"},
-      {name: "_expectedDecisionId", type: "uint256"},
-    ],
-    outputs: [],
-  },
-] as const;
-
 const finalizeTransactionSelector = encodeFunctionData({
   abi: FINALIZE_TX_ABI as any,
   functionName: "finalizeTransaction",
@@ -2394,7 +2381,7 @@ describe("contractActions fee management", () => {
     await expect(actions.getMinAppealBond({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(1234n);
   });
 
-  it("encodes submitAppeal with the active decision id and quoted funding", async () => {
+  it("uses the schedule-extending appeal path with the active decision id and quoted funding", async () => {
     const {actions, signTransaction} = setupFeeManagementHarness();
 
     await expect(actions.appealTransaction({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(
@@ -2403,8 +2390,13 @@ describe("contractActions fee management", () => {
 
     const txRequest = signTransaction.mock.calls[0][0];
     expect(txRequest.value).toBe(1234n);
-    const decoded = decodeFunctionData({abi: APPEAL_TRAIN_ABI, data: txRequest.data});
-    expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID, MOCK_DECISION_ID]);
+    const decoded = decodeFunctionData({abi: FEE_MANAGEMENT_ABI as any, data: txRequest.data});
+    const [txId, decisionId, distribution] = decoded.args as any[];
+    expect(decoded.functionName).toBe("topUpAndSubmitAppeal");
+    expect(txId).toBe(MOCK_GENLAYER_TX_ID);
+    expect(decisionId).toBe(MOCK_DECISION_ID);
+    expect(distribution.appealRounds).toBe(0n);
+    expect(distribution.rotations).toEqual([0n]);
   });
 
   it("returns false from canAppeal when no decision is active", async () => {
@@ -2781,7 +2773,7 @@ const setupStudioLifecycleHarness = () => {
 };
 
 describe("contractActions Studio decision-bound surface", () => {
-  it("encodes submitAppeal with Studio's active decision id", async () => {
+  it("uses Studio's schedule-extending appeal path with the active decision id", async () => {
     const {actions, signTransaction, readContract, client} = setupStudioLifecycleHarness();
 
     await expect(actions.appealTransaction({txId: MOCK_GENLAYER_TX_ID, value: 500n})).resolves.toBe(
@@ -2792,9 +2784,13 @@ describe("contractActions Studio decision-bound surface", () => {
     const txRequest = signTransaction.mock.calls[0][0];
     expect(txRequest.to).toBe(MAIN_CONTRACT_ADDRESS);
     expect(txRequest.value).toBe(500n);
-    const decoded = decodeFunctionData({abi: CONSENSUS_MAIN_STUDIO_ABI, data: txRequest.data});
-    expect(decoded.functionName).toBe("submitAppeal");
-    expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID, MOCK_DECISION_ID]);
+    const decoded = decodeFunctionData({abi: FEE_MANAGEMENT_STUDIO_ABI as any, data: txRequest.data});
+    const [txId, decisionId, distribution] = decoded.args as any[];
+    expect(decoded.functionName).toBe("topUpAndSubmitAppeal");
+    expect(txId).toBe(MOCK_GENLAYER_TX_ID);
+    expect(decisionId).toBe(MOCK_DECISION_ID);
+    expect(distribution.appealRounds).toBe(0n);
+    expect(distribution.rotations).toEqual([0n]);
     expect(client.request).toHaveBeenCalledWith({
       method: "gen_getTransactionLifecycle",
       params: [{txId: MOCK_GENLAYER_TX_ID}],
@@ -2884,9 +2880,12 @@ describe("contractActions Studio decision-bound surface", () => {
       expect.objectContaining({functionName: "getTransactionLifecycle"}),
     );
     const decoded = decodeFunctionData({
-      abi: APPEAL_TRAIN_ABI,
+      abi: FEE_MANAGEMENT_ABI as any,
       data: signTransaction.mock.calls[0][0].data,
     });
-    expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID, MOCK_DECISION_ID]);
+    const [txId, decisionId] = decoded.args as any[];
+    expect(decoded.functionName).toBe("topUpAndSubmitAppeal");
+    expect(txId).toBe(MOCK_GENLAYER_TX_ID);
+    expect(decisionId).toBe(MOCK_DECISION_ID);
   });
 });

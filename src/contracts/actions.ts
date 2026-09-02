@@ -838,7 +838,9 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
     /**
      * Appeals a consensus transaction to trigger a new round of validation.
      * The call is bound to the active decision on both Studio and contract
-     * networks. When value is omitted, the authoritative appeal charge is used.
+     * networks. The schedule-extending entry point is safe for both pre-funded
+     * and unfunded appeals, while submitAppeal rejects an unfunded next round.
+     * When value is omitted, the authoritative appeal charge is used.
      */
     appealTransaction: async (args: {
       account?: Account;
@@ -859,9 +861,13 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       });
       const value = args.value ?? context.requiredValue;
 
-      const encodedData = _encodeSubmitAppealData({
+      const encodedData = _encodeTopUpAndSubmitAppealData({
         txId,
         expectedDecisionId: context.decisionId,
+        // Consensus derives the appeal shape from live state and retains this
+        // normalized zero schedule only for ABI compatibility. The same call
+        // is therefore valid against both pre-funded and unfunded transactions.
+        distribution: {},
       });
       await _sendConsensusCall({
         client,
@@ -1153,19 +1159,6 @@ const CONSENSUS_FEE_MANAGEMENT_ABI = [
       {name: "_txId", type: "bytes32"},
       {name: "_expectedDecisionId", type: "uint256"},
       {name: "_feesDistribution", type: "tuple", components: FEES_DISTRIBUTION_COMPONENTS},
-    ],
-    outputs: [],
-  },
-] as const;
-
-const CONSENSUS_APPEAL_TRAIN_ABI = [
-  {
-    type: "function",
-    name: "submitAppeal",
-    stateMutability: "payable",
-    inputs: [
-      {name: "_txId", type: "bytes32"},
-      {name: "_expectedDecisionId", type: "uint256"},
     ],
     outputs: [],
   },
@@ -2094,20 +2087,6 @@ const _encodeAddTransactionData = ({
     }),
     value: userValue + feeValue,
   }];
-};
-
-const _encodeSubmitAppealData = ({
-  txId,
-  expectedDecisionId,
-}: {
-  txId: `0x${string}`;
-  expectedDecisionId: bigint;
-}): `0x${string}` => {
-  return encodeFunctionData({
-    abi: CONSENSUS_APPEAL_TRAIN_ABI,
-    functionName: "submitAppeal",
-    args: [txId, expectedDecisionId],
-  });
 };
 
 const _studioTrainBatchError = (action: string): Error =>

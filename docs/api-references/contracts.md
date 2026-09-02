@@ -133,6 +133,7 @@ _No parameters._
 ### estimateFeesDistribution
 
 Builds a fee distribution with caps derived from the active fee policy.
+Omitted rotations fund the chain's configured consensus maximum.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -188,9 +189,7 @@ should pass with the real transaction.
 
 ### getAppealCharge
 
-Returns the full authoritative appeal charge (bond plus appeal funding)
-on resolution-kernel contract networks. Current Studio has no
-decision-bound quote surface.
+Returns the full authoritative appeal charge (bond plus appeal funding).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -324,9 +323,10 @@ Claims a bounded number of reward epochs for a developer NFT. Returns the EVM tr
 ### appealTransaction
 
 Appeals a consensus transaction to trigger a new round of validation.
-Contract networks bind the call to the active decision and quote an
-omitted value. Current Studio uses its native decision-free entrypoint;
-its value defaults to zero when omitted.
+The call is bound to the active decision on both Studio and contract
+networks. The schedule-extending entry point is safe for both pre-funded
+and unfunded appeals, while submitAppeal rejects an unfunded next round.
+When value is omitted, the authoritative appeal charge is used.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -339,8 +339,7 @@ its value defaults to zero when omitted.
 ### topUpFees
 
 Deposits additional fee budget for an existing consensus transaction.
-Returns the backend RPC hash: an EVM transaction hash on network
-backends, or the target GenLayer tx id on Studio/localnet.
+Returns the signed EVM envelope hash on every backend.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -357,9 +356,8 @@ backends, or the target GenLayer tx id on Studio/localnet.
 
 Deposits appeal fee budget and submits an appeal in the same consensus call.
 Returns the existing GenLayer transaction id, matching appealTransaction.
-Contract networks bind the call to the active decision and quote an
-omitted value. Current Studio uses its native decision-free entrypoint;
-its value defaults to zero when omitted.
+The call is bound to the active decision on both Studio and contract
+networks. When value is omitted, the authoritative appeal charge is used.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
