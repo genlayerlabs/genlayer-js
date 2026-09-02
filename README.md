@@ -416,7 +416,7 @@ const txHash = await client.writeContract({
 });
 ```
 
-Available networks: `"localnet"`, `"studionet"`, `"testnetAsimov"`, `"testnetBradbury"`.
+Available networks: `"localnet"`, `"studionet"`, `"studioDevnet"`, `"testnetAsimov"`, `"testnetBradbury"`.
 
 > **Note:** If the wallet is on the wrong chain when you call `writeContract`, the SDK will throw a clear error telling you which chain the wallet is on vs. which chain the client expects. Call `client.connect()` to resolve this.
 
