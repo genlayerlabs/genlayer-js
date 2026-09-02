@@ -10,6 +10,7 @@ import {
   GenLayerClient,
   CalldataEncodable,
   Address,
+  TransactionHash,
   TransactionHashVariant,
   TransactionFeeOptions,
   TransactionFeeEstimate,
@@ -34,6 +35,7 @@ import {toJsonSafeDeep, b64ToArray, arrayToB64} from "@/utils/jsonifier";
 import {
   CALL_KEY_WILDCARD,
   createFeesDistribution,
+  createTopUpFeesDistribution,
   MESSAGE_ALLOCATION_ROOT_PARENT_INDEX,
   normalizeMessageFeeAllocations,
   normalizeTransactionFees,
@@ -624,23 +626,13 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         observed,
       };
     },
-    /**
-     * Returns the full authoritative appeal charge (bond plus appeal funding)
-     * on resolution-kernel contract networks. Current Studio has no
-     * decision-bound quote surface.
-     */
+    /** Returns the full authoritative appeal charge (bond plus appeal funding). */
     getAppealCharge: async (args: {txId: `0x${string}`}): Promise<bigint> => {
-      if (client.chain.isStudio) {
-        throw new Error(STUDIO_APPEAL_QUOTE_UNSUPPORTED);
-      }
       const context = await _readAppealContext({client, publicClient, txId: args.txId});
       return context.requiredValue;
     },
     /** @deprecated Use getAppealCharge. This legacy name also returns bond plus appeal funding. */
     getMinAppealBond: async (args: {txId: `0x${string}`}): Promise<bigint> => {
-      if (client.chain.isStudio) {
-        throw new Error(STUDIO_APPEAL_QUOTE_UNSUPPORTED);
-      }
       const context = await _readAppealContext({client, publicClient, txId: args.txId});
       return context.requiredValue;
     },
@@ -698,6 +690,20 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
     },
     /** Checks if a transaction can be appealed. */
     canAppeal: async (args: {txId: `0x${string}`}): Promise<boolean> => {
+      if (client.chain.isStudio) {
+        const context = await _readLifecycleIdentity({client, publicClient, txId: args.txId});
+        if (!context.decisionActive) return false;
+        try {
+          const quote = await client.request({
+            method: "gen_estimateLatestAppealCharge",
+            params: [{txId: args.txId as TransactionHash}],
+          }) as {decisionId?: unknown};
+          return BigInt(String(quote.decisionId)) === context.decisionId;
+        } catch (error) {
+          if (/CanNotAppeal/i.test(String(error))) return false;
+          throw error;
+        }
+      }
       if (!client.chain.appealsContract?.address) {
         throw new Error("canAppeal not supported on this chain (missing appealsContract)");
       }
@@ -831,9 +837,10 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
     },
     /**
      * Appeals a consensus transaction to trigger a new round of validation.
-     * Contract networks bind the call to the active decision and quote an
-     * omitted value. Current Studio uses its native decision-free entrypoint;
-     * its value defaults to zero when omitted.
+     * The call is bound to the active decision on both Studio and contract
+     * networks. The schedule-extending entry point is safe for both pre-funded
+     * and unfunded appeals, while submitAppeal rejects an unfunded next round.
+     * When value is omitted, the authoritative appeal charge is used.
      */
     appealTransaction: async (args: {
       account?: Account;
@@ -846,18 +853,6 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       // Appeals don't go through _sendTransaction because submitAppeal emits
       // AppealStarted/TransactionActivated events, not NewTransaction/CreatedTransaction.
       // The appeal operates on the same GenLayer txId, so we return it directly.
-      if (client.chain.isStudio) {
-        await _sendConsensusCall({
-          client,
-          publicClient,
-          encodedData: _encodeStudioSubmitAppealData({txId}),
-          senderAccount,
-          value: args.value ?? 0n,
-          operationName: "Appeal",
-        });
-        return txId;
-      }
-
       const context = await _readAppealContext({
         client,
         publicClient,
@@ -866,9 +861,13 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       });
       const value = args.value ?? context.requiredValue;
 
-      const encodedData = _encodeSubmitAppealData({
+      const encodedData = _encodeTopUpAndSubmitAppealData({
         txId,
         expectedDecisionId: context.decisionId,
+        // Consensus derives the appeal shape from live state and retains this
+        // normalized zero schedule only for ABI compatibility. The same call
+        // is therefore valid against both pre-funded and unfunded transactions.
+        distribution: {},
       });
       await _sendConsensusCall({
         client,
@@ -882,8 +881,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
     },
     /**
      * Deposits additional fee budget for an existing consensus transaction.
-     * Returns the backend RPC hash: an EVM transaction hash on network
-     * backends, or the target GenLayer tx id on Studio/localnet.
+     * Returns the signed EVM envelope hash on every backend.
      */
     topUpFees: async (args: {
       account?: Account;
@@ -906,9 +904,8 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
     /**
      * Deposits appeal fee budget and submits an appeal in the same consensus call.
      * Returns the existing GenLayer transaction id, matching appealTransaction.
-     * Contract networks bind the call to the active decision and quote an
-     * omitted value. Current Studio uses its native decision-free entrypoint;
-     * its value defaults to zero when omitted.
+     * The call is bound to the active decision on both Studio and contract
+     * networks. When value is omitted, the authoritative appeal charge is used.
      */
     topUpAndSubmitAppeal: async (args: {
       account?: Account;
@@ -918,18 +915,6 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
     }): Promise<`0x${string}`> => {
       const {account, txId, distribution} = args;
       const senderAccount = account || client.account;
-
-      if (client.chain.isStudio) {
-        await _sendConsensusCall({
-          client,
-          publicClient,
-          encodedData: _encodeStudioTopUpAndSubmitAppealData({txId, distribution}),
-          senderAccount,
-          value: args.value ?? 0n,
-          operationName: "Top up and submit appeal",
-        });
-        return txId;
-      }
 
       const context = await _readAppealContext({
         client,
@@ -961,20 +946,6 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
     }): Promise<`0x${string}`> => {
       const {account, txId} = args;
       const senderAccount = account || client.account;
-
-      if (client.chain.isStudio) {
-        return _sendConsensusCall({
-          client,
-          publicClient,
-          encodedData: encodeFunctionData({
-            abi: client.chain.consensusMainContract?.abi as any,
-            functionName: "finalizeTransaction",
-            args: [txId],
-          }),
-          senderAccount,
-          operationName: "Finalize",
-        });
-      }
 
       const identity = await _readLifecycleIdentity({client, publicClient, txId});
       if (!identity.decisionActive) {
@@ -1188,33 +1159,6 @@ const CONSENSUS_FEE_MANAGEMENT_ABI = [
       {name: "_txId", type: "bytes32"},
       {name: "_expectedDecisionId", type: "uint256"},
       {name: "_feesDistribution", type: "tuple", components: FEES_DISTRIBUTION_COMPONENTS},
-    ],
-    outputs: [],
-  },
-] as const;
-
-/** Studio's current embedded consensus does not carry decision identities. */
-const CONSENSUS_FEE_MANAGEMENT_STUDIO_ABI = [
-  {
-    type: "function",
-    name: "topUpAndSubmitAppeal",
-    stateMutability: "payable",
-    inputs: [
-      {name: "_txId", type: "bytes32"},
-      {name: "_feesDistribution", type: "tuple", components: FEES_DISTRIBUTION_COMPONENTS},
-    ],
-    outputs: [],
-  },
-] as const;
-
-const CONSENSUS_APPEAL_TRAIN_ABI = [
-  {
-    type: "function",
-    name: "submitAppeal",
-    stateMutability: "payable",
-    inputs: [
-      {name: "_txId", type: "bytes32"},
-      {name: "_expectedDecisionId", type: "uint256"},
     ],
     outputs: [],
   },
@@ -1493,6 +1437,10 @@ const extractStudioFeePolicy = (config: unknown): FeePolicyQuote => {
   const genPerTimeUnit = bigintFromUnknown(policyRecord.genPerTimeUnit, "policy.genPerTimeUnit");
   const storageUnitPrice = bigintFromUnknown(policyRecord.storageUnitPrice, "policy.storageUnitPrice");
   const receiptGasPrice = bigintFromUnknown(policyRecord.receiptGasPrice, "policy.receiptGasPrice");
+  const timeUnitOverlayBps = bigintFromUnknown(
+    policyRecord.timeUnitOverlayBps,
+    "policy.timeUnitOverlayBps",
+  );
   const intrinsicGas = bigintFromUnknown(policyRecord.intrinsicGas, "policy.intrinsicGas", DEFAULT_INTRINSIC_GAS);
   const bootloaderOverhead = bigintFromUnknown(
     policyRecord.bootloaderOverhead,
@@ -1546,6 +1494,7 @@ const extractStudioFeePolicy = (config: unknown): FeePolicyQuote => {
     storageUnitPrice,
     receiptGasPrice,
     executionBudgetFloor,
+    timeUnitOverlayBps,
   };
 };
 
@@ -1596,6 +1545,9 @@ const readCurrentFeePolicy = async (
     storageUnitPrice,
     receiptGasPrice,
     executionBudgetFloor: maxBigint(executionBudgetFloor, localExecutionBudgetFloor),
+    // Live networks quote through FeeManager.calculateRoundFees; this field is
+    // only consumed by Studio's local mirror.
+    timeUnitOverlayBps: 0n,
   };
 };
 
@@ -1939,6 +1891,14 @@ const calculateFeeForRound = (
   leaderTimeunitsAllocation + (numOfValidators * validatorTimeunitsAllocation)
 );
 
+const validatorsPerRoundSafe = (round: number): bigint => (
+  VALIDATORS_PER_ROUND[Math.min(Math.max(round, 0), VALIDATORS_PER_ROUND.length - 1)]
+);
+
+const successfulAppealProfit = (appealBond: bigint): bigint => (
+  appealBond + (appealBond / 2n)
+);
+
 const calculateLocalRoundFees = (
   distribution: FeesDistribution,
   numOfInitialValidators: number,
@@ -1967,11 +1927,8 @@ const calculateLocalRoundFees = (
   }
 
   const startIndex = validatorIndex(numOfInitialValidators);
-  if (startIndex + Number(distribution.appealRounds * 2n) >= VALIDATORS_PER_ROUND.length) {
-    throw new Error("InvalidNumOfValidators");
-  }
 
-  let total = calculateFeeForRound(
+  let taxableWork = calculateFeeForRound(
     VALIDATORS_PER_ROUND[startIndex],
     distribution.rotations[0] + 1n,
     distribution.leaderTimeunitsAllocation,
@@ -1987,24 +1944,47 @@ const calculateLocalRoundFees = (
       rotationsThisRound = 1n;
     }
 
-    total += calculateFeeForRound(
-      VALIDATORS_PER_ROUND[startIndex + offset],
+    // Consensus indexes appeal/next-normal committees by absolute round and
+    // saturates at the published ladder; only round zero uses the requested
+    // initial committee.
+    taxableWork += calculateFeeForRound(
+      validatorsPerRoundSafe(offset),
       rotationsThisRound,
       distribution.leaderTimeunitsAllocation,
       distribution.validatorTimeunitsAllocation,
     );
   }
 
-  if (policy.genPerTimeUnit > 0n) {
-    total *= policy.genPerTimeUnit;
+  const priceCap = distribution.maxPriceGenPerTimeUnit;
+  if (priceCap > 0n) {
+    taxableWork *= priceCap;
   }
+
+  let appealProfitReserve = 0n;
+  for (let appealOrdinal = 0; appealOrdinal < Number(distribution.appealRounds); appealOrdinal++) {
+    const nextNormalBond = calculateFeeForRound(
+      validatorsPerRoundSafe((appealOrdinal + 1) * 2),
+      distribution.rotations[appealOrdinal + 1] + 1n,
+      distribution.leaderTimeunitsAllocation,
+      distribution.validatorTimeunitsAllocation,
+    ) * (priceCap > 0n ? priceCap : 1n);
+    appealProfitReserve += successfulAppealProfit(nextNormalBond);
+  }
+
+  const overlayBps = policy.timeUnitOverlayBps ?? 0n;
+  if (overlayBps < 0n || overlayBps >= 10_000n) {
+    throw new Error("InvalidTimeUnitOverlayBps");
+  }
+  const overlay = overlayBps === 0n
+    ? 0n
+    : (taxableWork * overlayBps) / (10_000n - overlayBps);
 
   const leaderRounds = distribution.rotations.reduce(
     (sum, rotations) => sum + rotations + 1n,
     distribution.appealRounds,
   );
-  total += distribution.executionBudgetPerRound * leaderRounds;
-  return total;
+  return taxableWork + appealProfitReserve + overlay +
+    (distribution.executionBudgetPerRound * leaderRounds);
 };
 
 const _resolveTransactionFees = async ({
@@ -2108,51 +2088,6 @@ const _encodeAddTransactionData = ({
     value: userValue + feeValue,
   }];
 };
-
-const _encodeSubmitAppealData = ({
-  txId,
-  expectedDecisionId,
-}: {
-  txId: `0x${string}`;
-  expectedDecisionId: bigint;
-}): `0x${string}` => {
-  return encodeFunctionData({
-    abi: CONSENSUS_APPEAL_TRAIN_ABI,
-    functionName: "submitAppeal",
-    args: [txId, expectedDecisionId],
-  });
-};
-
-const STUDIO_APPEAL_QUOTE_UNSUPPORTED =
-  "Appeal bond calculation not supported on this chain (missing feeManagerContract/roundsStorageContract)";
-
-const _encodeStudioSubmitAppealData = ({
-  txId,
-}: {
-  txId: `0x${string}`;
-}): `0x${string}` => encodeFunctionData({
-  abi: [{
-    type: "function",
-    name: "submitAppeal",
-    stateMutability: "payable",
-    inputs: [{name: "_txId", type: "bytes32"}],
-    outputs: [],
-  }],
-  functionName: "submitAppeal",
-  args: [txId],
-});
-
-const _encodeStudioTopUpAndSubmitAppealData = ({
-  txId,
-  distribution,
-}: {
-  txId: `0x${string}`;
-  distribution: FeesDistributionInput;
-}): `0x${string}` => encodeFunctionData({
-  abi: CONSENSUS_FEE_MANAGEMENT_STUDIO_ABI,
-  functionName: "topUpAndSubmitAppeal",
-  args: [txId, createFeesDistribution(distribution)],
-});
 
 const _studioTrainBatchError = (action: string): Error =>
   new Error(
@@ -2279,6 +2214,33 @@ const _readLifecycleIdentity = async ({
   blockNumber?: bigint;
   blockTimestamp?: bigint;
 }): Promise<LifecycleIdentity> => {
+  if (client.chain.isStudio) {
+    const lifecycle = await client.request({
+      method: "gen_getTransactionLifecycle",
+      params: [{txId: txId as TransactionHash}],
+    }) as {
+      resolutionActionCode?: unknown;
+      decisionId?: unknown;
+      decisionActive?: unknown;
+      evaluatedAt?: unknown;
+    };
+    if (typeof lifecycle.decisionActive !== "boolean") {
+      throw new Error(
+        `Studio returned an invalid decisionActive for ${txId}: ${String(lifecycle.decisionActive)}`,
+      );
+    }
+    const decisionId = lifecycle.decisionActive ? BigInt(String(lifecycle.decisionId)) : 0n;
+    const evaluatedAt = BigInt(String(lifecycle.evaluatedAt ?? 0));
+    return {
+      blockNumber: 0n,
+      blockTimestamp: evaluatedAt,
+      resolutionAction: Number(lifecycle.resolutionActionCode),
+      attemptId: `0x${"00".repeat(32)}`,
+      decisionActive: lifecycle.decisionActive,
+      decisionId,
+    };
+  }
+
   const consensusDataAddress = client.chain.consensusDataContract?.address as Address | undefined;
   if (!consensusDataAddress || consensusDataAddress === zeroAddress) {
     throw new Error("ConsensusData contract is not configured for this chain");
@@ -2335,6 +2297,27 @@ const _readAppealContext = async ({
     return {...identity, requiredValue: 0n};
   }
 
+  if (client.chain.isStudio) {
+    const quote = await client.request({
+      method: "gen_estimateLatestAppealCharge",
+      params: [{txId: txId as TransactionHash}],
+    }) as {
+      decisionId?: unknown;
+      bond?: unknown;
+      funding?: unknown;
+    };
+    const quoteDecisionId = BigInt(String(quote.decisionId));
+    if (quoteDecisionId !== identity.decisionId) {
+      throw new Error(
+        `Appeal decision changed while reading ${txId}: expected ${identity.decisionId}, received ${quoteDecisionId}`,
+      );
+    }
+    return {
+      ...identity,
+      requiredValue: BigInt(String(quote.bond)) + BigInt(String(quote.funding)),
+    };
+  }
+
   const consensusDataAddress = client.chain.consensusDataContract!.address as Address;
   const quote = await publicClient.readContract({
     address: consensusDataAddress,
@@ -2364,7 +2347,7 @@ const _encodeTopUpFeesData = ({
   return encodeFunctionData({
     abi: CONSENSUS_FEE_MANAGEMENT_ABI,
     functionName: "topUpFees",
-    args: [txId, createFeesDistribution(distribution)],
+    args: [txId, createTopUpFeesDistribution(distribution)],
   });
 };
 
@@ -2382,6 +2365,54 @@ const _encodeTopUpAndSubmitAppealData = ({
     functionName: "topUpAndSubmitAppeal",
     args: [txId, expectedDecisionId, createFeesDistribution(distribution)],
   });
+};
+
+const _waitForSentEnvelope = async ({
+  client,
+  publicClient,
+  evmHash,
+  operationName,
+  revertDetails,
+}: {
+  client: GenLayerClient<GenLayerChain>;
+  publicClient: PublicClient;
+  evmHash: `0x${string}`;
+  operationName: string;
+  revertDetails?: string;
+}) => {
+  const receipt = await publicClient.waitForTransactionReceipt({
+    hash: evmHash,
+    ...(client.chain.isStudio ? {
+      // Studio returns the envelope hash before its EVM transaction index is
+      // necessarily visible. viem's default six retries cover only ~12s and
+      // Studio reports that transient as ResourceNotFoundRpcError.
+      retryCount: 120,
+      retryDelay: 500,
+    } : {}),
+  });
+  if (receipt.status !== "reverted") return receipt;
+
+  let studioReason: string | undefined;
+  if (client.chain.isStudio) {
+    try {
+      const rawReceipt = await client.request({
+        method: "eth_getTransactionReceipt",
+        params: [evmHash],
+      } as any) as Record<string, unknown> | null;
+      const reason = rawReceipt?.revertReason ?? rawReceipt?.error;
+      if (typeof reason === "string" && reason.trim() !== "") {
+        studioReason = reason;
+      }
+    } catch {
+      // The status-0 receipt is authoritative. Older Studio versions may not
+      // expose the additive revertReason field, so preserve the generic error.
+    }
+  }
+
+  const details = studioReason ?? revertDetails;
+  throw new Error(
+    `${operationName} reverted: EVM tx ${evmHash}${details ? `. ${details}` : ""}`,
+  );
 };
 
 const _sendEvmContractCall = async ({
@@ -2435,13 +2466,7 @@ const _sendEvmContractCall = async ({
     };
     const serializedTransaction = await validatedAccount.signTransaction(txRequest);
     const evmHash = await client.sendRawTransaction({serializedTransaction});
-    if (client.chain.isStudio) {
-      return evmHash;
-    }
-    const receipt = await publicClient.waitForTransactionReceipt({hash: evmHash});
-    if (receipt.status === "reverted") {
-      throw new Error(`${operationName} reverted: EVM tx ${evmHash}`);
-    }
+    await _waitForSentEnvelope({client, publicClient, evmHash, operationName});
     return evmHash;
   }
 
@@ -2457,13 +2482,7 @@ const _sendEvmContractCall = async ({
       gasPrice: gasPriceHex as `0x${string}`,
     }],
   })) as `0x${string}`;
-  if (client.chain.isStudio) {
-    return evmHash;
-  }
-  const receipt = await publicClient.waitForTransactionReceipt({hash: evmHash});
-  if (receipt.status === "reverted") {
-    throw new Error(`${operationName} reverted: EVM tx ${evmHash}`);
-  }
+  await _waitForSentEnvelope({client, publicClient, evmHash, operationName});
   return evmHash;
 };
 
@@ -2527,13 +2546,7 @@ const _sendConsensusCall = async ({
     };
     const serializedTransaction = await validatedAccount.signTransaction(txRequest);
     const evmHash = await client.sendRawTransaction({serializedTransaction});
-    if (client.chain.isStudio) {
-      return evmHash;
-    }
-    const receipt = await publicClient.waitForTransactionReceipt({hash: evmHash});
-    if (receipt.status === "reverted") {
-      throw new Error(`${operationName} reverted: EVM tx ${evmHash}`);
-    }
+    await _waitForSentEnvelope({client, publicClient, evmHash, operationName});
     return evmHash;
   }
 
@@ -2547,13 +2560,7 @@ const _sendConsensusCall = async ({
       gas: `0x${estimatedGas.toString(16)}` as `0x${string}`,
     }],
   })) as `0x${string}`;
-  if (client.chain.isStudio) {
-    return evmHash;
-  }
-  const receipt = await publicClient.waitForTransactionReceipt({hash: evmHash});
-  if (receipt.status === "reverted") {
-    throw new Error(`${operationName} reverted: EVM tx ${evmHash}`);
-  }
+  await _waitForSentEnvelope({client, publicClient, evmHash, operationName});
   return evmHash;
 };
 
@@ -2690,23 +2697,15 @@ const _sendTransaction = async ({
 
       const serializedTransaction = await validatedSenderAccount.signTransaction(transactionRequest);
       const txHash = await client.sendRawTransaction({serializedTransaction: serializedTransaction});
+      const receipt = await _waitForSentEnvelope({
+        client,
+        publicClient,
+        evmHash: txHash,
+        operationName: "Transaction",
+        revertDetails: gasEstimationError ? `Gas estimation error: ${gasEstimationError}` : undefined,
+      });
 
-      if (client.chain.isStudio) {
-        // Studio RPCs process eth_sendRawTransaction internally. The returned
-        // hash is already the GenLayer tx hash; there is no separate EVM
-        // receipt to wait for or consensus event to extract.
-        return txHash;
-      }
-
-      const receipt = await publicClient.waitForTransactionReceipt({hash: txHash});
-
-      if (receipt.status === "reverted") {
-        throw new Error(
-          `Transaction reverted: EVM tx ${txHash} to consensus contract ${client.chain.consensusMainContract?.address} was reverted.${
-            gasEstimationError ? ` Gas estimation error: ${gasEstimationError}` : ""
-          }`,
-        );
-      }
+      if (client.chain.isStudio) return txHash;
 
       const txId = extractTxIdFromLogs(client, receipt.logs);
       if (!txId) {
@@ -2757,23 +2756,15 @@ const _sendTransaction = async ({
       params: [formattedRequest as any],
     })) as `0x${string}`;
 
-    if (client.chain.isStudio) {
-      // Studio RPCs process eth_sendRawTransaction internally (MetaMask signs
-      // and forwards). The returned hash IS the GenLayer tx hash — no need to
-      // wait for an EVM receipt or extract txId from logs.
-      return evmTxHash;
-    }
+    const externalReceipt = await _waitForSentEnvelope({
+      client,
+      publicClient,
+      evmHash: evmTxHash,
+      operationName: "Transaction",
+      revertDetails: gasEstimationError ? `Gas estimation error: ${gasEstimationError}` : undefined,
+    });
 
-    // On real testnets, extract GenLayer txId from the NewTransaction event.
-    const externalReceipt = await publicClient.waitForTransactionReceipt({hash: evmTxHash});
-
-    if (externalReceipt.status === "reverted") {
-      throw new Error(
-        `Transaction reverted: EVM tx ${evmTxHash} to consensus contract ${client.chain.consensusMainContract?.address} was reverted.${
-          gasEstimationError ? ` Gas estimation error: ${gasEstimationError}` : ""
-        }`,
-      );
-    }
+    if (client.chain.isStudio) return evmTxHash;
 
     const externalTxId = extractTxIdFromLogs(client, externalReceipt.logs);
     if (!externalTxId) {

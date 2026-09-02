@@ -12,6 +12,7 @@ import {
   CALL_KEY_DEPLOY,
   CALL_KEY_UNNAMED,
   CALL_KEY_WILDCARD,
+  createTopUpFeesDistribution,
   DEPLOY_CALL_KEY,
   deployCallKey,
   deriveExternalMessageCallKey,
@@ -148,6 +149,9 @@ const INTERNAL_MESSAGE_FEE_PARAMS_ABI = [
       {name: "appealRounds", type: "uint256"},
       {name: "executionBudgetPerRound", type: "uint256"},
       {name: "rotations", type: "uint256[]"},
+      {name: "maxPriceGenPerTimeUnit", type: "uint256"},
+      {name: "storageFeeMaxGasPrice", type: "uint256"},
+      {name: "receiptFeeMaxGasPrice", type: "uint256"},
     ],
   },
 ] as const;
@@ -593,6 +597,9 @@ describe("contractActions addTransaction ABI compatibility", () => {
       appealRounds: 1n,
       executionBudgetPerRound: 20n,
       rotations: [2n, 3n],
+      maxPriceGenPerTimeUnit: 30n,
+      storageFeeMaxGasPrice: 40n,
+      receiptFeeMaxGasPrice: 50n,
     });
 
     const [decoded] = decodeAbiParameters(INTERNAL_MESSAGE_FEE_PARAMS_ABI, encoded) as any;
@@ -601,6 +608,9 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(decoded.appealRounds).toBe(1n);
     expect(decoded.executionBudgetPerRound).toBe(20n);
     expect(decoded.rotations).toEqual([2n, 3n]);
+    expect(decoded.maxPriceGenPerTimeUnit).toBe(30n);
+    expect(decoded.storageFeeMaxGasPrice).toBe(40n);
+    expect(decoded.receiptFeeMaxGasPrice).toBe(50n);
   });
 
   it("encodes external message fee params as the consensus tuple", () => {
@@ -893,6 +903,46 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(estimateTransactionGas.mock.calls[0][0].value).toBe(11_000n);
   });
 
+  it("matches the consensus cap, overlay, appeal reserve, and round ladder locally on Studio", async () => {
+    const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "sim_getFeeConfig") {
+        return {
+          enabled: true,
+          policy: {
+            genPerTimeUnit: "10",
+            storageUnitPrice: "0",
+            receiptGasPrice: "0",
+            timeUnitOverlayBps: "1500",
+          },
+        };
+      }
+      if (method === "eth_gasPrice") return "0x1";
+      throw new Error(`unexpected request ${method}`);
+    });
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    const fees = await actions.estimateTransactionFees({
+      leaderTimeunitsAllocation: 100n,
+      validatorTimeunitsAllocation: 200n,
+      appealRounds: 1n,
+      rotations: [0n, 0n],
+      executionBudgetPerRound: 0n,
+      maxPriceGenPerTimeUnit: 12n,
+      storageFeeMaxGasPrice: 0n,
+      receiptFeeMaxGasPrice: 0n,
+    });
+
+    // Taxable work: (5-validator round 0 + absolute rounds 1 and 2) * cap
+    // = (1100 + 1500 + 2300) * 12 = 58800.
+    // Appeal profit reserve: 1.5 * (2300 * 12) = 41400.
+    // Overlay: floor(58800 * 1500 / 8500) = 10376.
+    expect(fees.feeValue).toBe(110_576n);
+  });
+
   it("defaults direct fee estimates to the chain rotation budget for every appeal round", async () => {
     const requestMock = vi.fn().mockResolvedValue({
       enabled: false,
@@ -1004,6 +1054,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
       storageUnitPrice: 20n,
       receiptGasPrice: 30n,
       executionBudgetFloor: expectedLocalFloor,
+      timeUnitOverlayBps: 0n,
     });
     expect(fees.distribution.maxPriceGenPerTimeUnit).toBe(12n);
     expect(fees.distribution.storageFeeMaxGasPrice).toBe(24n);
@@ -1739,6 +1790,45 @@ describe("contractActions addTransaction ABI compatibility", () => {
     ).rejects.toThrow("Transaction reverted");
   });
 
+  it("surfaces Studio's receipt-level reason for a rejected write", async () => {
+    const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "sim_getFeeConfig") {
+        return {
+          enabled: false,
+          policy: {
+            genPerTimeUnit: "0",
+            storageUnitPrice: "0",
+            receiptGasPrice: "0",
+          },
+        };
+      }
+      if (method === "eth_gasPrice") return "0x1";
+      if (method === "eth_getTransactionReceipt") {
+        return {status: "0x0", revertReason: "InsufficientFees"};
+      }
+      throw new Error(`Unexpected RPC method: ${method}`);
+    });
+    const publicClient = makeMockPublicClient({status: "reverted", logs: []});
+    const {actions, client} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      signTransactionMock: vi.fn().mockResolvedValue("0xsigned"),
+      publicClient,
+      isStudio: true,
+      requestMock,
+    });
+    (client as any).sendRawTransaction = vi.fn().mockResolvedValue(MOCK_EVM_TX_HASH);
+
+    await expect(
+      actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping", value: 0n}),
+    ).rejects.toThrow(/InsufficientFees/);
+
+    expect(publicClient.waitForTransactionReceipt).toHaveBeenCalledWith({
+      hash: MOCK_EVM_TX_HASH,
+      retryCount: 120,
+      retryDelay: 500,
+    });
+  });
+
   it("decodes BudgetTooLow selector from gas estimation failures", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const signTransaction = vi.fn().mockResolvedValue("0xsigned");
@@ -1854,19 +1944,6 @@ const FEE_MANAGEMENT_ABI = [
       {name: "_txId", type: "bytes32"},
       {name: "_expectedDecisionId", type: "uint256"},
       {name: "_feesDistribution", type: "tuple", components: FEES_DISTRIBUTION_COMPONENTS},
-    ],
-    outputs: [],
-  },
-] as const;
-
-const APPEAL_TRAIN_ABI = [
-  {
-    type: "function" as const,
-    name: "submitAppeal",
-    stateMutability: "payable" as const,
-    inputs: [
-      {name: "_txId", type: "bytes32"},
-      {name: "_expectedDecisionId", type: "uint256"},
     ],
     outputs: [],
   },
@@ -2005,10 +2082,12 @@ const setupFeeManagementHarness = ({
   receiptStatus = "success",
   isStudio = false,
   decisionActive = true,
+  studioRevertReason,
 }: {
   receiptStatus?: string;
   isStudio?: boolean;
   decisionActive?: boolean;
+  studioRevertReason?: string;
 } = {}) => {
   const signTransaction = vi.fn().mockResolvedValue("0xsigned");
   const sendRawTransaction = vi.fn().mockResolvedValue(MOCK_EVM_TX_HASH);
@@ -2050,6 +2129,9 @@ const setupFeeManagementHarness = ({
     sendRawTransaction,
     request: vi.fn().mockImplementation(async ({method}: {method: string}) => {
       if (method === "eth_gasPrice") return "0x1";
+      if (method === "eth_getTransactionReceipt") {
+        return {status: "0x0", revertReason: studioRevertReason};
+      }
       throw new Error(`Unexpected RPC method: ${method}`);
     }),
   };
@@ -2275,6 +2357,22 @@ describe("contractActions bounded round reads", () => {
 });
 
 describe("contractActions fee management", () => {
+  it("normalizes ordinary top-ups without resubmitting the appeal schedule", () => {
+    expect(createTopUpFeesDistribution({executionBudgetPerRound: 123n})).toMatchObject({
+      appealRounds: 0n,
+      rotations: [],
+      executionBudgetPerRound: 123n,
+    });
+  });
+
+  it("requires an explicit complete schedule when initializing appeal rounds", () => {
+    expect(() => createTopUpFeesDistribution({appealRounds: 1n})).toThrow(
+      /rotations must contain appealRounds \+ 1 entries/,
+    );
+    expect(createTopUpFeesDistribution({appealRounds: 1n, rotations: [0n, 2n]}))
+      .toMatchObject({appealRounds: 1n, rotations: [0n, 2n]});
+  });
+
   it("quotes the full authoritative appeal charge", async () => {
     const {actions, client} = setupFeeManagementHarness();
     delete (client.chain as any).feeManagerContract;
@@ -2283,7 +2381,7 @@ describe("contractActions fee management", () => {
     await expect(actions.getMinAppealBond({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(1234n);
   });
 
-  it("encodes submitAppeal with the active decision id and quoted funding", async () => {
+  it("uses the schedule-extending appeal path with the active decision id and quoted funding", async () => {
     const {actions, signTransaction} = setupFeeManagementHarness();
 
     await expect(actions.appealTransaction({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(
@@ -2292,8 +2390,13 @@ describe("contractActions fee management", () => {
 
     const txRequest = signTransaction.mock.calls[0][0];
     expect(txRequest.value).toBe(1234n);
-    const decoded = decodeFunctionData({abi: APPEAL_TRAIN_ABI, data: txRequest.data});
-    expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID, MOCK_DECISION_ID]);
+    const decoded = decodeFunctionData({abi: FEE_MANAGEMENT_ABI as any, data: txRequest.data});
+    const [txId, decisionId, distribution] = decoded.args as any[];
+    expect(decoded.functionName).toBe("topUpAndSubmitAppeal");
+    expect(txId).toBe(MOCK_GENLAYER_TX_ID);
+    expect(decisionId).toBe(MOCK_DECISION_ID);
+    expect(distribution.appealRounds).toBe(0n);
+    expect(distribution.rotations).toEqual([0n]);
   });
 
   it("returns false from canAppeal when no decision is active", async () => {
@@ -2305,6 +2408,20 @@ describe("contractActions fee management", () => {
     );
   });
 
+  it("reads canAppeal from the configured Appeals contract for the active decision", async () => {
+    const {actions, publicClient} = setupFeeManagementHarness();
+
+    await expect(actions.canAppeal({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(true);
+    expect(publicClient.readContract).toHaveBeenCalledWith(
+      expect.objectContaining({
+        address: RECIPIENT_ADDRESS,
+        functionName: "canAppeal",
+        args: [MOCK_GENLAYER_TX_ID, MOCK_DECISION_ID],
+        blockNumber: 123n,
+      }),
+    );
+  });
+
   it("encodes topUpFees(bytes32, FeesDistribution) and returns the EVM tx hash", async () => {
     const {actions, signTransaction, sendRawTransaction} = setupFeeManagementHarness();
 
@@ -2312,12 +2429,8 @@ describe("contractActions fee management", () => {
       txId: MOCK_GENLAYER_TX_ID,
       value: 999n,
       distribution: {
-        leaderTimeunitsAllocation: 100n,
-        validatorTimeunitsAllocation: 200n,
-        appealRounds: 1n,
         executionBudgetPerRound: 500_000n,
         totalMessageFees: 30n,
-        rotations: [0n, 2n],
         maxPriceGenPerTimeUnit: 12n,
         storageFeeMaxGasPrice: 24n,
         receiptFeeMaxGasPrice: 36n,
@@ -2337,12 +2450,12 @@ describe("contractActions fee management", () => {
     });
     const [txId, distribution] = decoded.args as any[];
     expect(txId).toBe(MOCK_GENLAYER_TX_ID);
-    expect(distribution.leaderTimeunitsAllocation).toBe(100n);
-    expect(distribution.validatorTimeunitsAllocation).toBe(200n);
-    expect(distribution.appealRounds).toBe(1n);
+    expect(distribution.leaderTimeunitsAllocation).toBe(0n);
+    expect(distribution.validatorTimeunitsAllocation).toBe(0n);
+    expect(distribution.appealRounds).toBe(0n);
     expect(distribution.executionBudgetPerRound).toBe(500_000n);
     expect(distribution.totalMessageFees).toBe(30n);
-    expect(distribution.rotations).toEqual([0n, 2n]);
+    expect(distribution.rotations).toEqual([]);
     expect(distribution.maxPriceGenPerTimeUnit).toBe(12n);
     expect(distribution.storageFeeMaxGasPrice).toBe(24n);
     expect(distribution.receiptFeeMaxGasPrice).toBe(36n);
@@ -2390,7 +2503,7 @@ describe("contractActions fee management", () => {
     ).rejects.toThrow(/Top up fees reverted/);
   });
 
-  it("returns the Studio RPC hash for fee management calls without waiting for an EVM receipt", async () => {
+  it("returns the Studio envelope hash after confirming its EVM receipt", async () => {
     const {actions, waitForTransactionReceipt} = setupFeeManagementHarness({isStudio: true});
 
     const hash = await actions.topUpFees({
@@ -2400,16 +2513,34 @@ describe("contractActions fee management", () => {
     });
 
     expect(hash).toBe(MOCK_EVM_TX_HASH);
-    expect(waitForTransactionReceipt).not.toHaveBeenCalled();
+    expect(waitForTransactionReceipt).toHaveBeenCalledWith({
+      hash: MOCK_EVM_TX_HASH,
+      retryCount: 120,
+      retryDelay: 500,
+    });
   });
 
-  it("returns the Studio RPC hash for external-wallet fee management calls without waiting for an EVM receipt", async () => {
+  it("surfaces Studio's receipt-level revert reason", async () => {
+    const {actions} = setupFeeManagementHarness({
+      isStudio: true,
+      receiptStatus: "reverted",
+      studioRevertReason: "TopUpCannotExtendSchedule",
+    });
+
+    await expect(actions.topUpFees({
+      txId: MOCK_GENLAYER_TX_ID,
+      value: 1n,
+      distribution: {},
+    })).rejects.toThrow(/TopUpCannotExtendSchedule/);
+  });
+
+  it("returns the Studio envelope hash for external-wallet fee management calls after its receipt", async () => {
     const request = vi.fn().mockImplementation(async ({method}: {method: string}) => {
       if (method === "eth_gasPrice") return "0x1";
       if (method === "eth_sendTransaction") return MOCK_EVM_TX_HASH;
       throw new Error(`Unexpected RPC method: ${method}`);
     });
-    const waitForTransactionReceipt = vi.fn();
+    const waitForTransactionReceipt = vi.fn().mockResolvedValue({status: "success", logs: []});
     const client = {
       chain: {
         id: 61_127,
@@ -2440,7 +2571,11 @@ describe("contractActions fee management", () => {
     expect(request).toHaveBeenCalledWith(expect.objectContaining({
       method: "eth_sendTransaction",
     }));
-    expect(waitForTransactionReceipt).not.toHaveBeenCalled();
+    expect(waitForTransactionReceipt).toHaveBeenCalledWith({
+      hash: MOCK_EVM_TX_HASH,
+      retryCount: 120,
+      retryDelay: 500,
+    });
   });
 });
 
@@ -2517,20 +2652,26 @@ describe("contractActions train lifecycle batches", () => {
   });
 });
 
-/** Current Studio entrypoints intentionally remain independent of the v0.6 train. */
+/** Studio mirrors the v0.6 decision-bound transaction entrypoints. */
 const CONSENSUS_MAIN_STUDIO_ABI = [
   {
     type: "function" as const,
     name: "submitAppeal",
     stateMutability: "payable" as const,
-    inputs: [{name: "_txId", type: "bytes32"}],
+    inputs: [
+      {name: "_txId", type: "bytes32"},
+      {name: "_expectedDecisionId", type: "uint256"},
+    ],
     outputs: [],
   },
   {
     type: "function" as const,
     name: "finalizeTransaction",
     stateMutability: "nonpayable" as const,
-    inputs: [{name: "_txId", type: "bytes32"}],
+    inputs: [
+      {name: "_txId", type: "bytes32"},
+      {name: "_expectedDecisionId", type: "uint256"},
+    ],
     outputs: [],
   },
 ] as const;
@@ -2542,6 +2683,7 @@ const FEE_MANAGEMENT_STUDIO_ABI = [
     stateMutability: "payable" as const,
     inputs: [
       {name: "_txId", type: "bytes32"},
+      {name: "_expectedDecisionId", type: "uint256"},
       {name: "_feesDistribution", type: "tuple", components: FEES_DISTRIBUTION_COMPONENTS},
     ],
     outputs: [],
@@ -2549,9 +2691,9 @@ const FEE_MANAGEMENT_STUDIO_ABI = [
 ] as const;
 
 /**
- * Mirrors the localnet/studionet chain config: ConsensusMain and ConsensusData
- * resolve, but the fee manager, rounds storage, and appeals contracts carry no
- * address. Studio stays a consumer of this SDK without joining this train.
+ * Mirrors the localnet/studionet chain config. Studio exposes lifecycle and
+ * appeal-quote RPCs while fee manager, rounds, and appeals contract addresses
+ * remain absent from its chain definition.
  */
 const setupStudioLifecycleHarness = () => {
   const signTransaction = vi.fn().mockResolvedValue("0xsigned");
@@ -2586,12 +2728,30 @@ const setupStudioLifecycleHarness = () => {
     sendRawTransaction,
     request: vi.fn().mockImplementation(async ({method}: {method: string}) => {
       if (method === "eth_gasPrice") return "0x1";
+      if (method === "gen_getTransactionLifecycle") {
+        return {
+          storedStatusCode: 5,
+          projectedStatusCode: 5,
+          resolutionActionCode: 6,
+          resolutionSourceCode: 6,
+          decisionId: MOCK_DECISION_ID.toString(),
+          decisionActive: true,
+          evaluatedAt: "456",
+        };
+      }
+      if (method === "gen_estimateLatestAppealCharge") {
+        return {
+          decisionId: MOCK_DECISION_ID.toString(),
+          bond: "500",
+          funding: "734",
+          appealDeadline: "999",
+        };
+      }
       throw new Error(`Unexpected RPC method: ${method}`);
     }),
   };
 
-  // Any train lifecycle read here is a regression: current Studio is a consumer
-  // of this SDK, not a member of the resolution-kernel landing cut.
+  // Studio lifecycle identity comes from its protocol RPC, never an EVM read.
   const readContract = vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
     throw new Error(`Unexpected consensus read on Studio: ${functionName}`);
   });
@@ -2612,9 +2772,9 @@ const setupStudioLifecycleHarness = () => {
   };
 };
 
-describe("contractActions current Studio surface", () => {
-  it("encodes Studio's native submitAppeal(bytes32) without a train lifecycle read", async () => {
-    const {actions, signTransaction, readContract} = setupStudioLifecycleHarness();
+describe("contractActions Studio decision-bound surface", () => {
+  it("uses Studio's schedule-extending appeal path with the active decision id", async () => {
+    const {actions, signTransaction, readContract, client} = setupStudioLifecycleHarness();
 
     await expect(actions.appealTransaction({txId: MOCK_GENLAYER_TX_ID, value: 500n})).resolves.toBe(
       MOCK_GENLAYER_TX_ID,
@@ -2624,21 +2784,29 @@ describe("contractActions current Studio surface", () => {
     const txRequest = signTransaction.mock.calls[0][0];
     expect(txRequest.to).toBe(MAIN_CONTRACT_ADDRESS);
     expect(txRequest.value).toBe(500n);
-    const decoded = decodeFunctionData({abi: CONSENSUS_MAIN_STUDIO_ABI, data: txRequest.data});
-    expect(decoded.functionName).toBe("submitAppeal");
-    expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID]);
+    const decoded = decodeFunctionData({abi: FEE_MANAGEMENT_STUDIO_ABI as any, data: txRequest.data});
+    const [txId, decisionId, distribution] = decoded.args as any[];
+    expect(decoded.functionName).toBe("topUpAndSubmitAppeal");
+    expect(txId).toBe(MOCK_GENLAYER_TX_ID);
+    expect(decisionId).toBe(MOCK_DECISION_ID);
+    expect(distribution.appealRounds).toBe(0n);
+    expect(distribution.rotations).toEqual([0n]);
+    expect(client.request).toHaveBeenCalledWith({
+      method: "gen_getTransactionLifecycle",
+      params: [{txId: MOCK_GENLAYER_TX_ID}],
+    });
   });
 
-  it("defaults the Studio appeal value to zero when the caller omits it", async () => {
+  it("uses Studio's authoritative appeal quote when value is omitted", async () => {
     const {actions, signTransaction, readContract} = setupStudioLifecycleHarness();
 
     await actions.appealTransaction({txId: MOCK_GENLAYER_TX_ID});
 
     expect(readContract).not.toHaveBeenCalled();
-    expect(signTransaction.mock.calls[0][0].value).toBe(0n);
+    expect(signTransaction.mock.calls[0][0].value).toBe(1234n);
   });
 
-  it("encodes Studio's native topUpAndSubmitAppeal without a decision id", async () => {
+  it("encodes Studio topUpAndSubmitAppeal with the active decision id", async () => {
     const {actions, signTransaction, readContract} = setupStudioLifecycleHarness();
 
     const txId = await actions.topUpAndSubmitAppeal({
@@ -2652,13 +2820,14 @@ describe("contractActions current Studio surface", () => {
     const txRequest = signTransaction.mock.calls[0][0];
     expect(txRequest.value).toBe(1234n);
     const decoded = decodeFunctionData({abi: FEE_MANAGEMENT_STUDIO_ABI as any, data: txRequest.data});
-    const [decodedTxId, distribution] = decoded.args as any[];
+    const [decodedTxId, decisionId, distribution] = decoded.args as any[];
     expect(decodedTxId).toBe(MOCK_GENLAYER_TX_ID);
+    expect(decisionId).toBe(MOCK_DECISION_ID);
     expect(distribution.appealRounds).toBe(1n);
     expect(distribution.rotations).toEqual([0n, 1n]);
   });
 
-  it("encodes Studio's native finalizeTransaction(bytes32)", async () => {
+  it("encodes Studio finalizeTransaction with the active decision id", async () => {
     const {actions, signTransaction, readContract} = setupStudioLifecycleHarness();
 
     await expect(actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(
@@ -2671,27 +2840,21 @@ describe("contractActions current Studio surface", () => {
       data: signTransaction.mock.calls[0][0].data,
     });
     expect(decoded.functionName).toBe("finalizeTransaction");
-    expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID]);
+    expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID, MOCK_DECISION_ID]);
   });
 
-  it("reports that the current Studio has no authoritative appeal quote", async () => {
+  it("returns Studio's authoritative decision-bound appeal quote", async () => {
     const {actions, readContract} = setupStudioLifecycleHarness();
 
-    await expect(actions.getAppealCharge({txId: MOCK_GENLAYER_TX_ID})).rejects.toThrow(
-      /missing feeManagerContract\/roundsStorageContract/,
-    );
-    await expect(actions.getMinAppealBond({txId: MOCK_GENLAYER_TX_ID})).rejects.toThrow(
-      /missing feeManagerContract\/roundsStorageContract/,
-    );
+    await expect(actions.getAppealCharge({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(1234n);
+    await expect(actions.getMinAppealBond({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(1234n);
     expect(readContract).not.toHaveBeenCalled();
   });
 
-  it("reports the missing appeals contract from canAppeal", async () => {
+  it("uses Studio's appeal quote surface for canAppeal", async () => {
     const {actions, readContract} = setupStudioLifecycleHarness();
 
-    await expect(actions.canAppeal({txId: MOCK_GENLAYER_TX_ID})).rejects.toThrow(
-      /missing appealsContract/,
-    );
+    await expect(actions.canAppeal({txId: MOCK_GENLAYER_TX_ID})).resolves.toBe(true);
     expect(readContract).not.toHaveBeenCalled();
   });
 
@@ -2717,9 +2880,12 @@ describe("contractActions current Studio surface", () => {
       expect.objectContaining({functionName: "getTransactionLifecycle"}),
     );
     const decoded = decodeFunctionData({
-      abi: APPEAL_TRAIN_ABI,
+      abi: FEE_MANAGEMENT_ABI as any,
       data: signTransaction.mock.calls[0][0].data,
     });
-    expect(decoded.args).toEqual([MOCK_GENLAYER_TX_ID, MOCK_DECISION_ID]);
+    const [txId, decisionId] = decoded.args as any[];
+    expect(decoded.functionName).toBe("topUpAndSubmitAppeal");
+    expect(txId).toBe(MOCK_GENLAYER_TX_ID);
+    expect(decisionId).toBe(MOCK_DECISION_ID);
   });
 });

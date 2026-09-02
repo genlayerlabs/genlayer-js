@@ -37,9 +37,8 @@ const addTransactionParamsComponents = [
 ] as const;
 
 /**
- * Current Studio transaction surface. Fee-aware admission and top-up are
- * already live, while appeal and finalization remain decision-free. Studio's
- * decision-bound parity work is qualified and released independently.
+ * Studio transaction surface for the v0.6 consensus train. Appeals and
+ * finalization bind to the active decision identity just like contract nodes.
  */
 export const studioConsensusMainAbi = [
   {
@@ -72,6 +71,7 @@ export const studioConsensusMainAbi = [
     stateMutability: "payable",
     inputs: [
       {name: "_txId", type: "bytes32"},
+      {name: "_expectedDecisionId", type: "uint256"},
       {name: "_feesDistribution", type: "tuple", components: feesDistributionComponents},
     ],
     outputs: [],
@@ -80,14 +80,20 @@ export const studioConsensusMainAbi = [
     type: "function",
     name: "submitAppeal",
     stateMutability: "payable",
-    inputs: [{name: "_txId", type: "bytes32"}],
+    inputs: [
+      {name: "_txId", type: "bytes32"},
+      {name: "_expectedDecisionId", type: "uint256"},
+    ],
     outputs: [],
   },
   {
     type: "function",
     name: "finalizeTransaction",
     stateMutability: "nonpayable",
-    inputs: [{name: "_txId", type: "bytes32"}],
+    inputs: [
+      {name: "_txId", type: "bytes32"},
+      {name: "_expectedDecisionId", type: "uint256"},
+    ],
     outputs: [],
   },
 ] as const satisfies Abi;

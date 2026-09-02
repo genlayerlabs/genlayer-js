@@ -536,7 +536,9 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
     // InternalMessageProcessed indexes the child transaction ID, not its
     // parent. Find the EVM transactions that decided the parent first, then
     // inspect their receipts for the child-message events emitted alongside
-    // that decision.
+    // that decision. The event is emitted by MessagePayments, not
+    // ConsensusMain, so the decision receipt is the authoritative boundary
+    // and the event emitter address must not be restricted here.
     const decisionLogs = await publicClient.getLogs({
       address: consensusAddress,
       event: undefined,
@@ -553,17 +555,11 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
         publicClient.getTransactionReceipt({hash: transactionHash!}),
       ),
     );
-    const normalizedConsensusAddress = consensusAddress.toLowerCase();
-
     return [
       ...new Set(
         receipts.flatMap(receipt =>
           receipt.logs
-            .filter(
-              log =>
-                log.address.toLowerCase() === normalizedConsensusAddress &&
-                log.topics[0] === internalMessageProcessedTopic,
-            )
+            .filter(log => log.topics[0] === internalMessageProcessedTopic)
             .map(log => log.topics[1] as TransactionHash)
             .filter(Boolean),
         ),
