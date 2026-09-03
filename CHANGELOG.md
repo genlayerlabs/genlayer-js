@@ -1,5 +1,46 @@
 
 
+## [2.0.0-rc.1](https://github.com/genlayerlabs/genlayer-js/compare/v1.1.6...v2.0.0-rc.1) (2026-09-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* **calldata:** method-call calldata now uses the "" key instead of
+"method". Encoded bytes for every write/read/view/schema call change. Peers
+must run the v0.6 genvm-manager (or a node/studio build that expects the ""
+key).
+* **fees:** move wildcard callKey sentinel to keccak256(empty), deploy key = bytes32(0) (#190)
+* **fees:** estimation correctness, wait-for-decided semantics, v0.6 enum completeness (#187)
+
+### Features
+
+* **calldata:** move method-call key from "method" to "" (empty string) ([#192](https://github.com/genlayerlabs/genlayer-js/issues/192)) ([50a936c](https://github.com/genlayerlabs/genlayer-js/commit/50a936c4f0e436739851c8a4c47badcdd8c588dd))
+* epoch-zero SDK helpers (getCurrentEpoch, isValidatorBelowMinStake) ([#194](https://github.com/genlayerlabs/genlayer-js/issues/194)) ([a338ad5](https://github.com/genlayerlabs/genlayer-js/commit/a338ad5646b4b53cb2df418a25dbef20a8cb5f11))
+* **fees:** estimation correctness, wait-for-decided semantics, v0.6 enum completeness ([#187](https://github.com/genlayerlabs/genlayer-js/issues/187)) ([2af6928](https://github.com/genlayerlabs/genlayer-js/commit/2af6928e2587091fb33f5f703160c8a160606048))
+* **fees:** integrate v0.6 tooling ([#180](https://github.com/genlayerlabs/genlayer-js/issues/180)) ([75f90e2](https://github.com/genlayerlabs/genlayer-js/commit/75f90e2c47297416b7273b0fa3967e207c4c3a6f)), closes [#168](https://github.com/genlayerlabs/genlayer-js/issues/168) [genlayer-testing-suite#78](https://github.com/genlayerlabs/genlayer-testing-suite/issues/78) [genlayer-cli#297](https://github.com/genlayerlabs/genlayer-cli/issues/297) [#170](https://github.com/genlayerlabs/genlayer-js/issues/170) [#168](https://github.com/genlayerlabs/genlayer-js/issues/168) [#172](https://github.com/genlayerlabs/genlayer-js/issues/172) [#173](https://github.com/genlayerlabs/genlayer-js/issues/173) [#174](https://github.com/genlayerlabs/genlayer-js/issues/174) [#175](https://github.com/genlayerlabs/genlayer-js/issues/175) [#176](https://github.com/genlayerlabs/genlayer-js/issues/176) [#177](https://github.com/genlayerlabs/genlayer-js/issues/177)
+* proof-bearing validator joins (restores [#206](https://github.com/genlayerlabs/genlayer-js/issues/206), gated on its 4 companions) ([#208](https://github.com/genlayerlabs/genlayer-js/issues/208)) ([bae1eee](https://github.com/genlayerlabs/genlayer-js/commit/bae1eeeccedf0572047c59fc3d271794f83c4176)), closes [#207](https://github.com/genlayerlabs/genlayer-js/issues/207) [#1290](https://github.com/genlayerlabs/genlayer-js/issues/1290)
+* **release:** add Studio dev preview channel ([#217](https://github.com/genlayerlabs/genlayer-js/issues/217)) ([facd9e9](https://github.com/genlayerlabs/genlayer-js/commit/facd9e9dc9a289d0110fe3b5b1a14a2938fe6e01))
+* **sdk:** developer-NFT read/claim actions + nonce coercion fix ([#195](https://github.com/genlayerlabs/genlayer-js/issues/195)) ([60e8ca3](https://github.com/genlayerlabs/genlayer-js/commit/60e8ca3c253baa66f62e570ee4b4fdbd50cfa447))
+* **staking,vesting,accounts:** provider-lane writes + native transfer ([#200](https://github.com/genlayerlabs/genlayer-js/issues/200)) ([bf42f13](https://github.com/genlayerlabs/genlayer-js/commit/bf42f13a66a2bb762e5ef1065eb89789b9c45d4a))
+* vesting delegator actions + ABI ([#193](https://github.com/genlayerlabs/genlayer-js/issues/193)) ([6f691ce](https://github.com/genlayerlabs/genlayer-js/commit/6f691ce704092992216dce83e54447dbdeb8c3b2)), closes [#1154](https://github.com/genlayerlabs/genlayer-js/issues/1154)
+
+
+### Bug Fixes
+
+* align SDK consumers with the resolution-kernel train ([#212](https://github.com/genlayerlabs/genlayer-js/issues/212)) ([d7d3262](https://github.com/genlayerlabs/genlayer-js/commit/d7d32627e036cf57600558a099bb589ccc5c8d2a))
+* build package during git prepare ([#198](https://github.com/genlayerlabs/genlayer-js/issues/198)) ([5788928](https://github.com/genlayerlabs/genlayer-js/commit/57889281db1e34df49abcf6129ffe6f347e4de4d))
+* **fees:** add exact quote and decision parity ([#214](https://github.com/genlayerlabs/genlayer-js/issues/214)) ([b79622d](https://github.com/genlayerlabs/genlayer-js/commit/b79622d3ce79ffd6e579c1d1ec1f68fe13cc8ac1))
+* **fees:** move wildcard callKey sentinel to keccak256(empty), deploy key = bytes32(0) ([#190](https://github.com/genlayerlabs/genlayer-js/issues/190)) ([7679ea0](https://github.com/genlayerlabs/genlayer-js/commit/7679ea064f6a3e8348b485d5b76013791c6fbd6e))
+* include execution budget floor in fee defaults ([#186](https://github.com/genlayerlabs/genlayer-js/issues/186)) ([02eeabc](https://github.com/genlayerlabs/genlayer-js/commit/02eeabc9765de3768724a18f7c4fd9c1db0bb667))
+* make git install build script self contained ([#197](https://github.com/genlayerlabs/genlayer-js/issues/197)) ([289839d](https://github.com/genlayerlabs/genlayer-js/commit/289839d13183013eac050e052999d45d392e09e0))
+* resolve triggered transaction IDs from decision receipts ([#202](https://github.com/genlayerlabs/genlayer-js/issues/202)) ([0b7e3bd](https://github.com/genlayerlabs/genlayer-js/commit/0b7e3bd63aeab25beaf63c14956af6a458f56b06))
+* support proof-bearing validator joins ([#206](https://github.com/genlayerlabs/genlayer-js/issues/206)) ([6f12738](https://github.com/genlayerlabs/genlayer-js/commit/6f1273885567ff5cda77b7459edfd6666c5859d0))
+
+
+### Reverts
+
+* Revert "fix: support proof-bearing validator joins (#206)" (#207) ([7666f0b](https://github.com/genlayerlabs/genlayer-js/commit/7666f0b73987aa75b7fcd1d62c2759364ce36824)), closes [#206](https://github.com/genlayerlabs/genlayer-js/issues/206) [#207](https://github.com/genlayerlabs/genlayer-js/issues/207)
+
 ## 1.1.8 (2026-05-06)
 
 
