@@ -486,6 +486,46 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(txRequest.gas).toBe(2_000_000n);
   });
 
+  it("rejects a zero gas override before any transaction preparation", async () => {
+    const signTransaction = vi.fn().mockRejectedValue(new Error("stop_after_encoding"));
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_V5,
+      signTransactionMock: signTransaction,
+    });
+
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        value: 0n,
+        gas: 0n,
+      }),
+    ).rejects.toThrow("gas must be greater than zero.");
+
+    expect(estimateTransactionGas).not.toHaveBeenCalled();
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects a negative gas override before any transaction preparation", async () => {
+    const signTransaction = vi.fn().mockRejectedValue(new Error("stop_after_encoding"));
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_V5,
+      signTransactionMock: signTransaction,
+    });
+
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        value: 0n,
+        gas: -1n,
+      }),
+    ).rejects.toThrow("gas must be greater than zero.");
+
+    expect(estimateTransactionGas).not.toHaveBeenCalled();
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
+
   it("still estimates and applies headroom when no gas override is given (#402)", async () => {
     const signTransaction = vi.fn().mockRejectedValue(new Error("stop_after_encoding"));
     const {actions, estimateTransactionGas} = setupWriteContractHarness({

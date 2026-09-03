@@ -2013,6 +2013,9 @@ const _sendTransaction = async ({
   if (transactionVariants.length === 0) {
     throw new Error("No transaction variants available to send.");
   }
+  if (gasOverride !== undefined && gasOverride <= 0n) {
+    throw new Error("gas must be greater than zero.");
+  }
 
   const validatedSenderAccount = validateAccount(senderAccount);
   const nonce = await client.getCurrentNonce({address: validatedSenderAccount.address});
