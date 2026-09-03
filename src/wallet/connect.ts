@@ -1,5 +1,6 @@
 import {localnet} from "@/chains/localnet";
 import {studionet} from "@/chains/studionet";
+import {studioDevnet} from "@/chains/studioDevnet";
 import {testnetAsimov} from "@/chains/testnetAsimov";
 import {testnetBradbury} from "@/chains/testnetBradbury";
 import {GenLayerClient, GenLayerChain} from "@/types";
@@ -10,6 +11,7 @@ import {snapID} from "@/config/snapID";
 const networks = {
   localnet,
   studionet,
+  studioDevnet,
   testnetAsimov,
   testnetBradbury,
 };

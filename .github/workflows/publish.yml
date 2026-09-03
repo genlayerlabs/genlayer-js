@@ -31,21 +31,23 @@ jobs:
 
       - run: npm ci
 
-      - name: Verify tag matches package.json version
+      - name: Verify tag and resolve npm dist-tag
+        id: version
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          PKG_VERSION="$(node -p "require('./package.json').version")"
-          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "Tag ($TAG_VERSION) and package.json ($PKG_VERSION) disagree — refusing to publish." >&2
-            echo "Re-cut the release via scripts/release.sh so the tag and the committed version match." >&2
+          if [ "${GITHUB_REF_TYPE:-}" != "tag" ]; then
+            echo "Publish must run from a git tag. Current ref type: ${GITHUB_REF_TYPE:-unknown}" >&2
             exit 1
           fi
+
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          node scripts/resolve-release-channel.mjs "$TAG_VERSION" "$PKG_VERSION" >> "$GITHUB_OUTPUT"
           echo "Tag $GITHUB_REF_NAME matches package.json $PKG_VERSION."
 
       - run: npm run build
 
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        run: npm publish --provenance --access public --tag "${{ steps.version.outputs.npm_dist_tag }}"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -63,6 +65,17 @@ jobs:
           if [ -z "$NOTES" ]; then
             NOTES="Release $GITHUB_REF_NAME"
           fi
+
+          NOTES="$NOTES
+
+          npm install genlayer-js@${{ steps.version.outputs.npm_dist_tag }}"
+
+          RELEASE_FLAGS=()
+          if [ "${{ steps.version.outputs.is_prerelease }}" = "true" ]; then
+            RELEASE_FLAGS+=(--prerelease)
+          fi
+
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
-            --notes "$NOTES"
+            --notes "$NOTES" \
+            "${RELEASE_FLAGS[@]}"
