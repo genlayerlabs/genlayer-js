@@ -15,6 +15,7 @@ import {contractActions} from "../contracts/actions";
 import {receiptActions, transactionActions} from "../transactions/actions";
 import {walletActions as genlayerWalletActions} from "../wallet/actions";
 import {stakingActions} from "../staking/actions";
+import {vestingActions} from "../vesting/actions";
 import {GenLayerClient, GenLayerChain} from "@/types";
 import {chainActions} from "@/chains/actions";
 import {localnet} from "@/chains";
@@ -147,7 +148,7 @@ export const createClient = (config: ClientConfig = {chain: localnet}): GenLayer
   const clientWithBasicActions = baseClient
     .extend(publicActions)
     .extend(walletActions)
-    .extend(client => accountActions(client as unknown as GenLayerClient<GenLayerChain>));
+    .extend(client => accountActions(client as unknown as GenLayerClient<GenLayerChain>, publicClient));
 
   const clientWithTransactionActions = {
     ...clientWithBasicActions,
@@ -169,6 +170,7 @@ export const createClient = (config: ClientConfig = {chain: localnet}): GenLayer
   const finalClient = {
     ...clientWithReceiptActions,
     ...stakingActions(clientWithReceiptActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
+    ...vestingActions(clientWithReceiptActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
   } as unknown as GenLayerClient<GenLayerChain>;
 
   return finalClient;

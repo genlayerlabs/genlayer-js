@@ -48,12 +48,42 @@ export const VALIDATOR_WALLET_ABI = [
       },
     ],
   },
+  // Two-step operator rotation (CON-715). The possession proof is verified by
+  // the wallet itself, so its registrar is the wallet address rather than the
+  // ValidatorWalletFactory.
   {
-    name: "setOperator",
+    name: "initiateOperatorTransfer",
     type: "function",
     stateMutability: "nonpayable",
-    inputs: [{name: "_operator", type: "address"}],
+    inputs: [
+      {name: "_newOperatorPubKey", type: "uint256[2]"},
+      {name: "_possessionProof", type: "bytes"},
+    ],
     outputs: [],
+  },
+  {
+    name: "completeOperatorTransfer",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    name: "cancelOperatorTransfer",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    name: "getPendingOperator",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      {name: "", type: "address"},
+      {name: "", type: "uint256"},
+    ],
   },
   {
     name: "setIdentity",
@@ -94,38 +124,6 @@ export const VALIDATOR_WALLET_ABI = [
     inputs: [],
     outputs: [],
   },
-  // Two-step operator transfer
-  {
-    name: "initiateOperatorTransfer",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{name: "_newOperator", type: "address"}],
-    outputs: [],
-  },
-  {
-    name: "completeOperatorTransfer",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [],
-    outputs: [],
-  },
-  {
-    name: "cancelOperatorTransfer",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [],
-    outputs: [],
-  },
-  {
-    name: "getPendingOperator",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [
-      {name: "", type: "address"},
-      {name: "", type: "uint256"},
-    ],
-  },
   {
     name: "getOperator",
     type: "function",
@@ -133,6 +131,22 @@ export const VALIDATOR_WALLET_ABI = [
     inputs: [],
     outputs: [{name: "", type: "address"}],
   },
+] as const;
+
+const STAKING_CLAIM_COMPONENTS = [
+  {name: "quantity", type: "uint120"},
+  {name: "offset", type: "uint120"},
+  {name: "commit", type: "uint256"},
+] as const;
+
+const STAKING_COMMIT_COMPONENTS = [
+  {name: "input", type: "uint256"},
+  {name: "output", type: "uint256"},
+  {name: "outstanding", type: "uint120"},
+  {name: "epoch", type: "uint64"},
+  {name: "linkToNextCommit", type: "uint56"},
+  {name: "priced", type: "bool"},
+  {name: "fragmented", type: "bool"},
 ] as const;
 
 export const STAKING_ABI = [
@@ -494,14 +508,14 @@ export const STAKING_ABI = [
 
   // Functions
   {
-    name: "activeValidators",
+    name: "selectableValidators",
     type: "function",
     stateMutability: "view",
     inputs: [],
     outputs: [{name: "", type: "address[]"}],
   },
   {
-    name: "activeValidatorsCount",
+    name: "selectableValidatorsCount",
     type: "function",
     stateMutability: "view",
     inputs: [],
@@ -565,20 +579,12 @@ export const STAKING_ABI = [
       {
         name: "claim_",
         type: "tuple",
-        components: [
-          {name: "quantity", type: "uint256"},
-          {name: "commit", type: "uint256"},
-        ],
+        components: STAKING_CLAIM_COMPONENTS,
       },
       {
         name: "commit_",
         type: "tuple",
-        components: [
-          {name: "input", type: "uint256"},
-          {name: "output", type: "uint256"},
-          {name: "epoch", type: "uint256"},
-          {name: "linkToNextCommit", type: "uint256"},
-        ],
+        components: STAKING_COMMIT_COMPONENTS,
       },
     ],
   },
@@ -595,12 +601,7 @@ export const STAKING_ABI = [
       {
         name: "commit_",
         type: "tuple",
-        components: [
-          {name: "input", type: "uint256"},
-          {name: "output", type: "uint256"},
-          {name: "epoch", type: "uint256"},
-          {name: "linkToNextCommit", type: "uint256"},
-        ],
+        components: STAKING_COMMIT_COMPONENTS,
       },
     ],
   },
@@ -644,20 +645,12 @@ export const STAKING_ABI = [
       {
         name: "claim_",
         type: "tuple",
-        components: [
-          {name: "quantity", type: "uint256"},
-          {name: "commit", type: "uint256"},
-        ],
+        components: STAKING_CLAIM_COMPONENTS,
       },
       {
         name: "commit_",
         type: "tuple",
-        components: [
-          {name: "input", type: "uint256"},
-          {name: "output", type: "uint256"},
-          {name: "epoch", type: "uint256"},
-          {name: "linkToNextCommit", type: "uint256"},
-        ],
+        components: STAKING_COMMIT_COMPONENTS,
       },
     ],
   },
@@ -674,12 +667,7 @@ export const STAKING_ABI = [
       {
         name: "commit_",
         type: "tuple",
-        components: [
-          {name: "input", type: "uint256"},
-          {name: "output", type: "uint256"},
-          {name: "epoch", type: "uint256"},
-          {name: "linkToNextCommit", type: "uint256"},
-        ],
+        components: STAKING_COMMIT_COMPONENTS,
       },
     ],
   },
@@ -1194,12 +1182,7 @@ export const STAKING_ABI = [
       {
         name: "commit_",
         type: "tuple",
-        components: [
-          {name: "input", type: "uint256"},
-          {name: "output", type: "uint256"},
-          {name: "epoch", type: "uint256"},
-          {name: "linkToNextCommit", type: "uint256"},
-        ],
+        components: STAKING_COMMIT_COMPONENTS,
       },
     ],
   },
@@ -1222,12 +1205,7 @@ export const STAKING_ABI = [
       {
         name: "commit_",
         type: "tuple",
-        components: [
-          {name: "input", type: "uint256"},
-          {name: "output", type: "uint256"},
-          {name: "epoch", type: "uint256"},
-          {name: "linkToNextCommit", type: "uint256"},
-        ],
+        components: STAKING_COMMIT_COMPONENTS,
       },
     ],
   },
@@ -1249,14 +1227,10 @@ export const STAKING_ABI = [
     name: "validatorJoin",
     type: "function",
     stateMutability: "payable",
-    inputs: [{name: "_operator", type: "address"}],
-    outputs: [{name: "", type: "address"}],
-  },
-  {
-    name: "validatorJoin",
-    type: "function",
-    stateMutability: "payable",
-    inputs: [],
+    inputs: [
+      {name: "_operatorPubKey", type: "uint256[2]"},
+      {name: "_possessionProof", type: "bytes"},
+    ],
     outputs: [{name: "", type: "address"}],
   },
   {
@@ -1337,10 +1311,7 @@ export const STAKING_ABI = [
         name: "",
         type: "tuple",
         components: [
-          {name: "left", type: "address"},
-          {name: "right", type: "address"},
-          {name: "parent", type: "address"},
-          {name: "eBanned", type: "uint256"},
+                      {name: "eBanned", type: "uint256"},
           {name: "ePrimed", type: "uint256"},
           {name: "vStake", type: "uint256"},
           {name: "vShares", type: "uint256"},
@@ -1363,10 +1334,7 @@ export const STAKING_ABI = [
         name: "",
         type: "tuple",
         components: [
-          {name: "left", type: "address"},
-          {name: "right", type: "address"},
-          {name: "parent", type: "address"},
-          {name: "eBanned", type: "uint256"},
+                      {name: "eBanned", type: "uint256"},
           {name: "ePrimed", type: "uint256"},
           {name: "vStake", type: "uint256"},
           {name: "vShares", type: "uint256"},
@@ -1389,10 +1357,7 @@ export const STAKING_ABI = [
         name: "",
         type: "tuple",
         components: [
-          {name: "left", type: "address"},
-          {name: "right", type: "address"},
-          {name: "parent", type: "address"},
-          {name: "eBanned", type: "uint256"},
+                      {name: "eBanned", type: "uint256"},
           {name: "ePrimed", type: "uint256"},
           {name: "vStake", type: "uint256"},
           {name: "vShares", type: "uint256"},
@@ -1418,12 +1383,7 @@ export const STAKING_ABI = [
       {
         name: "commit_",
         type: "tuple",
-        components: [
-          {name: "input", type: "uint256"},
-          {name: "output", type: "uint256"},
-          {name: "epoch", type: "uint256"},
-          {name: "linkToNextCommit", type: "uint256"},
-        ],
+        components: STAKING_COMMIT_COMPONENTS,
       },
     ],
   },
@@ -1439,12 +1399,7 @@ export const STAKING_ABI = [
       {
         name: "commit_",
         type: "tuple",
-        components: [
-          {name: "input", type: "uint256"},
-          {name: "output", type: "uint256"},
-          {name: "epoch", type: "uint256"},
-          {name: "linkToNextCommit", type: "uint256"},
-        ],
+        components: STAKING_COMMIT_COMPONENTS,
       },
     ],
   },
@@ -1482,13 +1437,6 @@ export const STAKING_ABI = [
     stateMutability: "view",
     inputs: [],
     outputs: [{name: "", type: "uint256"}],
-  },
-  {
-    name: "validatorsRoot",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{name: "", type: "address"}],
   },
 ] as const;
 

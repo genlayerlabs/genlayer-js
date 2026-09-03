@@ -1,7 +1,7 @@
 {
   "name": "genlayer-js",
   "type": "module",
-  "version": "1.1.6",
+  "version": "2.0.0-rc.1",
   "description": "GenLayer JavaScript SDK",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -11,14 +11,16 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup src/index.ts src/chains/index.ts src/types/index.ts --format cjs,esm --dts --splitting --out-dir dist --no-treeshake",
-    "build:watch": "tsup src/index.ts src/chains/index.ts src/types/index.ts --format cjs,esm --dts --splitting --out-dir dist --no-treeshake --watch",
+    "prepare": "npm run build",
+    "prepack": "npm run build",
+    "build": "node scripts/run-tsup-build.mjs",
+    "build:watch": "node scripts/run-tsup-build.mjs --watch",
     "test": "vitest --typecheck",
     "test:smoke": "vitest run --config vitest.smoke.config.ts",
     "test:watch": "vitest --watch",
     "lint": "eslint . --fix --ext .ts",
     "check:chains": "node scripts/check-chains-drift.mjs",
-    "release": "release-it --ci",
+    "release": "./scripts/release.sh",
     "docs": "node scripts/generate-api-docs.mjs"
   },
   "exports": {

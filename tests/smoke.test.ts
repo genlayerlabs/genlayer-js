@@ -126,12 +126,12 @@ describe(`Testnet ${name} - Staking (read-only)`, () => {
 
   it("getQuarantinedValidators returns array", async () => {
     // This calls getValidatorQuarantineList() — the v0.5 renamed function
-    const quarantined = await (client as any).getQuarantinedValidators();
+    const quarantined = await client.getQuarantinedValidators();
     expect(Array.isArray(quarantined)).toBe(true);
   }, TIMEOUT);
 
   it("getBannedValidators returns array", async () => {
-    const banned = await (client as any).getBannedValidators();
+    const banned = await client.getBannedValidators();
     expect(Array.isArray(banned)).toBe(true);
     for (const b of banned) {
       expect(b.validator).toMatch(/^0x[0-9a-fA-F]{40}$/);
