@@ -21,7 +21,9 @@
 
 module.exports = {
   git: {
-    commitMessage: "Release v${version} [skip ci]",
+    // Keep release commits CI-active: GitHub also suppresses tag-triggered
+    // workflows when the tagged commit contains a skip directive.
+    commitMessage: "Release v${version}",
     tagName: "v${version}",
     requireCleanWorkingDir: false,
     requireUpstream: false,
