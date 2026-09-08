@@ -26,7 +26,7 @@ const VALIDATOR_VIEW_COMPONENTS = [
   {name: "dShares", type: "uint256"},
   {name: "vDeposit", type: "uint256"},
   {name: "vWithdrawal", type: "uint256"},
-  {name: "live", type: "bool"},
+  {name: "hasUnclaimedRewards", type: "bool"},
 ];
 
 const view = (name: string) =>
@@ -105,7 +105,7 @@ describe("staking ValidatorView train layout", () => {
       dShares: 6n,
       vDeposit: 7n,
       vWithdrawal: 8n,
-      live: true,
+      hasUnclaimedRewards: true,
     }] as any);
 
     const decoded = decodeFunctionResult({
@@ -119,7 +119,7 @@ describe("staking ValidatorView train layout", () => {
       ePrimed: 2n,
       vStake: 3n,
       dStake: 5n,
-      live: true,
+      hasUnclaimedRewards: true,
     });
     expect(decoded).not.toHaveProperty("left");
     expect(decoded).not.toHaveProperty("right");
