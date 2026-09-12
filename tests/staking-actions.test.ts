@@ -273,7 +273,7 @@ describe("stakingActions validator reads", () => {
           dShares: 0n,
           vDeposit: 0n,
           vWithdrawal: 0n,
-          live: true,
+          hasUnclaimedRewards: true,
         };
       }
       if (functionName === "owner") return ACCOUNT_ADDRESS;
