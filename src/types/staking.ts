@@ -25,7 +25,7 @@ export interface ValidatorView {
   dShares: bigint;
   vDeposit: bigint;
   vWithdrawal: bigint;
-  live: boolean;
+  hasUnclaimedRewards: boolean;
 }
 
 export interface ValidatorIdentity {
@@ -55,7 +55,7 @@ export interface ValidatorInfo {
   vWithdrawal: string;
   vWithdrawalRaw: bigint;
   ePrimed: bigint;
-  live: boolean;
+  hasUnclaimedRewards: boolean;
   banned: boolean;
   bannedEpoch?: bigint;
   needsPriming: boolean;

@@ -658,7 +658,7 @@ export const stakingActions = (
         vWithdrawal: formatStakingAmount(view.vWithdrawal),
         vWithdrawalRaw: view.vWithdrawal,
         ePrimed: view.ePrimed,
-        live: view.live,
+        hasUnclaimedRewards: view.hasUnclaimedRewards,
         banned,
         bannedEpoch: banned ? view.eBanned : undefined,
         needsPriming,
