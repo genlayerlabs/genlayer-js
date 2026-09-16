@@ -1,0 +1,459 @@
+{
+  "repository": "genlayerlabs/genlayer-consensus",
+  "revision": "c4749a42095bcfb9de69bef4f4fd5e9a6a2f86f2",
+  "validatorView": {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_validator",
+        "type": "address"
+      }
+    ],
+    "name": "validatorView",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "eBanned",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "ePrimed",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "vStake",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "vShares",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "dStake",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "dShares",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "vDeposit",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "vWithdrawal",
+            "type": "uint256"
+          },
+          {
+            "internalType": "bool",
+            "name": "hasUnclaimedRewards",
+            "type": "bool"
+          }
+        ],
+        "internalType": "struct IGenLayerStaking.ValidatorView",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  "delegatorDeposit": {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_delegator",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "_validator",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_index",
+        "type": "uint256"
+      }
+    ],
+    "name": "delegatorDeposit",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "quantity",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "offset",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "commit",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct IGenLayerStaking.Claim",
+        "name": "claim_",
+        "type": "tuple"
+      },
+      {
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "input",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "output",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "outstanding",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint64",
+            "name": "epoch",
+            "type": "uint64"
+          },
+          {
+            "internalType": "uint56",
+            "name": "linkToNextCommit",
+            "type": "uint56"
+          },
+          {
+            "internalType": "bool",
+            "name": "priced",
+            "type": "bool"
+          },
+          {
+            "internalType": "bool",
+            "name": "fragmented",
+            "type": "bool"
+          }
+        ],
+        "internalType": "struct IGenLayerStaking.Commit",
+        "name": "commit_",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  "getTransactionLifecycle": {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "_txId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_timestamp",
+        "type": "uint256"
+      }
+    ],
+    "name": "getTransactionLifecycle",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internalType": "enum ITransactions.TransactionStatus",
+            "name": "storedStatus",
+            "type": "uint8"
+          },
+          {
+            "components": [
+              {
+                "internalType": "bytes32",
+                "name": "txId",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "enum ITransactions.TransactionStatus",
+                "name": "storedStatus",
+                "type": "uint8"
+              },
+              {
+                "internalType": "enum ITransactions.TransactionStatus",
+                "name": "projectedStatus",
+                "type": "uint8"
+              },
+              {
+                "internalType": "enum IIdlenessPhase.ResolutionAction",
+                "name": "action",
+                "type": "uint8"
+              },
+              {
+                "internalType": "enum ITransactions.ResultType",
+                "name": "result",
+                "type": "uint8"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "resultHash",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "enum ITransactionManager.ResolutionSource",
+                "name": "source",
+                "type": "uint8"
+              },
+              {
+                "internalType": "uint256",
+                "name": "sourceRound",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "sourceGeneration",
+                "type": "uint256"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "sourceRoundContextHash",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "roundPlanHash",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "uint256",
+                "name": "resultRound",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "resultGeneration",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "basisDecisionId",
+                "type": "uint256"
+              },
+              {
+                "internalType": "enum ITransactionManager.ResolutionContext",
+                "name": "context",
+                "type": "uint8"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "attemptId",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "uint256",
+                "name": "boundaryAt",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "evaluatedAt",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "snapshotBlock",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "decisionWindow",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "appealDeadline",
+                "type": "uint256"
+              },
+              {
+                "internalType": "bool",
+                "name": "materializesDecision",
+                "type": "bool"
+              },
+              {
+                "internalType": "bool",
+                "name": "actionOutcomeDeterministic",
+                "type": "bool"
+              },
+              {
+                "internalType": "bool",
+                "name": "nonCurrentEvaluation",
+                "type": "bool"
+              }
+            ],
+            "internalType": "struct IIdlenessPhase.ResolutionPlan",
+            "name": "resolution",
+            "type": "tuple"
+          },
+          {
+            "components": [
+              {
+                "internalType": "bool",
+                "name": "exists",
+                "type": "bool"
+              },
+              {
+                "internalType": "uint256",
+                "name": "decisionId",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "basisDecisionId",
+                "type": "uint256"
+              },
+              {
+                "internalType": "enum ITransactionManager.ResolutionContext",
+                "name": "context",
+                "type": "uint8"
+              },
+              {
+                "internalType": "enum ITransactionManager.ResolutionSource",
+                "name": "source",
+                "type": "uint8"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "sourceAttemptId",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "enum ITransactions.TransactionStatus",
+                "name": "sourceStatus",
+                "type": "uint8"
+              },
+              {
+                "internalType": "enum ITransactions.TransactionStatus",
+                "name": "status",
+                "type": "uint8"
+              },
+              {
+                "internalType": "uint256",
+                "name": "sourceRound",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "sourceGeneration",
+                "type": "uint256"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "sourceRoundContextHash",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "roundPlanHash",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "uint256",
+                "name": "resultRound",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "resultGeneration",
+                "type": "uint256"
+              },
+              {
+                "internalType": "enum ITransactions.ResultType",
+                "name": "result",
+                "type": "uint8"
+              },
+              {
+                "internalType": "bytes32",
+                "name": "resultHash",
+                "type": "bytes32"
+              },
+              {
+                "internalType": "uint256",
+                "name": "effectiveAt",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "materializedAt",
+                "type": "uint256"
+              },
+              {
+                "internalType": "uint256",
+                "name": "appealDeadline",
+                "type": "uint256"
+              }
+            ],
+            "internalType": "struct ITransactionManager.DecisionRecord",
+            "name": "latestDecision",
+            "type": "tuple"
+          },
+          {
+            "internalType": "bool",
+            "name": "decisionActive",
+            "type": "bool"
+          },
+          {
+            "internalType": "uint256",
+            "name": "executionGeneration",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct ConsensusData.TransactionLifecycle",
+        "name": "lifecycle",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  "internalMessageEffectCommitted": {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "txId",
+        "type": "bytes32"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "logicalOccurrence",
+        "type": "bytes32"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "generationEffectId",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "childTxId",
+        "type": "bytes32"
+      }
+    ],
+    "name": "InternalMessageEffectCommitted",
+    "type": "event"
+  }
+}
