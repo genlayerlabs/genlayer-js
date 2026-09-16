@@ -424,5 +424,36 @@
     ],
     "stateMutability": "view",
     "type": "function"
+  },
+  "internalMessageEffectCommitted": {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "txId",
+        "type": "bytes32"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "logicalOccurrence",
+        "type": "bytes32"
+      },
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "generationEffectId",
+        "type": "bytes32"
+      },
+      {
+        "indexed": false,
+        "internalType": "bytes32",
+        "name": "childTxId",
+        "type": "bytes32"
+      }
+    ],
+    "name": "InternalMessageEffectCommitted",
+    "type": "event"
   }
 }
