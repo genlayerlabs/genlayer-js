@@ -4,14 +4,14 @@ import {STAKING_ABI} from "../src/abi/staking";
 
 const STAKE = 100000000000000000n;
 const CLAIM_COMPONENTS = [
-  {name: "quantity", type: "uint120"},
-  {name: "offset", type: "uint120"},
+  {name: "quantity", type: "uint256"},
+  {name: "offset", type: "uint256"},
   {name: "commit", type: "uint256"},
 ];
 const COMMIT_COMPONENTS = [
   {name: "input", type: "uint256"},
   {name: "output", type: "uint256"},
-  {name: "outstanding", type: "uint120"},
+  {name: "outstanding", type: "uint256"},
   {name: "epoch", type: "uint64"},
   {name: "linkToNextCommit", type: "uint56"},
   {name: "priced", type: "bool"},
@@ -94,7 +94,7 @@ describe("staking ValidatorView train layout", () => {
     }
   });
 
-  it("decodes raw train validator bytes without removed tree links", () => {
+  it.each([true, false])("decodes raw train validator bytes with rewards=%s", hasUnclaimedRewards => {
     const output = view("validatorView").outputs[0];
     const encoded = encodeAbiParameters([output], [{
       eBanned: 1n,
@@ -105,7 +105,7 @@ describe("staking ValidatorView train layout", () => {
       dShares: 6n,
       vDeposit: 7n,
       vWithdrawal: 8n,
-      hasUnclaimedRewards: true,
+      hasUnclaimedRewards,
     }] as any);
 
     const decoded = decodeFunctionResult({
@@ -119,8 +119,9 @@ describe("staking ValidatorView train layout", () => {
       ePrimed: 2n,
       vStake: 3n,
       dStake: 5n,
-      hasUnclaimedRewards: true,
+      hasUnclaimedRewards,
     });
+    expect(decoded).not.toHaveProperty("live");
     expect(decoded).not.toHaveProperty("left");
     expect(decoded).not.toHaveProperty("right");
     expect(decoded).not.toHaveProperty("parent");

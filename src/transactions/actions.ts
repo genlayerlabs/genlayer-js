@@ -41,6 +41,7 @@ type RawProtocolLifecycle = {
   decisionId: unknown;
   decisionActive: unknown;
   evaluatedAt: unknown;
+  executionGeneration?: unknown;
 };
 
 const protocolInteger = (value: unknown, label: string): number => {
@@ -76,6 +77,14 @@ const protocolDecisionId = (value: unknown, active: boolean): string | null => {
   return BigInt(decimal).toString();
 };
 
+const protocolGeneration = (value: unknown): string => {
+  if ((typeof value !== "bigint" && typeof value !== "string" && typeof value !== "number") ||
+      (typeof value === "number" && !Number.isSafeInteger(value)) || !/^\d+$/.test(String(value))) {
+    throw new Error(`Invalid protocol lifecycle executionGeneration: ${String(value)}`);
+  }
+  return BigInt(value).toString();
+};
+
 const normalizeProtocolLifecycle = (raw: RawProtocolLifecycle): TransactionProtocolLifecycle => {
   const storedStatusCode = protocolInteger(raw.storedStatusCode, "storedStatusCode");
   const projectedStatusCode = protocolInteger(raw.projectedStatusCode, "projectedStatusCode");
@@ -109,6 +118,9 @@ const normalizeProtocolLifecycle = (raw: RawProtocolLifecycle): TransactionProto
     decisionId: protocolDecisionId(raw.decisionId, raw.decisionActive),
     decisionActive: raw.decisionActive,
     evaluatedAt: protocolInteger(raw.evaluatedAt, "evaluatedAt"),
+    ...(raw.executionGeneration === undefined ? {} : {
+      executionGeneration: protocolGeneration(raw.executionGeneration),
+    }),
   };
 };
 
@@ -369,6 +381,7 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
         decisionId: lifecycle.latestDecision.decisionId,
         decisionActive: lifecycle.decisionActive,
         evaluatedAt: lifecycle.resolution.evaluatedAt,
+        executionGeneration: lifecycle.executionGeneration,
       });
     },
   },

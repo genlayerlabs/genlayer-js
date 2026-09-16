@@ -293,6 +293,8 @@ export type TransactionProtocolLifecycle = {
   resolutionSourceCode: number;
   decisionId: string | null;
   decisionActive: boolean;
+  /** Current producer generation as an exact decimal string; absent on older Studio APIs. */
+  executionGeneration?: string;
   evaluatedAt: number;
 };
 

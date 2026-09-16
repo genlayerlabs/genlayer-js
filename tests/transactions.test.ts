@@ -164,7 +164,7 @@ describe("transaction enum maps", () => {
     const encoded = encodeFunctionResult({
       abi: CONSENSUS_DATA_TRAIN_ABI,
       functionName: "getTransactionLifecycle",
-      result: [5, resolution, latestDecision, true] as any,
+      result: [5, resolution, latestDecision, true, 9n] as any,
     });
 
     const decoded = decodeFunctionResult({
@@ -177,6 +177,7 @@ describe("transaction enum maps", () => {
     expect(decoded.resolution.projectedStatus).toBe(6);
     expect(decoded.resolution.action).toBe(6);
     expect(decoded.decisionActive).toBe(true);
+    expect(decoded.executionGeneration).toBe(9n);
   });
 });
 
@@ -795,6 +796,7 @@ describe("getTransaction train lifecycle", () => {
         storedStatus: 5,
         resolution: {projectedStatus: 6, action: 6, source: 11, evaluatedAt: 500n},
         latestDecision: {decisionId: 7n},
+        executionGeneration: 9007199254740993n,
         decisionActive: true,
       }),
     });
@@ -827,6 +829,7 @@ describe("getTransaction train lifecycle", () => {
       resolutionSource: "SelectionDepleted",
       resolutionSourceCode: 11,
       decisionId: "7",
+      executionGeneration: "9007199254740993",
       decisionActive: true,
       evaluatedAt: 500,
     });

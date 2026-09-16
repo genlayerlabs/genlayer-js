@@ -133,16 +133,17 @@ export const VALIDATOR_WALLET_ABI = [
   },
 ] as const;
 
+// Source: consensus c4749a42095bcfb9de69bef4f4fd5e9a6a2f86f2, abis/IGenLayerStaking.json.
 const STAKING_CLAIM_COMPONENTS = [
-  {name: "quantity", type: "uint120"},
-  {name: "offset", type: "uint120"},
+  {name: "quantity", type: "uint256"},
+  {name: "offset", type: "uint256"},
   {name: "commit", type: "uint256"},
 ] as const;
 
 const STAKING_COMMIT_COMPONENTS = [
   {name: "input", type: "uint256"},
   {name: "output", type: "uint256"},
-  {name: "outstanding", type: "uint120"},
+  {name: "outstanding", type: "uint256"},
   {name: "epoch", type: "uint64"},
   {name: "linkToNextCommit", type: "uint56"},
   {name: "priced", type: "bool"},
@@ -206,18 +207,9 @@ export const STAKING_ABI = [
     inputs: [],
   },
   {
-    name: "BurnFailed",
-    type: "event",
-    inputs: [
-      {name: "amount", type: "uint256", indexed: false},
-    ],
-  },
-  {
     name: "BurnToL1",
     type: "event",
-    inputs: [
-      {name: "amount", type: "uint256", indexed: false},
-    ],
+    inputs: [{name: "amount", type: "uint256", indexed: false}],
   },
   {
     name: "DelegatorClaim",
@@ -248,30 +240,12 @@ export const STAKING_ABI = [
   {
     name: "EpochAdvance",
     type: "event",
-    inputs: [
-      {name: "epoch", type: "uint256", indexed: false},
-    ],
+    inputs: [{name: "epoch", type: "uint256", indexed: false}],
   },
   {
     name: "EpochFinalize",
     type: "event",
-    inputs: [
-      {name: "epoch", type: "uint256", indexed: false},
-    ],
-  },
-  {
-    name: "EpochHasPendingTribunals",
-    type: "event",
-    inputs: [
-      {name: "epoch", type: "uint256", indexed: false},
-    ],
-  },
-  {
-    name: "EpochZeroEnded",
-    type: "event",
-    inputs: [
-      {name: "timestamp", type: "uint256", indexed: false},
-    ],
+    inputs: [{name: "epoch", type: "uint256", indexed: false}],
   },
   {
     name: "FeesReceived",
@@ -284,9 +258,7 @@ export const STAKING_ABI = [
   {
     name: "InflationInitiated",
     type: "event",
-    inputs: [
-      {name: "timestamp", type: "uint256", indexed: false},
-    ],
+    inputs: [{name: "timestamp", type: "uint256", indexed: false}],
   },
   {
     name: "InflationReceived",
@@ -308,72 +280,42 @@ export const STAKING_ABI = [
   {
     name: "SetDeepthought",
     type: "event",
-    inputs: [
-      {name: "deepthought", type: "address", indexed: false},
-    ],
+    inputs: [{name: "deepthought", type: "address", indexed: false}],
   },
   {
     name: "SetDelegatorMinimumStake",
     type: "event",
-    inputs: [
-      {name: "delegatorMinStake", type: "uint256", indexed: false},
-    ],
+    inputs: [{name: "delegatorMinStake", type: "uint256", indexed: false}],
   },
   {
     name: "SetEpochMinDuration",
     type: "event",
-    inputs: [
-      {name: "epochMinDuration", type: "uint256", indexed: false},
-    ],
+    inputs: [{name: "epochMinDuration", type: "uint256", indexed: false}],
   },
   {
     name: "SetEpochMinDurationThreshold",
     type: "event",
-    inputs: [
-      {name: "epochMinDurationThreshold", type: "uint256", indexed: false},
-    ],
+    inputs: [{name: "epochMinDurationThreshold", type: "uint256", indexed: false}],
   },
   {
     name: "SetEpochZeroMinDuration",
     type: "event",
-    inputs: [
-      {name: "epochZeroMinDuration", type: "uint256", indexed: false},
-    ],
-  },
-  {
-    name: "SetGen",
-    type: "event",
-    inputs: [
-      {name: "gen", type: "address", indexed: false},
-    ],
+    inputs: [{name: "epochZeroMinDuration", type: "uint256", indexed: false}],
   },
   {
     name: "SetMaxValidators",
     type: "event",
-    inputs: [
-      {name: "maxValidators", type: "uint256", indexed: false},
-    ],
+    inputs: [{name: "maxValidators", type: "uint256", indexed: false}],
   },
   {
     name: "SetReductionFactor",
     type: "event",
-    inputs: [
-      {name: "reductionFactor", type: "uint256", indexed: false},
-    ],
-  },
-  {
-    name: "SetStakingInvariant",
-    type: "event",
-    inputs: [
-      {name: "stakingInvariant", type: "address", indexed: false},
-    ],
+    inputs: [{name: "reductionFactor", type: "uint256", indexed: false}],
   },
   {
     name: "SetTransactionFeesManager",
     type: "event",
-    inputs: [
-      {name: "transactionFeesManager", type: "address", indexed: false},
-    ],
+    inputs: [{name: "transactionFeesManager", type: "address", indexed: false}],
   },
   {
     name: "SetUnbondingPeriods",
@@ -386,9 +328,7 @@ export const STAKING_ABI = [
   {
     name: "SetValidatorMinimumStake",
     type: "event",
-    inputs: [
-      {name: "validatorMinStake", type: "uint256", indexed: false},
-    ],
+    inputs: [{name: "validatorMinStake", type: "uint256", indexed: false}],
   },
   {
     name: "SetValidatorWeightParams",
@@ -401,25 +341,18 @@ export const STAKING_ABI = [
   {
     name: "ValidatorBanRemoved",
     type: "event",
-    inputs: [
-      {name: "validator", type: "address", indexed: false},
-    ],
+    inputs: [{name: "validator", type: "address", indexed: false}],
   },
   {
-    name: "ValidatorBannedDeterministic",
-    type: "event",
+    anonymous: false,
     inputs: [
-      {name: "validator", type: "address", indexed: false},
+      {indexed: false, name: "validator", type: "address"},
+      {indexed: false, name: "txId", type: "bytes32"},
+      {indexed: false, name: "bannedAt", type: "uint256"},
+      {indexed: false, name: "bannedUntil", type: "uint256"},
     ],
-  },
-  {
     name: "ValidatorBannedIdleness",
     type: "event",
-    inputs: [
-      {name: "validator", type: "address", indexed: false},
-      {name: "bannedAt", type: "uint256", indexed: false},
-      {name: "bannedUntil", type: "uint256", indexed: false},
-    ],
   },
   {
     name: "ValidatorClaim",
@@ -469,16 +402,7 @@ export const STAKING_ABI = [
   {
     name: "ValidatorQuarantineRemoved",
     type: "event",
-    inputs: [
-      {name: "validator", type: "address", indexed: false},
-    ],
-  },
-  {
-    name: "ValidatorQuarantineRepealed",
-    type: "event",
-    inputs: [
-      {name: "validator", type: "address", indexed: false},
-    ],
+    inputs: [{name: "validator", type: "address", indexed: false}],
   },
   {
     name: "ValidatorQuarantined",
@@ -498,13 +422,6 @@ export const STAKING_ABI = [
       {name: "epoch", type: "uint256", indexed: false},
     ],
   },
-  {
-    name: "ValidatorsRegistered",
-    type: "event",
-    inputs: [
-      {name: "count", type: "uint256", indexed: false},
-    ],
-  },
 
   // Functions
   {
@@ -520,20 +437,6 @@ export const STAKING_ABI = [
     stateMutability: "view",
     inputs: [],
     outputs: [{name: "", type: "uint256"}],
-  },
-  {
-    name: "activeWeights",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{name: "", type: "uint256[]"}],
-  },
-  {
-    name: "adminRegisterValidators",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{name: "validatorAddresses", type: "address[]"}],
-    outputs: [],
   },
   {
     name: "burning",
@@ -557,14 +460,14 @@ export const STAKING_ABI = [
     outputs: [{name: "", type: "uint256"}],
   },
   {
-    name: "delegatorClaim",
-    type: "function",
-    stateMutability: "nonpayable",
     inputs: [
       {name: "_delegator", type: "address"},
       {name: "_validator", type: "address"},
     ],
-    outputs: [],
+    name: "delegatorClaim",
+    outputs: [{name: "", type: "uint256"}],
+    stateMutability: "nonpayable",
+    type: "function",
   },
   {
     name: "delegatorDeposit",
@@ -944,26 +847,28 @@ export const STAKING_ABI = [
     outputs: [{name: "", type: "address[]"}],
   },
   {
-    name: "idlenessBan",
-    type: "function",
-    stateMutability: "nonpayable",
     inputs: [
       {name: "_validator", type: "address"},
       {name: "_at", type: "uint256"},
       {name: "_until", type: "uint256"},
+      {name: "_txId", type: "bytes32"},
     ],
+    name: "idlenessBan",
     outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
   },
   {
-    name: "idlenessBanBatch",
-    type: "function",
-    stateMutability: "nonpayable",
     inputs: [
       {name: "_validators", type: "address[]"},
       {name: "_quarantinedAt", type: "uint256"},
       {name: "_quarantinedUntil", type: "uint256"},
+      {name: "_txId", type: "bytes32"},
     ],
+    name: "idlenessBanBatch",
     outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
   },
   {
     name: "inflationEpoch",
@@ -973,11 +878,14 @@ export const STAKING_ABI = [
     outputs: [{name: "", type: "uint256"}],
   },
   {
+    inputs: [
+      {name: "_epochTo", type: "uint256"},
+      {name: "_inauguralTimestamp", type: "uint256"},
+    ],
     name: "inflationInit",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{name: "_inflationOnset", type: "uint256"}],
     outputs: [],
+    stateMutability: "payable",
+    type: "function",
   },
   {
     name: "inflationReceive",
@@ -1053,13 +961,6 @@ export const STAKING_ABI = [
     outputs: [],
   },
   {
-    name: "setGen",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{name: "_gen", type: "address"}],
-    outputs: [],
-  },
-  {
     name: "setIdlenessPhase",
     type: "function",
     stateMutability: "nonpayable",
@@ -1088,13 +989,6 @@ export const STAKING_ABI = [
     outputs: [],
   },
   {
-    name: "setStakingInvariant",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{name: "_stakingInvariant", type: "address"}],
-    outputs: [],
-  },
-  {
     name: "setTransactionFeesManager",
     type: "function",
     stateMutability: "nonpayable",
@@ -1109,13 +1003,6 @@ export const STAKING_ABI = [
       {name: "_delegatorUnbondingPeriod", type: "uint256"},
       {name: "_validatorUnbondingPeriod", type: "uint256"},
     ],
-    outputs: [],
-  },
-  {
-    name: "setValidatorMinimumStake",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{name: "_validatorMinStake", type: "uint256"}],
     outputs: [],
   },
   {
@@ -1147,13 +1034,6 @@ export const STAKING_ABI = [
       {name: "_validator", type: "address"},
     ],
     outputs: [{name: "", type: "uint256"}],
-  },
-  {
-    name: "validatorBanDeterministic",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{name: "_validator", type: "address"}],
-    outputs: [],
   },
   {
     name: "validatorClaim",
@@ -1241,14 +1121,15 @@ export const STAKING_ABI = [
     outputs: [],
   },
   {
-    name: "validatorQuarantine",
-    type: "function",
-    stateMutability: "nonpayable",
     inputs: [
       {name: "_validator", type: "address"},
       {name: "_at", type: "uint256"},
+      {name: "_txId", type: "bytes32"},
     ],
+    name: "validatorQuarantine",
     outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
   },
   {
     name: "validatorQuarantineCount",
@@ -1256,13 +1137,6 @@ export const STAKING_ABI = [
     stateMutability: "view",
     inputs: [],
     outputs: [{name: "", type: "uint256"}],
-  },
-  {
-    name: "validatorQuarantineRepeal",
-    type: "function",
-    stateMutability: "nonpayable",
-    inputs: [{name: "_validator", type: "address"}],
-    outputs: [],
   },
   {
     name: "validatorSelection",
@@ -1311,7 +1185,7 @@ export const STAKING_ABI = [
         name: "",
         type: "tuple",
         components: [
-                      {name: "eBanned", type: "uint256"},
+          {name: "eBanned", type: "uint256"},
           {name: "ePrimed", type: "uint256"},
           {name: "vStake", type: "uint256"},
           {name: "vShares", type: "uint256"},
@@ -1334,7 +1208,7 @@ export const STAKING_ABI = [
         name: "",
         type: "tuple",
         components: [
-                      {name: "eBanned", type: "uint256"},
+          {name: "eBanned", type: "uint256"},
           {name: "ePrimed", type: "uint256"},
           {name: "vStake", type: "uint256"},
           {name: "vShares", type: "uint256"},
@@ -1357,7 +1231,7 @@ export const STAKING_ABI = [
         name: "",
         type: "tuple",
         components: [
-                      {name: "eBanned", type: "uint256"},
+          {name: "eBanned", type: "uint256"},
           {name: "ePrimed", type: "uint256"},
           {name: "vStake", type: "uint256"},
           {name: "vShares", type: "uint256"},
@@ -1419,13 +1293,6 @@ export const STAKING_ABI = [
   },
   {
     name: "delegatorMinStake",
-    type: "function",
-    stateMutability: "view",
-    inputs: [],
-    outputs: [{name: "", type: "uint256"}],
-  },
-  {
-    name: "validatorsCount",
     type: "function",
     stateMutability: "view",
     inputs: [],
