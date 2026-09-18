@@ -143,6 +143,28 @@ export const simplifyTransactionReceipt = (tx: GenLayerTransaction): GenLayerTra
       return obj.map(item => simplifyObject(item, path)).filter(item => item !== undefined);
     }
 
+    // Decoded calldata (callData/constructorArgs, from TYPE_MAP) is a real
+    // JS Map, not a plain object. Object.entries() on a Map always returns
+    // [] - Map's key/value pairs live in internal slots, not as own
+    // enumerable properties - so without this branch every Map fell
+    // through to the generic object handling below, produced an empty
+    // {}, and was then dropped entirely by the empty-object filter a few
+    // lines down. Convert it to a plain object here instead, recursively
+    // simplifying each value the same way object/array values already are.
+    if (obj instanceof Map) {
+      const result: any = {};
+      for (const [key, value] of obj.entries()) {
+        const currentPath = path ? `${path}.${key}` : key;
+        const simplifiedValue = simplifyObject(value, currentPath);
+        const shouldInclude = simplifiedValue !== undefined &&
+          !(typeof simplifiedValue === "object" && simplifiedValue !== null && Object.keys(simplifiedValue).length === 0);
+        if (shouldInclude || simplifiedValue === 0) {
+          result[key] = simplifiedValue;
+        }
+      }
+      return result;
+    }
+
     if (typeof obj === "object") {
       const result: any = {};
       
