@@ -22,15 +22,15 @@ import {
 import { receiptActions, transactionActions, isSuccessful } from "../src/transactions/actions";
 import { decodeTransaction, simplifyTransactionReceipt } from "../src/transactions/decoders";
 import { localnet } from "../src/chains/localnet";
-import type { GenLayerRawTransaction } from "../src/types/transactions";
+import type { GenLayerRawTransaction, TransactionHash } from "../src/types/transactions";
 import {
   decodeFunctionResult,
   encodeFunctionResult,
-  keccak256,
   MethodNotFoundRpcError,
-  stringToBytes,
 } from "viem";
 import {CONSENSUS_DATA_BIG_ROUNDS_TRAIN_ABI, CONSENSUS_DATA_TRAIN_ABI} from "../src/abi/consensusTrain";
+
+import producer from "./fixtures/consensus-consumer-abi.json";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -164,7 +164,7 @@ describe("transaction enum maps", () => {
     const encoded = encodeFunctionResult({
       abi: CONSENSUS_DATA_TRAIN_ABI,
       functionName: "getTransactionLifecycle",
-      result: [5, resolution, latestDecision, true] as any,
+      result: [5, resolution, latestDecision, true, 9n] as any,
     });
 
     const decoded = decodeFunctionResult({
@@ -177,6 +177,7 @@ describe("transaction enum maps", () => {
     expect(decoded.resolution.projectedStatus).toBe(6);
     expect(decoded.resolution.action).toBe(6);
     expect(decoded.decisionActive).toBe(true);
+    expect(decoded.executionGeneration).toBe(9n);
   });
 });
 
@@ -680,52 +681,49 @@ const trainReadContract = ({
 });
 
 describe("getTriggeredTransactionIds", () => {
-  it("finds child transaction IDs in the parent decision receipt", async () => {
-    const parentHash = ("0x" + "11".repeat(32)) as any;
-    const childHash = ("0x" + "22".repeat(32)) as any;
-    const decisionHash = ("0x" + "33".repeat(32)) as any;
-    const consensusAddress = "0x0000000000000000000000000000000000000010";
-    const messagePaymentsAddress = "0x0000000000000000000000000000000000000020";
-    const internalMessageTopic = keccak256(
-      stringToBytes("InternalMessageProcessed(bytes32,address,address)"),
-    );
-    const readContract = trainReadContract({
-      light: makeLightTx({
-        readStateBlockRange: {activationBlock: 0n, processingBlock: 0n, proposalBlock: 100n},
-      }),
-    });
-    const getLogs = vi.fn().mockResolvedValue([{transactionHash: decisionHash}]);
-    const getTransactionReceipt = vi.fn().mockResolvedValue({
-      logs: [
-        {
-          address: messagePaymentsAddress,
-          topics: [internalMessageTopic, childHash],
-        },
-      ],
-    });
-    const publicClient = {
-      readContract,
-      getBlock: vi.fn().mockResolvedValue({number: 150n, timestamp: 1000n}),
-      getBlockNumber: vi.fn().mockResolvedValue(200n),
-      getLogs,
-      getTransactionReceipt,
-    } as any;
-    const client = {
-      chain: {
-        isStudio: false,
-        consensusDataContract: {address: consensusAddress, abi: []},
-        consensusMainContract: {address: consensusAddress, abi: []},
-      },
-    } as any;
+  const parentHash = `0x${"11".repeat(32)}` as TransactionHash;
+  const childHash = `0x${"22".repeat(32)}` as const;
+  const laterChild = `0x${"33".repeat(32)}` as const;
+  const messages = "0x0000000000000000000000000000000000000020";
+  const client = {chain: {isStudio: false, consensusDataContract: {
+    address: "0x0000000000000000000000000000000000000010",
+  }}} as any;
 
-    const result = await transactionActions(client, publicClient).getTriggeredTransactionIds({
-      hash: parentHash,
-    });
+  it("finds canonical children across deferred delivery and re-reveals without truncating history", async () => {
+    const getLogs = vi.fn()
+      .mockResolvedValueOnce([{args: {childTxId: childHash}}])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{args: {childTxId: childHash}}, {args: {childTxId: laterChild}}]);
+    const readContract = vi.fn().mockResolvedValueOnce(client.chain.consensusDataContract.address)
+      .mockResolvedValueOnce(messages);
+    const publicClient = {readContract, getBlockNumber: vi.fn().mockResolvedValue(25_000n), getLogs} as any;
+    const result = await transactionActions(client, publicClient).getTriggeredTransactionIds({hash: parentHash});
+    expect(result).toEqual([childHash, laterChild]);
+    expect(getLogs.mock.calls.map(([args]) => [args.fromBlock, args.toBlock])).toEqual([
+      [0n, 9_999n], [10_000n, 19_999n], [20_000n, 25_000n],
+    ]);
+    for (const [args] of getLogs.mock.calls) {
+      expect(args).toMatchObject({address: messages, args: {txId: parentHash}, strict: true});
+      expect(args.event.name).toBe(producer.internalMessageEffectCommitted.name);
+      const eventLayout = (inputs: readonly any[]) => inputs.map(({name, type, indexed}) => ({name, type, indexed: !!indexed}));
+      expect(eventLayout(args.event.inputs)).toEqual(eventLayout(producer.internalMessageEffectCommitted.inputs));
+    }
+    expect(readContract.mock.calls[1][0]).toMatchObject({args: ["Messages"], blockNumber: 25_000n});
+  });
 
-    expect(result).toEqual([childHash]);
-    expect(getLogs.mock.calls[0][0].topics[1]).toBe(parentHash);
-    expect(Array.isArray(getLogs.mock.calls[0][0].topics[0])).toBe(true);
-    expect(getTransactionReceipt).toHaveBeenCalledWith({hash: decisionHash});
+  it("supports a deployment block lower bound and propagates RPC failures", async () => {
+    const getLogs = vi.fn().mockRejectedValue(new Error("RPC unavailable"));
+    const publicClient = {readContract: vi.fn().mockResolvedValue(messages),
+      getBlockNumber: vi.fn().mockResolvedValue(25_000n), getLogs} as any;
+    await expect(transactionActions(client, publicClient).getTriggeredTransactionIds({
+      hash: parentHash, fromBlock: 24_000n,
+    })).rejects.toThrow("RPC unavailable");
+    expect(getLogs.mock.calls[0][0]).toMatchObject({fromBlock: 24_000n, toBlock: 25_000n});
+  });
+
+  it("preserves Studio's canonical triggered_transactions response", async () => {
+    const studio = {chain: {isStudio: true}, getTransaction: vi.fn().mockResolvedValue({triggered_transactions: [childHash]})} as any;
+    expect(await transactionActions(studio, {} as any).getTriggeredTransactionIds({hash: parentHash})).toEqual([childHash]);
   });
 });
 
@@ -795,6 +793,7 @@ describe("getTransaction train lifecycle", () => {
         storedStatus: 5,
         resolution: {projectedStatus: 6, action: 6, source: 11, evaluatedAt: 500n},
         latestDecision: {decisionId: 7n},
+        executionGeneration: 9007199254740993n,
         decisionActive: true,
       }),
     });
@@ -827,6 +826,7 @@ describe("getTransaction train lifecycle", () => {
       resolutionSource: "SelectionDepleted",
       resolutionSourceCode: 11,
       decisionId: "7",
+      executionGeneration: "9007199254740993",
       decisionActive: true,
       evaluatedAt: 500,
     });

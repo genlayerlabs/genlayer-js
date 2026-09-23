@@ -20,7 +20,7 @@ import {
 import {transactionsConfig} from "../config/transactions";
 import {sleep} from "../utils/async";
 import {GenLayerChain} from "@/types";
-import {Abi, PublicClient, Address, keccak256, concat, stringToBytes, toBytes, zeroAddress} from "viem";
+import {Abi, PublicClient, Address, keccak256, concat, stringToBytes, toBytes, zeroAddress, parseAbiItem} from "viem";
 import {decodeLocalnetTransaction, decodeTransaction, simplifyTransactionReceipt} from "./decoders";
 import {isMethodNotFoundError, readStudioLifecycleFallback} from "./lifecycleFallback";
 import {
@@ -41,6 +41,7 @@ type RawProtocolLifecycle = {
   decisionId: unknown;
   decisionActive: unknown;
   evaluatedAt: unknown;
+  executionGeneration?: unknown;
 };
 
 const protocolInteger = (value: unknown, label: string): number => {
@@ -76,6 +77,14 @@ const protocolDecisionId = (value: unknown, active: boolean): string | null => {
   return BigInt(decimal).toString();
 };
 
+const protocolGeneration = (value: unknown): string => {
+  if ((typeof value !== "bigint" && typeof value !== "string" && typeof value !== "number") ||
+      (typeof value === "number" && !Number.isSafeInteger(value)) || !/^\d+$/.test(String(value))) {
+    throw new Error(`Invalid protocol lifecycle executionGeneration: ${String(value)}`);
+  }
+  return BigInt(value).toString();
+};
+
 const normalizeProtocolLifecycle = (raw: RawProtocolLifecycle): TransactionProtocolLifecycle => {
   const storedStatusCode = protocolInteger(raw.storedStatusCode, "storedStatusCode");
   const projectedStatusCode = protocolInteger(raw.projectedStatusCode, "projectedStatusCode");
@@ -109,6 +118,9 @@ const normalizeProtocolLifecycle = (raw: RawProtocolLifecycle): TransactionProto
     decisionId: protocolDecisionId(raw.decisionId, raw.decisionActive),
     decisionActive: raw.decisionActive,
     evaluatedAt: protocolInteger(raw.evaluatedAt, "evaluatedAt"),
+    ...(raw.executionGeneration === undefined ? {} : {
+      executionGeneration: protocolGeneration(raw.executionGeneration),
+    }),
   };
 };
 
@@ -369,6 +381,7 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
         decisionId: lifecycle.latestDecision.decisionId,
         decisionActive: lifecycle.decisionActive,
         evaluatedAt: lifecycle.resolution.evaluatedAt,
+        executionGeneration: lifecycle.executionGeneration,
       });
     },
   },
@@ -513,58 +526,56 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
     } as unknown as GenLayerRawTransaction;
     return decodeTransaction(transaction);
   },
-  /** Returns transaction IDs of child transactions created from emitted messages. */
-  getTriggeredTransactionIds: async ({hash}: {hash: TransactionHash}): Promise<TransactionHash[]> => {
+  /**
+   * Returns canonical child IDs committed for this parent, including deferred delivery.
+   * This is historical creation evidence, not child completion or current-generation status.
+   * Pass the deployment block as fromBlock to avoid scanning earlier chain history.
+   */
+  getTriggeredTransactionIds: async ({hash, fromBlock = 0n}: {
+    hash: TransactionHash;
+    fromBlock?: bigint;
+  }): Promise<TransactionHash[]> => {
     if (client.chain.isStudio) {
       const tx = await client.getTransaction({hash});
       return ((tx as any).triggered_transactions ?? []) as TransactionHash[];
     }
-
-    const tx = await transactionActions(client, publicClient).getTransaction({hash});
-    const proposalBlock = BigInt(tx.readStateBlockRange?.proposalBlock ?? "0");
-    if (proposalBlock === BigInt(0)) return [];
-
-    const scanRange = BigInt(10_000);
-    const latestBlock = await publicClient.getBlockNumber();
-    const toBlock = proposalBlock + scanRange < latestBlock ? proposalBlock + scanRange : latestBlock;
-
-    const consensusAddress = client.chain.consensusMainContract?.address as Address;
-    const internalMessageProcessedTopic = keccak256(stringToBytes("InternalMessageProcessed(bytes32,address,address)"));
-    const transactionAcceptedTopic = keccak256(stringToBytes("TransactionAccepted(bytes32)"));
-    const transactionFinalizedTopic = keccak256(stringToBytes("TransactionFinalized(bytes32)"));
-
-    // InternalMessageProcessed indexes the child transaction ID, not its
-    // parent. Find the EVM transactions that decided the parent first, then
-    // inspect their receipts for the child-message events emitted alongside
-    // that decision. The event is emitted by MessagePayments, not
-    // ConsensusMain, so the decision receipt is the authoritative boundary
-    // and the event emitter address must not be restricted here.
-    const decisionLogs = await publicClient.getLogs({
-      address: consensusAddress,
-      event: undefined,
-      fromBlock: proposalBlock,
-      toBlock,
-      topics: [[transactionAcceptedTopic, transactionFinalizedTopic], hash],
-    } as any);
-
-    const decisionTransactionHashes = [
-      ...new Set(decisionLogs.map(log => log.transactionHash).filter(Boolean)),
-    ];
-    const receipts = await Promise.all(
-      decisionTransactionHashes.map(transactionHash =>
-        publicClient.getTransactionReceipt({hash: transactionHash!}),
-      ),
-    );
-    return [
-      ...new Set(
-        receipts.flatMap(receipt =>
-          receipt.logs
-            .filter(log => log.topics[0] === internalMessageProcessedTopic)
-            .map(log => log.topics[1] as TransactionHash)
-            .filter(Boolean),
-        ),
-      ),
-    ];
+    if (fromBlock < 0n) throw new Error("fromBlock must be nonnegative");
+    const consensusDataAddress = client.chain.consensusDataContract?.address as Address;
+    if (!consensusDataAddress || consensusDataAddress === zeroAddress) {
+      throw new Error("ConsensusData contract is not configured for this chain");
+    }
+    const blockNumber = await publicClient.getBlockNumber();
+    const addressManager = resolvedAddress("AddressManager", await publicClient.readContract({
+      address: consensusDataAddress,
+      abi: CONSENSUS_DATA_TRAIN_ABI,
+      functionName: "addressManager",
+      blockNumber,
+    }) as Address);
+    const messages = resolvedAddress("Messages", await publicClient.readContract({
+      address: addressManager,
+      abi: ADDRESS_MANAGER_TRAIN_ABI,
+      functionName: "getAddress",
+      args: ["Messages"],
+      blockNumber,
+    }) as Address);
+    const children = new Set<TransactionHash>();
+    // Bound each RPC range, not the total history: terminal delivery may occur
+    // long after the parent's decision, and re-reveals can move proposalBlock.
+    for (let start = fromBlock; start <= blockNumber; start += 10_000n) {
+      const end = start + 9_999n;
+      const logs = await publicClient.getLogs({
+        address: messages,
+        event: parseAbiItem("event InternalMessageEffectCommitted(bytes32 indexed txId, bytes32 indexed logicalOccurrence, bytes32 indexed generationEffectId, bytes32 childTxId)"),
+        args: {txId: hash},
+        fromBlock: start,
+        toBlock: end < blockNumber ? end : blockNumber,
+        strict: true,
+      });
+      for (const log of logs) {
+        if (log.args.childTxId) children.add(log.args.childTxId as TransactionHash);
+      }
+    }
+    return [...children];
   },
   /** Fetches the full execution trace including return data, stdout, stderr, and GenVM logs. */
   debugTraceTransaction: async ({hash, round = 0}: {hash: TransactionHash; round?: number}): Promise<DebugTraceResult> => {
