@@ -416,6 +416,31 @@ const CONSENSUS_MAIN_CONTRACT = {
     "inputs": [
       {
         "indexed": true,
+        "internalType": "bytes32",
+        "name": "txId",
+        "type": "bytes32"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "recipient",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "firstAnnouncedAt",
+        "type": "uint256"
+      }
+    ],
+    "name": "NewTransactionAlreadyAnnounced",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
         "internalType": "address",
         "name": "previousOwner",
         "type": "address"

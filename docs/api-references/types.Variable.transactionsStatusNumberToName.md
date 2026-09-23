@@ -20,15 +20,15 @@ Defined in: [types/transactions.ts:40](https://github.com/genlayerlabs/genlayer-
 
 ### 11
 
-> **11**: [`TransactionStatus`](types.Enumeration.TransactionStatus.md) = `TransactionStatus.READY_TO_FINALIZE`
+> **11**: [`TransactionStatus`](types.Enumeration.TransactionStatus.md) = `TransactionStatus.VALIDATORS_TIMEOUT`
 
 ### 12
 
-> **12**: [`TransactionStatus`](types.Enumeration.TransactionStatus.md) = `TransactionStatus.VALIDATORS_TIMEOUT`
+> **12**: [`TransactionStatus`](types.Enumeration.TransactionStatus.md) = `TransactionStatus.LEADER_TIMEOUT`
 
 ### 13
 
-> **13**: [`TransactionStatus`](types.Enumeration.TransactionStatus.md) = `TransactionStatus.LEADER_TIMEOUT`
+> **13**: [`TransactionStatus`](types.Enumeration.TransactionStatus.md) = `TransactionStatus.LEADER_REVEALING`
 
 ### 2
 
