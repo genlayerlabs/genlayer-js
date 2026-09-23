@@ -260,7 +260,7 @@ describe("stakingActions provider lane (Address-only)", () => {
 });
 
 describe("stakingActions validator reads", () => {
-  it("uses the authoritative ban predicate instead of a stale nonzero ban epoch", async () => {
+  it.each([true, false])("keeps rewards=%s separate from the authoritative ban predicate", async hasUnclaimedRewards => {
     const readContract = vi.fn().mockImplementation(async ({functionName}: any) => {
       if (functionName === "isValidator") return true;
       if (functionName === "validatorView") {
@@ -273,7 +273,7 @@ describe("stakingActions validator reads", () => {
           dShares: 0n,
           vDeposit: 0n,
           vWithdrawal: 0n,
-          live: true,
+          hasUnclaimedRewards,
         };
       }
       if (functionName === "owner") return ACCOUNT_ADDRESS;
@@ -290,6 +290,8 @@ describe("stakingActions validator reads", () => {
 
     const info = await actions.getValidatorInfo(VALIDATOR_WALLET_ADDRESS);
 
+    expect(info.hasUnclaimedRewards).toBe(hasUnclaimedRewards);
+    expect(info).not.toHaveProperty("live");
     expect(info.banned).toBe(false);
     expect(info.bannedEpoch).toBeUndefined();
     expect(readContract).toHaveBeenCalledWith(expect.objectContaining({
