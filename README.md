@@ -500,3 +500,7 @@ We welcome contributions to GenLayerJS SDK! Whether it's new features, improved 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+### v0.6 consumer migration
+
+See [the v2 migration guide](docs/consumer-migration-v06.md) for the staking rewards rename, producer ABI changes, execution generation, and package selection.
