@@ -102,7 +102,7 @@ describe(`Testnet ${name} - Staking (read-only)`, () => {
     expect(info.owner).toMatch(/^0x[0-9a-fA-F]{40}$/);
     expect(info.operator).toMatch(/^0x[0-9a-fA-F]{40}$/);
     expect(info.vStakeRaw).toBeTypeOf("bigint");
-    expect(typeof info.live).toBe("boolean");
+    expect(typeof info.hasUnclaimedRewards).toBe("boolean");
     expect(typeof info.banned).toBe("boolean");
     expect(typeof info.needsPriming).toBe("boolean");
     expect(Array.isArray(info.pendingDeposits)).toBe(true);
