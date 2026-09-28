@@ -279,6 +279,13 @@ const setupWriteContractHarness = ({
   return {actions, estimateTransactionGas, client, signTransaction, publicClient};
 };
 
+const mockNitroReceiptGasCall = (estimatedGas: bigint) => vi.fn().mockImplementation(
+  async ({gasPrice}: {gasPrice?: bigint}) => {
+    if (!gasPrice) throw new Error("InvalidRollupGasPrice");
+    return {data: toHex(estimatedGas, {size: 32})};
+  },
+);
+
 const setupDeveloperNftHarness = ({
   readContractMock,
   signTransactionMock,
@@ -1028,11 +1035,13 @@ describe("contractActions addTransaction ABI compatibility", () => {
         if (functionName === "GENPerTimeUnit") return 10n;
         if (functionName === "storageUnitPrice") return 20n;
         if (functionName === "quoteGasPrice") return 30n;
-        if (functionName === "messageFeeParamsBudgetFloor") return 1_234n;
+        if (functionName === "receiptWrapperBytes") return 1_024n;
+        if (functionName === "useChainDerivedReceiptPrice") return false;
         if (functionName === "calculateRoundFees") return 77n;
         throw new Error(`unexpected readContract ${functionName}`);
       }),
       getGasPrice: vi.fn().mockResolvedValue(1n),
+      call: mockNitroReceiptGasCall(315_408n),
     };
     const {actions} = setupWriteContractHarness({
       initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
@@ -1042,12 +1051,10 @@ describe("contractActions addTransaction ABI compatibility", () => {
 
     const fees = await actions.estimateTransactionFees({totalMessageFees: 5n});
 
-    // Effective floor = max(on-chain view (1,234 — reads ~0-priced quoteGasPrice under
-    // eth_call), local recompute at the effective receipt price). Local formula pins
-    // FeeManager.estimateProposeReceiptGas(MIN_RECEIPT_BYTES=512):
-    // 210,000 + 21,000 + 60,000 + 512*16 + 7*1,000 = 306,192 gas.
-    const expectedLocalFloor = 30n * (210_000n + 21_000n + 60_000n + 512n * 16n + 7n * 1_000n);
-    expect(expectedLocalFloor).toBe(30n * 306_192n);
+    // Consensus prices the live 1,024-byte wrapper plus 64 terminal-output bytes:
+    // 210,000 + 21,000 + 60,000 + 1,088*16 + 7*1,000 = 315,408 gas.
+    const expectedLocalFloor = 30n * (210_000n + 21_000n + 60_000n + 1_088n * 16n + 7n * 1_000n);
+    expect(expectedLocalFloor).toBe(30n * 315_408n);
     expect(fees.policy).toEqual({
       enabled: true,
       genPerTimeUnit: 10n,
@@ -1061,19 +1068,33 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(fees.distribution.receiptFeeMaxGasPrice).toBe(36n);
     expect(fees.distribution.executionBudgetPerRound).toBe(3_000_300_000n);
     expect(fees.feeValue).toBe(82n);
+    expect(publicClient.readContract).toHaveBeenCalledWith(expect.objectContaining({
+      functionName: "receiptWrapperBytes",
+    }));
+    expect(publicClient.call).toHaveBeenCalledWith(expect.objectContaining({
+      to: "0x00000000000000000000000000000000000000fe",
+      gasPrice: 30n,
+      batch: false,
+    }));
+    expect(publicClient.call.mock.calls[0][0].data.slice(-64)).toBe(toHex(1_088n, {size: 32}).slice(2));
+    expect(publicClient.readContract).not.toHaveBeenCalledWith(expect.objectContaining({
+      functionName: "messageFeeParamsBudgetFloor",
+    }));
   });
 
-  it("uses the network gas price when FeeManager quotes a lower receipt gas price", async () => {
+  it("uses network gas price and FeeManager's configured receipt gas model", async () => {
     const publicClient = {
       readContract: vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
         if (functionName === "GENPerTimeUnit") return 10n;
         if (functionName === "storageUnitPrice") return 20n;
         if (functionName === "quoteGasPrice") return 0n;
-        if (functionName === "messageFeeParamsBudgetFloor") return 1_234n;
+        if (functionName === "receiptWrapperBytes") return 2_048n;
+        if (functionName === "useChainDerivedReceiptPrice") return true;
         if (functionName === "calculateRoundFees") return 77n;
         throw new Error(`unexpected readContract ${functionName}`);
       }),
       getGasPrice: vi.fn().mockResolvedValue(25n),
+      call: mockNitroReceiptGasCall(400_000n),
     };
     const {actions} = setupWriteContractHarness({
       initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
@@ -1085,7 +1106,47 @@ describe("contractActions addTransaction ABI compatibility", () => {
 
     expect(publicClient.getGasPrice).toHaveBeenCalledOnce();
     expect(fees.policy.receiptGasPrice).toBe(25n);
+    expect(fees.policy.executionBudgetFloor).toBe(25n * 400_000n);
     expect(fees.distribution.receiptFeeMaxGasPrice).toBe(25n);
+    expect(publicClient.call).toHaveBeenCalledWith(expect.objectContaining({
+      gasPrice: 25n,
+      batch: false,
+    }));
+    expect(publicClient.call.mock.calls[0][0].data.slice(-64)).toBe(toHex(2_112n, {size: 32}).slice(2));
+  });
+
+  it("prices receipts when chain-derived quote is zero under eth_call", async () => {
+    const publicClient = {
+      readContract: vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
+        if (functionName === "GENPerTimeUnit") return 0n;
+        if (functionName === "storageUnitPrice") return 0n;
+        if (functionName === "quoteGasPrice") return 0n;
+        if (functionName === "receiptWrapperBytes") return 1_024n;
+        if (functionName === "useChainDerivedReceiptPrice") return true;
+        if (functionName === "calculateRoundFees") return 77n;
+        throw new Error(`unexpected readContract ${functionName}`);
+      }),
+      getGasPrice: vi.fn().mockResolvedValue(25n),
+      call: mockNitroReceiptGasCall(315_408n),
+    };
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      publicClient,
+      feeManagerAddress: "0x00000000000000000000000000000000000000fe",
+    });
+
+    const fees = await actions.estimateTransactionFees();
+
+    expect(fees.policy.enabled).toBe(true);
+    expect(fees.policy.receiptGasPrice).toBe(25n);
+    expect(fees.policy.executionBudgetFloor).toBe(25n * 315_408n);
+    expect(fees.feeValue).toBe(77n);
+    expect(publicClient.getGasPrice).toHaveBeenCalledOnce();
+    expect(publicClient.call).toHaveBeenCalledWith(expect.objectContaining({gasPrice: 25n}));
+    const roundFeeCall = publicClient.readContract.mock.calls.find(([call]) =>
+      call.functionName === "calculateRoundFees",
+    )?.[0];
+    expect(roundFeeCall.args[0].executionBudgetPerRound).toBeGreaterThan(0n);
   });
 
   it("throws instead of building a zero receipt gas price cap when policy is enabled", async () => {
@@ -1094,7 +1155,8 @@ describe("contractActions addTransaction ABI compatibility", () => {
         if (functionName === "GENPerTimeUnit") return 10n;
         if (functionName === "storageUnitPrice") return 0n;
         if (functionName === "quoteGasPrice") return 0n;
-        if (functionName === "messageFeeParamsBudgetFloor") return 1_234n;
+        if (functionName === "receiptWrapperBytes") return 1_024n;
+        if (functionName === "useChainDerivedReceiptPrice") return true;
         throw new Error(`unexpected readContract ${functionName}`);
       }),
       getGasPrice: vi.fn().mockResolvedValue(0n),
@@ -1116,7 +1178,8 @@ describe("contractActions addTransaction ABI compatibility", () => {
         if (functionName === "GENPerTimeUnit") return 0n;
         if (functionName === "storageUnitPrice") return 0n;
         if (functionName === "quoteGasPrice") return 0n;
-        if (functionName === "messageFeeParamsBudgetFloor") return 0n;
+        if (functionName === "receiptWrapperBytes") return 1_024n;
+        if (functionName === "useChainDerivedReceiptPrice") return false;
         if (functionName === "calculateRoundFees") return 0n;
         throw new Error(`unexpected readContract ${functionName}`);
       }),
@@ -1141,11 +1204,13 @@ describe("contractActions addTransaction ABI compatibility", () => {
         if (functionName === "GENPerTimeUnit") return 10n;
         if (functionName === "storageUnitPrice") return 20n;
         if (functionName === "quoteGasPrice") return 30n;
-        if (functionName === "messageFeeParamsBudgetFloor") return 1_234n;
+        if (functionName === "receiptWrapperBytes") return 1_024n;
+        if (functionName === "useChainDerivedReceiptPrice") return true;
         if (functionName === "calculateRoundFees") return 77n;
         throw new Error(`unexpected readContract ${functionName}`);
       }),
       getGasPrice: vi.fn().mockResolvedValue(1n),
+      call: mockNitroReceiptGasCall(315_408n),
     };
     const {actions} = setupWriteContractHarness({
       initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
@@ -1207,8 +1272,36 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(fees.distribution.maxPriceGenPerTimeUnit).toBe(10n);
     expect(fees.distribution.storageFeeMaxGasPrice).toBe(20n);
     expect(fees.distribution.receiptFeeMaxGasPrice).toBe(30n);
+    expect(fees.policy.executionBudgetFloor).toBe(30n * 315_408n);
     expect(fees.distribution.executionBudgetPerRound).toBe(3_000_000_000n);
     expect(fees.feeValue).toBe(12_000_044_000n);
+  });
+
+  it("uses Studio's configured wrapper when its fee floor is absent", async () => {
+    const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "sim_getFeeConfig") {
+        return {
+          enabled: true,
+          policy: {
+            genPerTimeUnit: "10",
+            storageUnitPrice: "20",
+            receiptGasPrice: "30",
+            receiptWrapperBytes: "2048",
+          },
+        };
+      }
+      if (method === "eth_gasPrice") return "0x1";
+      throw new Error(`unexpected request ${method}`);
+    });
+    const {actions} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    const fees = await actions.estimateTransactionFees();
+
+    expect(fees.policy.executionBudgetFloor).toBe(30n * 331_792n);
   });
 
   it("prefers Studio's exposed message fee budget floor over local fallback math", async () => {
