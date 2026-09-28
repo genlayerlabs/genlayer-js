@@ -30,7 +30,7 @@ import {
   ConsensusRoundData,
   ConsensusLastRoundData,
 } from "@/types";
-import {fromHex, toHex, zeroAddress, encodeFunctionData, PublicClient, parseEventLogs, type Abi} from "viem";
+import {fromHex, toHex, zeroAddress, encodeFunctionData, decodeFunctionResult, PublicClient, parseEventLogs, type Abi} from "viem";
 import {toJsonSafeDeep, b64ToArray, arrayToB64} from "@/utils/jsonifier";
 import {
   CALL_KEY_WILDCARD,
@@ -1242,9 +1242,23 @@ const FEE_MANAGER_CALCULATE_ROUND_FEES_ABI = [
   },
   {
     type: "function",
-    name: "messageFeeParamsBudgetFloor",
+    name: "receiptWrapperBytes",
     stateMutability: "view",
     inputs: [],
+    outputs: [{name: "", type: "uint256"}],
+  },
+  {
+    type: "function",
+    name: "useChainDerivedReceiptPrice",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{name: "", type: "bool"}],
+  },
+  {
+    type: "function",
+    name: "estimateProposeReceiptGas",
+    stateMutability: "view",
+    inputs: [{name: "_receiptBytes", type: "uint256"}],
     outputs: [{name: "", type: "uint256"}],
   },
   {
@@ -1372,11 +1386,9 @@ const DEFAULT_BOOTLOADER_OVERHEAD = 60_000n;
 const DEFAULT_GAS_PER_CHANGED_SLOT = 1_000n;
 const DEFAULT_CALLDATA_GAS_PER_BYTE = 16n;
 const DEFAULT_FIXED_PROPOSE_RECEIPT_GAS = 210_000n;
-const DEFAULT_FIXED_MESSAGE_REVEAL_GAS = 100_000n;
-// ConsensusHelpers.MIN_RECEIPT_BYTES — smallest receipt payload the on-chain budget floor prices.
-const DEFAULT_MIN_RECEIPT_BYTES = 512n;
-const DEFAULT_MESSAGE_REVEAL_LENGTH_SLOTS = 32n;
-const DEFAULT_NONDET_OUTPUT_LENGTH_BYTES = 32n;
+const DEFAULT_RECEIPT_WRAPPER_BYTES = 1_024n;
+// FeeProfileHelpers.MIN_TERMINAL_OUTPUT_BYTES: startup reserve for an empty failure envelope.
+const MIN_TERMINAL_OUTPUT_BYTES = 64n;
 const TRANSACTION_GAS_HEADROOM_BPS = 20_000n;
 const DEFAULT_PARENT_MESSAGE_RECEIPT_HEADROOM = 10_000n;
 const VALIDATORS_PER_ROUND = [
@@ -1417,6 +1429,30 @@ const bigintFromUnknown = (value: unknown, fieldName: string, fallback = 0n): bi
   if (typeof value === "string" && value.trim() !== "") return BigInt(value);
   throw new Error(`${fieldName} is not an integer value.`);
 };
+
+const proposeReceiptBudgetFloor = ({
+  receiptGasPrice,
+  receiptWrapperBytes,
+  fixedProposeReceiptGas,
+  intrinsicGas,
+  bootloaderOverhead,
+  calldataGasPerByte,
+  gasPerChangedSlot,
+}: {
+  receiptGasPrice: bigint;
+  receiptWrapperBytes: bigint;
+  fixedProposeReceiptGas: bigint;
+  intrinsicGas: bigint;
+  bootloaderOverhead: bigint;
+  calldataGasPerByte: bigint;
+  gasPerChangedSlot: bigint;
+}): bigint => receiptGasPrice * (
+  fixedProposeReceiptGas +
+  intrinsicGas +
+  bootloaderOverhead +
+  ((receiptWrapperBytes + MIN_TERMINAL_OUTPUT_BYTES) * calldataGasPerByte) +
+  (DEFAULT_RECEIPT_SLOTS_CHANGED * gasPerChangedSlot)
+);
 
 const extractStudioFeePolicy = (config: unknown): FeePolicyQuote => {
   const configRecord = config && typeof config === "object" && !Array.isArray(config)
@@ -1462,23 +1498,21 @@ const extractStudioFeePolicy = (config: unknown): FeePolicyQuote => {
     "policy.fixedProposeReceiptGas",
     DEFAULT_FIXED_PROPOSE_RECEIPT_GAS,
   );
-  const fixedMessageRevealGas = bigintFromUnknown(
-    policyRecord.fixedMessageRevealGas,
-    "policy.fixedMessageRevealGas",
-    DEFAULT_FIXED_MESSAGE_REVEAL_GAS,
+  const receiptWrapperBytes = bigintFromUnknown(
+    policyRecord.receiptWrapperBytes,
+    "policy.receiptWrapperBytes",
+    DEFAULT_RECEIPT_WRAPPER_BYTES,
   );
   const executionBudgetFloor = policyRecord.messageFeeParamsBudgetFloor == null
-    ? receiptGasPrice * (
-        fixedProposeReceiptGas +
-        intrinsicGas +
-        bootloaderOverhead +
-        (DEFAULT_RECEIPT_SLOTS_CHANGED * gasPerChangedSlot) +
-        fixedMessageRevealGas +
-        intrinsicGas +
-        bootloaderOverhead +
-        (DEFAULT_MESSAGE_REVEAL_LENGTH_SLOTS * gasPerChangedSlot) +
-        (DEFAULT_NONDET_OUTPUT_LENGTH_BYTES * calldataGasPerByte)
-      )
+    ? proposeReceiptBudgetFloor({
+        receiptGasPrice,
+        receiptWrapperBytes,
+        fixedProposeReceiptGas,
+        intrinsicGas,
+        bootloaderOverhead,
+        calldataGasPerByte,
+        gasPerChangedSlot,
+      })
     : bigintFromUnknown(
         policyRecord.messageFeeParamsBudgetFloor,
         "policy.messageFeeParamsBudgetFloor",
@@ -1513,38 +1547,48 @@ const readCurrentFeePolicy = async (
 
   const address = client.chain.feeManagerContract.address as `0x${string}`;
   const abi = FEE_MANAGER_CALCULATE_ROUND_FEES_ABI as any;
-  const [genPerTimeUnit, storageUnitPrice, quotedReceiptGasPrice, executionBudgetFloor] = await Promise.all([
+  const [genPerTimeUnit, storageUnitPrice, quotedReceiptGasPrice, receiptWrapperBytes, useChainDerivedReceiptPrice] = await Promise.all([
     publicClient.readContract({address, abi, functionName: "GENPerTimeUnit", args: []}) as Promise<bigint>,
     publicClient.readContract({address, abi, functionName: "storageUnitPrice", args: []}) as Promise<bigint>,
     publicClient.readContract({address, abi, functionName: "quoteGasPrice", args: []}) as Promise<bigint>,
-    publicClient.readContract({address, abi, functionName: "messageFeeParamsBudgetFloor", args: []}) as Promise<bigint>,
+    publicClient.readContract({address, abi, functionName: "receiptWrapperBytes", args: []}) as Promise<bigint>,
+    publicClient.readContract({address, abi, functionName: "useChainDerivedReceiptPrice", args: []}) as Promise<boolean>,
   ]);
-  const enabled = genPerTimeUnit > 0n || storageUnitPrice > 0n || quotedReceiptGasPrice > 0n;
+  const enabled = useChainDerivedReceiptPrice || genPerTimeUnit > 0n || storageUnitPrice > 0n || quotedReceiptGasPrice > 0n;
   const networkReceiptGasPrice = enabled ? await publicClient.getGasPrice() : 0n;
   const receiptGasPrice = maxBigint(quotedReceiptGasPrice, networkReceiptGasPrice);
   if (enabled && receiptGasPrice === 0n) {
     throw new Error("receipt gas price quoted as zero; refusing to build a zero price cap");
   }
 
-  // messageFeeParamsBudgetFloor() multiplies by quoteGasPrice() on-chain, which reads
-  // tx.gasprice ~ 0 under a plain eth_call — so the view can report a zero floor on
-  // chain-derived networks while the real submission-time floor is non-zero. Recompute
-  // the floor locally at the effective receipt price (FeeManager.estimateProposeReceiptGas
-  // at ConsensusHelpers.MIN_RECEIPT_BYTES) and take the max.
-  const localExecutionBudgetFloor = receiptGasPrice * (
-    DEFAULT_FIXED_PROPOSE_RECEIPT_GAS +
-    DEFAULT_INTRINSIC_GAS +
-    DEFAULT_BOOTLOADER_OVERHEAD +
-    (DEFAULT_MIN_RECEIPT_BYTES * DEFAULT_CALLDATA_GAS_PER_BYTE) +
-    (DEFAULT_RECEIPT_SLOTS_CHANGED * DEFAULT_GAS_PER_CHANGED_SLOT)
-  );
+  // A plain eth_call may have tx.gasprice == 0. On Nitro the fee model rejects
+  // that value, so quote gas with the effective price in the call context.
+  // The contract then applies its live governance and Nitro gas parameters.
+  let executionBudgetFloor = 0n;
+  if (receiptGasPrice > 0n) {
+    const data = encodeFunctionData({
+      abi,
+      functionName: "estimateProposeReceiptGas",
+      args: [receiptWrapperBytes + MIN_TERMINAL_OUTPUT_BYTES],
+    });
+    const result = await publicClient.call({to: address, data, gasPrice: receiptGasPrice, batch: false});
+    if (!result.data) {
+      throw new Error("FeeManager.estimateProposeReceiptGas returned no data.");
+    }
+    const proposeReceiptGas = decodeFunctionResult({
+      abi,
+      functionName: "estimateProposeReceiptGas",
+      data: result.data,
+    }) as bigint;
+    executionBudgetFloor = receiptGasPrice * proposeReceiptGas;
+  }
 
   return {
     enabled,
     genPerTimeUnit,
     storageUnitPrice,
     receiptGasPrice,
-    executionBudgetFloor: maxBigint(executionBudgetFloor, localExecutionBudgetFloor),
+    executionBudgetFloor,
     // Live networks quote through FeeManager.calculateRoundFees; this field is
     // only consumed by Studio's local mirror.
     timeUnitOverlayBps: 0n,
