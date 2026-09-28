@@ -1,10 +1,11 @@
 import {Address, defineChain} from "viem";
 import {GenLayerChain} from "@/types";
+import {withStudioConsensusMainAbi} from "@/abi/studioConsensus";
 
 // chains/localnet.ts
 const SIMULATOR_JSON_RPC_URL = "https://studio.genlayer.com/api";
 const EXPLORER_URL = "https://genlayer-explorer.vercel.app";
-const CONSENSUS_MAIN_CONTRACT = {
+const CONSENSUS_MAIN_CONTRACT_BASE = {
   address: "0xb7278A61aa25c888815aFC32Ad3cC52fF24fE575" as Address,
   abi: [
     {
@@ -1434,6 +1435,11 @@ const CONSENSUS_MAIN_CONTRACT = {
     },
   ],
   bytecode: "",
+};
+
+const CONSENSUS_MAIN_CONTRACT = {
+  ...CONSENSUS_MAIN_CONTRACT_BASE,
+  abi: withStudioConsensusMainAbi(CONSENSUS_MAIN_CONTRACT_BASE.abi),
 };
 
 const CONSENSUS_DATA_CONTRACT = {

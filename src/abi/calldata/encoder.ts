@@ -142,6 +142,8 @@ export function encode(data: CalldataEncodable): Uint8Array {
 }
 
 // Constructs a calldata object for contract calls, omitting empty args/kwargs for compactness.
+// Method names use the empty-string key, which sorts first in canonical calldata encoding
+// and makes the method name a prefix of the encoded binary.
 export function makeCalldataObject(
   method: string | undefined,
   args: CalldataEncodable[] | undefined,
@@ -150,7 +152,7 @@ export function makeCalldataObject(
   let ret: {[key: string]: CalldataEncodable} = {};
 
   if (method) {
-    ret["method"] = method;
+    ret[""] = method;
   }
 
   if (args && args.length > 0) {

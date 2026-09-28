@@ -1,3 +1,5 @@
+import {Address} from "./accounts";
+
 export type ContractParamsArraySchemaElement = ContractParamsSchema | {$rep: ContractParamsSchema};
 
 export type ContractParamsSchema =
@@ -30,3 +32,11 @@ export type ContractSchema = {
   ctor: ContractMethodBase;
   methods: Record<string, ContractMethod>;
 };
+
+export interface DeveloperNft {
+  nftId: bigint;
+  developer: Address;
+  claimableRewards: bigint;
+  lastClaimedEpoch: bigint;
+  ghosts: Address[];
+}

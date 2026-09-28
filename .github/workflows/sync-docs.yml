@@ -9,6 +9,7 @@ jobs:
   generate-and-sync:
     if: github.event_name != 'release' || !contains(github.event.release.tag_name, '-')
     runs-on: ubuntu-latest
+    environment: Sync-docs
     permissions:
       contents: read
     steps:
@@ -38,9 +39,9 @@ jobs:
 
       - name: Generate docs repo token
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.DOCS_SYNC_APP_ID }}
+          client-id: ${{ vars.DOCS_SYNC_APP_CLIENT_ID }}
           private-key: ${{ secrets.DOCS_SYNC_APP_KEY }}
           repositories: genlayer-docs
 
