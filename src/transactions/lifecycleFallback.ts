@@ -1,7 +1,6 @@
 import {MethodNotFoundRpcError} from "viem";
 
-import {GenLayerClient} from "../types/clients";
-import {GenLayerChain} from "../types/chains";
+import {RawTransactionRead, TransactionActionInput} from "../types/clients";
 import {
   GenLayerTransaction,
   TransactionHash,
@@ -68,7 +67,7 @@ const UNSPECIFIED_RESOLUTION_SOURCE_CODE = 0;
  * while `contractActions` hands over the SDK transaction, whose `status` is
  * already the numeric code and whose `statusName` is already normalized.
  */
-const storedStatusName = (transaction: GenLayerTransaction): TransactionStatus | undefined => {
+const storedStatusName = (transaction: GenLayerTransaction | RawTransactionRead): TransactionStatus | undefined => {
   const raw: unknown = transaction.statusName ?? transaction.status;
   const byCode = (code: string): TransactionStatus | undefined =>
     Object.prototype.hasOwnProperty.call(transactionsStatusNumberToName, code)
@@ -102,12 +101,12 @@ export const readStudioLifecycleFallback = async ({
   timestamp,
   cause,
 }: {
-  client: GenLayerClient<GenLayerChain>;
+  client: TransactionActionInput;
   hash: TransactionHash;
   timestamp?: number;
   cause: unknown;
 }): Promise<StudioLifecycleFallback> => {
-  let transaction: GenLayerTransaction;
+  let transaction: RawTransactionRead;
   try {
     transaction = await client.getTransaction({hash});
   } catch {

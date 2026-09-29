@@ -3,7 +3,7 @@ import {studionet} from "@/chains/studionet";
 import {studioDevnet} from "@/chains/studioDevnet";
 import {testnetAsimov} from "@/chains/testnetAsimov";
 import {testnetBradbury} from "@/chains/testnetBradbury";
-import {GenLayerClient, GenLayerChain} from "@/types";
+import {ChainSwitcher} from "@/types";
 import {Network} from "@/types/network";
 import {SnapSource} from "@/types/snapSource";
 import {snapID} from "@/config/snapID";
@@ -17,7 +17,7 @@ const networks = {
 };
 
 export const connect = async (
-  client: GenLayerClient<GenLayerChain>,
+  client: ChainSwitcher,
   network: Network = "studionet",
   snapSource: SnapSource = "npm",
 ): Promise<void> => {

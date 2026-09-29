@@ -1,4 +1,4 @@
-import {GenLayerClient} from "../types/clients";
+import {TransactionActionInput, TransactionReader} from "../types/clients";
 import {
   TransactionHash,
   TransactionStatus,
@@ -19,7 +19,6 @@ import {
 } from "../types/transactions";
 import {transactionsConfig} from "../config/transactions";
 import {sleep} from "../utils/async";
-import {GenLayerChain} from "@/types";
 import {Abi, PublicClient, Address, keccak256, concat, stringToBytes, toBytes, zeroAddress, parseAbiItem} from "viem";
 import {decodeLocalnetTransaction, decodeTransaction, simplifyTransactionReceipt} from "./decoders";
 import {isMethodNotFoundError, readStudioLifecycleFallback} from "./lifecycleFallback";
@@ -231,7 +230,7 @@ export const isSuccessful = (transaction: GenLayerTransaction): boolean => {
   );
 };
 
-export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => ({
+export const receiptActions = (client: TransactionReader, publicClient: PublicClient) => ({
   /** Polls until a transaction reaches the specified status. Returns the transaction receipt. */
   waitForTransactionReceipt: async ({
     hash,
@@ -321,7 +320,7 @@ export const receiptActions = (client: GenLayerClient<GenLayerChain>, publicClie
   }),
 });
 
-export const transactionActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => ({
+export const transactionActions = (client: TransactionActionInput, publicClient: PublicClient) => ({
   advanced: {
     /**
      * `advanced.getTransactionLifecycle` exposes stored/projected status,
@@ -399,7 +398,7 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
       transaction.statusName = localnetStatus as TransactionStatus;
       transaction.lifecycle = transactionLifecycleFromStoredStatus(
         localnetStatus as TransactionStatus,
-        transaction.result,
+        transaction.result as number,
       );
       return decodeLocalnetTransaction(transaction as unknown as GenLayerTransaction);
     }
