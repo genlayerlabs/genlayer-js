@@ -22,13 +22,7 @@ import {localnet} from "@/chains";
 
 // Define the configuration interface for the client
 interface ClientConfig {
-  chain?: {
-    id: number;
-    name: string;
-    rpcUrls: {default: {http: readonly string[]}};
-    nativeCurrency: {name: string; symbol: string; decimals: number};
-    blockExplorers?: {default: {name: string; url: string}};
-  };
+  chain?: GenLayerChain;
   endpoint?: string; // Custom RPC endpoint
   account?: Account | Address;
   provider?: EthereumProvider; // Custom provider for wallet framework integration
@@ -148,32 +142,32 @@ export const createClient = (config: ClientConfig = {chain: localnet}): GenLayer
   const clientWithBasicActions = baseClient
     .extend(publicActions)
     .extend(walletActions)
-    .extend(client => accountActions(client as unknown as GenLayerClient<GenLayerChain>, publicClient));
+    .extend(client => accountActions(client, publicClient));
 
   const clientWithTransactionActions = {
     ...clientWithBasicActions,
-    ...transactionActions(clientWithBasicActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
-    ...chainActions(clientWithBasicActions as unknown as GenLayerClient<GenLayerChain>),
-    ...genlayerWalletActions(clientWithBasicActions as unknown as GenLayerClient<GenLayerChain>),
-  } as unknown as GenLayerClient<GenLayerChain>;
+    ...transactionActions(clientWithBasicActions, publicClient),
+    ...chainActions(clientWithBasicActions),
+    ...genlayerWalletActions(clientWithBasicActions),
+  };
 
   const clientWithAllActions = {
     ...clientWithTransactionActions,
-    ...contractActions(clientWithTransactionActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
-  } as unknown as GenLayerClient<GenLayerChain>;
+    ...contractActions(clientWithTransactionActions, publicClient),
+  };
 
   const clientWithReceiptActions = {
     ...clientWithAllActions,
-    ...receiptActions(clientWithAllActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
-  } as unknown as GenLayerClient<GenLayerChain>;
+    ...receiptActions(clientWithAllActions, publicClient),
+  };
 
   const finalClient = {
     ...clientWithReceiptActions,
-    ...stakingActions(clientWithReceiptActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
-    ...vestingActions(clientWithReceiptActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
-  } as unknown as GenLayerClient<GenLayerChain>;
+    ...stakingActions(clientWithReceiptActions, publicClient),
+    ...vestingActions(clientWithReceiptActions, publicClient),
+  };
 
-  return finalClient;
+  return finalClient as GenLayerClient<GenLayerChain>;
 };
 
 export const createPublicClient = (
