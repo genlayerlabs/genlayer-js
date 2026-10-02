@@ -2,7 +2,7 @@ import {createClient} from "../src/client/client";
 import {localnet} from "@/chains/localnet";
 import {createAccount, generatePrivateKey} from "../src/accounts/account";
 import {TransactionHash, TransactionStatus} from "../src/types/transactions";
-import type {ContractSchema} from "../src/types/contracts";
+import type {ContractSchema} from "@/types/contracts";
 
 test("type checks", () => {
   const client = createClient({
@@ -64,10 +64,26 @@ test("type checks", () => {
     },
   };
 
+  const schemaWithoutMinGas: ContractSchema = {
+    ctor: {
+      params: [],
+      kwparams: {},
+    },
+    methods: {
+      update: {
+        params: [],
+        kwparams: {},
+        ret: "null",
+        readonly: false,
+      },
+    },
+  };
+
   const minGasLeader: number | undefined = schemaWithMinGas.methods.update.min_gas_leader;
   const minGasValidator: number | undefined = schemaWithMinGas.methods.update.min_gas_validator;
   void minGasLeader;
   void minGasValidator;
+  void schemaWithoutMinGas;
 
   // Existing consumer-facing active-validator methods remain available, and
   // the append-only joined registry is an explicitly named separate read.
