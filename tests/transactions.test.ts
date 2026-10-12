@@ -263,6 +263,40 @@ const makeRawTx = (overrides: Record<string, unknown> = {}): GenLayerRawTransact
   ...overrides,
 });
 
+describe("getTransaction", () => {
+  it.each([0n, 3n])(
+    "uses the stored validator count instead of %s initial rotations",
+    async initialRotations => {
+      const txData = makeRawTx({numOfInitialValidators: undefined, initialRotations});
+      const txAllData = {
+        ...txData,
+        numOfInitialValidators: 5n,
+        txExecutionResult: 1,
+      };
+      const publicClient = {
+        readContract: vi.fn()
+          .mockResolvedValueOnce(txData)
+          .mockResolvedValueOnce([txAllData, []]),
+      };
+      const client = {
+        chain: {
+          isStudio: false,
+          consensusDataContract: {
+            address: "0x0000000000000000000000000000000000000001",
+            abi: [],
+          },
+        },
+      };
+
+      const decoded = await transactionActions(client as any, publicClient as any).getTransaction({
+        hash: txData.txId,
+      });
+
+      expect(decoded.numOfInitialValidators).toBe("5");
+    },
+  );
+});
+
 describe("decodeTransaction", () => {
   it("should decode standard field names (localnet/asimov)", () => {
     const tx = makeRawTx();
@@ -273,11 +307,11 @@ describe("decodeTransaction", () => {
     expect(decoded.resultName).toBe("AGREE");
   });
 
-  it("should handle Bradbury field: initialRotations instead of numOfInitialValidators", () => {
+  it("should not treat initialRotations as numOfInitialValidators", () => {
     const tx = makeRawTx({ numOfInitialValidators: undefined });
     (tx as any).initialRotations = 5n;
     const decoded = decodeTransaction(tx);
-    expect(decoded.numOfInitialValidators).toBe("5");
+    expect(decoded.numOfInitialValidators).toBe("0");
   });
 
   it("should handle Bradbury field: txCalldata instead of txData", () => {

@@ -76,7 +76,7 @@ export const decodeInputData = (
 export const decodeTransaction = (tx: GenLayerRawTransaction): GenLayerTransaction => {
   // Normalize field names across chain ABIs (Bradbury uses different names)
   const txData = tx.txData ?? (tx as any).txCalldata;
-  const numOfInitialValidators = tx.numOfInitialValidators ?? (tx as any).initialRotations;
+  const numOfInitialValidators = tx.numOfInitialValidators;
 
   const txDataDecoded = decodeInputData(txData, tx.recipient);
 
@@ -284,4 +284,4 @@ export const decodeLocalnetTransaction = (tx: GenLayerTransaction): GenLayerTran
     console.error("Error in decodeLocalnetTransaction:", e);
   }
   return tx;
-}; 
+};

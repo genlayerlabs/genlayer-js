@@ -102,6 +102,7 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
 
     const transaction = {
       ...txData,
+      numOfInitialValidators: txAllData.numOfInitialValidators ?? txData.numOfInitialValidators,
       txExecutionResult: Number(txAllData.txExecutionResult),
     } as GenLayerRawTransaction;
     return decodeTransaction(transaction);
