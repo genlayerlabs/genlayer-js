@@ -3,10 +3,14 @@ name: Run Tests
 on:
   push:
     branches:
-      - main
+      - v1
+      - v2-dev
+      - v2
   pull_request:
     branches:
-      - main
+      - v1
+      - v2-dev
+      - v2
 
 jobs:
   test:

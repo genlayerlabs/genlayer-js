@@ -1,6 +1,6 @@
 # Interface: ValidatorJoinOptions
 
-Defined in: [types/staking.ts:152](https://github.com/genlayerlabs/genlayer-js/blob/eaba6adec6803bdd0b4968e3f0763cf22107acd1/src/types/staking.ts#L152)
+Defined in: `src/types/staking.ts`
 
 ## Properties
 
@@ -8,12 +8,15 @@ Defined in: [types/staking.ts:152](https://github.com/genlayerlabs/genlayer-js/b
 
 > **amount**: `string` \| `bigint`
 
-Defined in: [types/staking.ts:153](https://github.com/genlayerlabs/genlayer-js/blob/eaba6adec6803bdd0b4968e3f0763cf22107acd1/src/types/staking.ts#L153)
+Defined in: `src/types/staking.ts`
 
 ***
 
-### operator?
+### registration
 
-> `optional` **operator?**: `` `0x${string}` ``
+> **registration**: `OperatorRegistrationProof`
 
-Defined in: [types/staking.ts:154](https://github.com/genlayerlabs/genlayer-js/blob/eaba6adec6803bdd0b4968e3f0763cf22107acd1/src/types/staking.ts#L154)
+Proof-of-possession package bound to this chain, the validator wallet factory,
+and the joining owner address.
+
+Defined in: `src/types/staking.ts`

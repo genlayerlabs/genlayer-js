@@ -68,9 +68,9 @@ Defined in: [types/staking.ts:64](https://github.com/genlayerlabs/genlayer-js/bl
 
 ***
 
-### live
+### hasUnclaimedRewards
 
-> **live**: `boolean`
+> **hasUnclaimedRewards**: `boolean`
 
 Defined in: [types/staking.ts:60](https://github.com/genlayerlabs/genlayer-js/blob/eaba6adec6803bdd0b4968e3f0763cf22107acd1/src/types/staking.ts#L60)
 

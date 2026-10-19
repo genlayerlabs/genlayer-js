@@ -1,36 +1,28 @@
-name: Release & Publish Package to NPM
+name: Publish Package to NPM
 
+# Tag-driven publish. The release is cut by a human (or Claude via the
+# release skill) running scripts/release.sh on the target stable branch
+# — that script bumps package.json, writes the CHANGELOG, commits, tags
+# vX.Y.Z, and pushes both the branch commit and the tag. This workflow
+# fires on the tag push, builds, sanity-checks the tag matches
+# package.json, and publishes to npm. It never bumps or tags by itself.
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    tags:
+      - "v*"
 
 permissions:
   contents: write
   id-token: write
 
 jobs:
-  release:
+  publish:
     runs-on: ubuntu-latest
-    environment: npm
+    environment: Publish
     steps:
-      - name: Get CI Bot Token
-        uses: tibdex/github-app-token@v1
-        id: ci_bot_token
-        with:
-          app_id: ${{ secrets.CI_BOT_APP_ID }}
-          private_key: ${{ secrets.CI_BOT_SECRET }}
-
-      - name: Checkout source code
+      - name: Checkout tag
         uses: actions/checkout@v4
-        with:
-          token: ${{ steps.ci_bot_token.outputs.token }}
-
-      - name: Initialize Git User
-        run: |
-          git config --global user.email "github-actions[bot]@genlayer.com"
-          git config --global user.name "github-actions[bot]"
 
       - uses: actions/setup-node@v4
         with:
@@ -39,7 +31,51 @@ jobs:
 
       - run: npm ci
 
-      - name: Release
-        run: npm run release
+      - name: Verify tag and resolve npm dist-tag
+        id: version
+        run: |
+          if [ "${GITHUB_REF_TYPE:-}" != "tag" ]; then
+            echo "Publish must run from a git tag. Current ref type: ${GITHUB_REF_TYPE:-unknown}" >&2
+            exit 1
+          fi
+
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          node scripts/resolve-release-channel.mjs "$TAG_VERSION" "$PKG_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Tag $GITHUB_REF_NAME matches package.json $PKG_VERSION."
+
+      - run: npm run build
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public --tag "${{ steps.version.outputs.npm_dist_tag }}"
         env:
-          GITHUB_TOKEN: ${{ steps.ci_bot_token.outputs.token }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Pull the changelog block for this version out of CHANGELOG.md.
+          # Falls back to a generic body if the section isn't found.
+          NOTES="$(awk -v ver="$GITHUB_REF_NAME" '
+            $0 ~ "^## \\[?" substr(ver, 2) {capture=1; next}
+            capture && /^## / {exit}
+            capture {print}
+          ' CHANGELOG.md)"
+          if [ -z "$NOTES" ]; then
+            NOTES="Release $GITHUB_REF_NAME"
+          fi
+
+          NOTES="$NOTES
+
+          npm install genlayer-js@${{ steps.version.outputs.npm_dist_tag }}"
+
+          RELEASE_FLAGS=()
+          if [ "${{ steps.version.outputs.is_prerelease }}" = "true" ]; then
+            RELEASE_FLAGS+=(--prerelease)
+          fi
+
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes "$NOTES" \
+            "${RELEASE_FLAGS[@]}"
