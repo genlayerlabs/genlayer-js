@@ -129,10 +129,11 @@ const getCustomTransportConfig = (config: ClientConfig, chainConfig: GenLayerCha
  * @returns Configured client with contract, transaction, and staking methods
  */
 export const createClient = (config: ClientConfig = {chain: localnet}): GenLayerClient<GenLayerChain> => {
-  const chainConfig = config.chain || localnet;
-  if (config.endpoint) {
-    chainConfig.rpcUrls.default.http = [config.endpoint];
-  }
+  const baseChain = config.chain || localnet;
+  // Copy instead of mutating: exported chain presets are shared by every client.
+  const chainConfig = config.endpoint
+    ? {...baseChain, rpcUrls: {...baseChain.rpcUrls, default: {...baseChain.rpcUrls.default, http: [config.endpoint]}}}
+    : baseChain;
 
   const customTransport = custom(getCustomTransportConfig(config, chainConfig as GenLayerChain), {retryCount: 0, retryDelay: 0});
   const publicClient = createPublicClient(chainConfig as GenLayerChain, customTransport).extend(
