@@ -20,6 +20,15 @@ describe("Client Creation", () => {
     expect(client).toBeDefined();
     expect(client.chain).toBe(localnet);
   });
+
+  it("should not change the shared chain preset when overriding the endpoint", () => {
+    const defaultRpc = localnet.rpcUrls.default.http;
+    const first = createClient({chain: localnet, endpoint: "https://first.example"});
+    const second = createClient({chain: localnet, endpoint: "https://second.example"});
+    expect(first.chain.rpcUrls.default.http).toEqual(["https://first.example"]);
+    expect(second.chain.rpcUrls.default.http).toEqual(["https://second.example"]);
+    expect(localnet.rpcUrls.default.http).toEqual(defaultRpc);
+  });
 });
 
 describe("Client Overrides", () => {
