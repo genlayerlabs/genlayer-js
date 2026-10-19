@@ -3,6 +3,8 @@ import {Address} from "./accounts";
 
 export type GenLayerChain = Chain & {
   isStudio: boolean;
+  /** Genesis identity for networks that reuse a chain ID. */
+  genesisHash?: `0x${string}`;
   consensusMainContract: {
     address: Address;
     abi: readonly unknown[];

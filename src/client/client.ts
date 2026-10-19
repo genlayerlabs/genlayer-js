@@ -18,6 +18,7 @@ import {stakingActions} from "../staking/actions";
 import {vestingActions} from "../vesting/actions";
 import {GenLayerClient, GenLayerChain} from "@/types";
 import {chainActions} from "@/chains/actions";
+import {assertNetworkIdentity} from "./networkIdentity";
 import {localnet} from "@/chains";
 
 // Define the configuration interface for the client
@@ -72,14 +73,33 @@ const assertChainMatch = async (
 const getCustomTransportConfig = (config: ClientConfig, chainConfig: GenLayerChain) => {
   const isAddress = typeof config.account !== "object";
 
+  const rpc = async ({method, params = []}: {method: string; params?: any[]}) => {
+    const response = await fetch(chainConfig.rpcUrls.default.http[0], {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({jsonrpc: "2.0", id: Date.now(), method, params}),
+    });
+    if (!response.ok) throw new Error(`RPC HTTP ${response.status}`);
+    const data = await response.json();
+    if (data.error) throw data.error;
+    return data.result;
+  };
+  let identityCheck: Promise<void> | undefined;
   return {
     async request({method, params = []}: {method: string; params: any[]}) {
+      if (chainConfig.genesisHash) {
+        // Recheck before every broadcast, including locally signed transactions.
+        if (!identityCheck || method === "eth_sendRawTransaction" || method === "eth_sendTransaction" || method === "eth_signTransaction") {
+          identityCheck = assertNetworkIdentity(rpc, chainConfig).catch(error => {identityCheck = undefined; throw error;});
+        }
+        await identityCheck;
+      }
       if (PROVIDER_METHODS.has(method) && isAddress) {
         const provider = config.provider || (typeof window !== "undefined" ? window.ethereum : undefined);
         if (provider) {
           try {
             if (method === "eth_sendTransaction" || method === "eth_signTransaction") {
               await assertChainMatch(provider, chainConfig);
+              await assertNetworkIdentity(args => provider.request(args), chainConfig);
             }
             return await provider.request({method, params});
           } catch (err) {
@@ -90,26 +110,7 @@ const getCustomTransportConfig = (config: ClientConfig, chainConfig: GenLayerCha
       }
 
       try {
-        const response = await fetch(chainConfig.rpcUrls.default.http[0], {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: Date.now(),
-            method,
-            params,
-          }),
-        });
-
-        const data = await response.json();
-
-        if (data.error) {
-          throw data.error;
-        }
-
-        return data.result;
+        return await rpc({method, params});
       } catch (err) {
         console.error(`GenLayer RPC error (${method}):`, (err as Error).message || err);
         throw err;
@@ -129,10 +130,10 @@ const getCustomTransportConfig = (config: ClientConfig, chainConfig: GenLayerCha
  * @returns Configured client with contract, transaction, and staking methods
  */
 export const createClient = (config: ClientConfig = {chain: localnet}): GenLayerClient<GenLayerChain> => {
-  const chainConfig = config.chain || localnet;
-  if (config.endpoint) {
-    chainConfig.rpcUrls.default.http = [config.endpoint];
-  }
+  const source = config.chain || localnet;
+  const chainConfig = config.endpoint
+    ? {...source, rpcUrls: {...source.rpcUrls, default: {...source.rpcUrls.default, http: [config.endpoint]}}}
+    : source;
 
   const customTransport = custom(getCustomTransportConfig(config, chainConfig as GenLayerChain), {retryCount: 0, retryDelay: 0});
   const publicClient = createPublicClient(chainConfig as GenLayerChain, customTransport).extend(

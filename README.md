@@ -504,3 +504,23 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ### v0.6 consumer migration
 
 See [the v2 migration guide](docs/consumer-migration-v06.md) for the staking rewards rename, producer ABI changes, execution generation, and package selection.
+
+### Bradbury Phase 2
+
+`testnetBradbury` targets the Phase 2 deployment (chain ID 4221). That chain ID
+was also used by Phase 1, so the SDK verifies the genesis hash and required
+contract code on first use and again before broadcasting a transaction. A wallet
+provider is checked separately before signing. A mismatched endpoint fails closed.
+
+The public chain endpoint is `https://rpc.testnet-chain.genlayer.com`, with the
+chain explorer at `https://scan.testnet-chain.genlayer.com`. During the DNS
+cutover, explicitly use the assigned Conduit endpoint with `createClient({chain:
+testnetBradbury, endpoint: rpcUrl})`. Overrides do not change exported defaults.
+The chain RPC serves Ethereum/staking calls; GenLayer `gen_*` methods require a
+compatible GenLayer node endpoint.
+
+Run `npm run check:bradbury` to check the default endpoint, or set
+`BRADBURY_RPC_URL` and, when required, `BRADBURY_RPC_KEY` (sent as `X-AccessKey`).
+A successful check establishes network identity, not validator activation or
+WebSocket readiness. `npm run check:chains` compares the Phase 2 contract
+configuration against the pinned deployment and verified implementation ABIs.
