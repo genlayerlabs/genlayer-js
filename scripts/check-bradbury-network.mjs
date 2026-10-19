@@ -1,20 +1,33 @@
 import { pathToFileURL } from 'node:url';
 
 export const GENESIS = '0x17d89764d4f4f963158fc4c5e8f2cb670c2837740b35f37081c12860c3df97e4';
-export const CONTRACTS = {
-  AddressManager: '0x3F71AE080BD6270A91dBcc7960d88797828538E0',
-  Staking: '0xD8fBa96C0dBB0257028dBc0107060b958e5c7113',
-  ConsensusMain: '0x2E2766cbc3E5e61Ce93bBcdCBb3eAcB82082A019',
-};
+export const ADDRESS_MANAGER = '0x3F71AE080BD6270A91dBcc7960d88797828538E0';
+
+function lookupData(name) {
+  const word = value => value.toString(16).padStart(64, '0');
+  const bytes = Buffer.from(name, 'utf8');
+  // getAddress(string), ABI-encoded without a package dependency.
+  return '0xbf40fac1' + word(32) + word(bytes.length) + bytes.toString('hex').padEnd(Math.ceil(bytes.length / 32) * 64, '0');
+}
 
 export async function checkNetwork(request) {
   if (BigInt(await request('eth_chainId', [])) !== 4221n) throw new Error('Wrong chain ID');
   const genesis = await request('eth_getBlockByNumber', ['0x0', false]);
   if (genesis?.hash?.toLowerCase() !== GENESIS) throw new Error('Wrong genesis: this is not Bradbury Phase 2 (chain ID 4221 is reused)');
-  for (const [name, address] of Object.entries(CONTRACTS)) {
+  async function requireCode(name, address) {
     const code = await request('eth_getCode', [address, 'latest']);
-    if (typeof code !== 'string' || !/^0x[0-9a-f]+$/i.test(code) || code.length <= 2) throw new Error(`${name} has no deployed code`);
+    if (typeof code !== 'string' || !/^0x[0-9a-f]+$/i.test(code) || code.length <= 2) throw new Error(name + ' has no deployed code');
   }
+  await requireCode('AddressManager', ADDRESS_MANAGER);
+  const resolved = {AddressManager: ADDRESS_MANAGER};
+  for (const name of ['Staking', 'ConsensusMain']) {
+    const result = await request('eth_call', [{to: ADDRESS_MANAGER, data: lookupData(name)}, 'latest']);
+    if (typeof result !== 'string' || !/^0x0{24}[0-9a-f]{40}$/i.test(result) || BigInt(result) === 0n) throw new Error(name + ' has no valid AddressManager entry');
+    const address = '0x' + result.slice(-40);
+    await requireCode(name, address);
+    resolved[name] = address;
+  }
+  return resolved;
 }
 
 export function rpcRequest(url, key) {
@@ -35,7 +48,7 @@ export function rpcRequest(url, key) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    await checkNetwork(rpcRequest(process.env.BRADBURY_RPC_URL || 'https://rpc.testnet-chain.genlayer.com', process.env.BRADBURY_RPC_KEY));
+    await checkNetwork(rpcRequest(process.env.BRADBURY_RPC_URL || 'https://rpc.testnet-chain.genlayer.com', process.env.BRADBURY_RPC_KEY || process.env.GENLAYERNODE_ROLLUP_GENLAYERCHAINRPCKEY));
     console.log('Bradbury Phase 2: chain ID, genesis and required contract code verified.');
   } catch (error) {
     console.error(error.message);

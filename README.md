@@ -524,3 +524,13 @@ Run `npm run check:bradbury` to check the default endpoint, or set
 A successful check establishes network identity, not validator activation or
 WebSocket readiness. `npm run check:chains` compares the Phase 2 contract
 configuration against the pinned deployment and verified implementation ABIs.
+
+AddressManager is the stable deployment anchor. The network preflight resolves
+Staking and ConsensusMain from that registry and checks code at their current
+addresses; their initial deployment addresses are not network identity pins.
+The SDK chain definition remains a qualified address/ABI snapshot. Before use
+and broadcasts it compares that snapshot with the registry. If a contract moves,
+it reports a stale SDK configuration (not a wrong network) and requires an updated
+SDK/chain configuration with compatible ABIs. It does not silently redirect a
+transaction encoded with an old ABI. The preflight also accepts the node's
+`GENLAYERNODE_ROLLUP_GENLAYERCHAINRPCKEY` environment variable.

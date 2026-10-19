@@ -1,19 +1,55 @@
+import {decodeFunctionData, encodeFunctionResult} from "viem";
 import {afterEach, describe, expect, it, vi} from "vitest";
-import {assertNetworkIdentity} from "../src/client/networkIdentity";
+import {ADDRESS_MANAGER_ABI, assertNetworkIdentity} from "../src/client/networkIdentity";
 import {createClient} from "../src/client/client";
 import {testnetBradbury} from "../src/chains/testnetBradbury";
 
 const GENESIS = "0x17d89764d4f4f963158fc4c5e8f2cb670c2837740b35f37081c12860c3df97e4";
 const request = () =>
-  vi.fn(async ({method}: {method: string}) => {
+  vi.fn(async ({method, params}: {method: string; params?: any[]}) => {
     if (method === "eth_chainId") return "0x107d";
     if (method === "eth_getBlockByNumber") return {hash: GENESIS};
     if (method === "eth_getCode") return "0x6001";
+    if (method === "eth_call") {
+      const {args} = decodeFunctionData({abi: ADDRESS_MANAGER_ABI, data: params![0].data});
+      const contracts = {
+        ConsensusMain: testnetBradbury.consensusMainContract,
+        ConsensusData: testnetBradbury.consensusDataContract,
+        Staking: testnetBradbury.stakingContract,
+        FeeManager: testnetBradbury.feeManagerContract,
+        RoundsStorage: testnetBradbury.roundsStorageContract,
+        Appeals: testnetBradbury.appealsContract,
+      };
+      return encodeFunctionResult({
+        abi: ADDRESS_MANAGER_ABI,
+        functionName: "getAddress",
+        result: contracts[args[0] as keyof typeof contracts]!.address,
+      });
+    }
     throw new Error(`Unexpected method ${method}`);
   });
 afterEach(() => vi.restoreAllMocks());
 
 describe("Bradbury Phase 2 network identity", () => {
+  it("distinguishes a changed registry from the wrong network and rejects stale SDK targets", async () => {
+    const valid = request();
+    const moved = "0x1111111111111111111111111111111111111111";
+    const rpc = async (args: {method: string; params?: any[]}) =>
+      args.method === "eth_call"
+        ? encodeFunctionResult({abi: ADDRESS_MANAGER_ABI, functionName: "getAddress", result: moved})
+        : valid(args);
+    await expect(assertNetworkIdentity(rpc, testnetBradbury)).rejects.toThrow("network identity matches");
+    const updated = {
+      ...testnetBradbury,
+      consensusMainContract: {...testnetBradbury.consensusMainContract!, address: moved as `0x${string}`},
+      consensusDataContract: null,
+      stakingContract: null,
+      feeManagerContract: null,
+      roundsStorageContract: null,
+      appealsContract: null,
+    };
+    await expect(assertNetworkIdentity(rpc, updated)).resolves.toBeUndefined();
+  });
   it("accepts the deployed genesis and requires contract code", async () => {
     const rpc = request();
     await expect(assertNetworkIdentity(rpc, testnetBradbury)).resolves.toBeUndefined();
@@ -81,7 +117,7 @@ describe("RPC rate limiting", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({result: "0x107d"})));
     try {
       const chain = {...testnetBradbury, genesisHash: undefined};
-    const client = createClient({chain});
+      const client = createClient({chain});
       const result = client.request({method: "eth_chainId"});
       await vi.runAllTimersAsync();
       await expect(result).resolves.toBe("0x107d");

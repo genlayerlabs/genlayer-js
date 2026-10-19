@@ -5479,6 +5479,7 @@ export const testnetBradbury: GenLayerChain = defineChain({
   id: 0x107d,
   isStudio: false,
   genesisHash: "0x17d89764d4f4f963158fc4c5e8f2cb670c2837740b35f37081c12860c3df97e4",
+  addressManager: "0x3F71AE080BD6270A91dBcc7960d88797828538E0",
   name: "Genlayer Bradbury Testnet",
   rpcUrls: {
     default: {
