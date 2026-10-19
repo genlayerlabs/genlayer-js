@@ -8,7 +8,9 @@ export async function assertNetworkIdentity(request: Request, chain: GenLayerCha
   const id = await request({method: "eth_chainId"});
   const block = await request({method: "eth_getBlockByNumber", params: ["0x0", false]});
   if (BigInt(id) !== BigInt(chain.id) || block?.hash?.toLowerCase() !== chain.genesisHash.toLowerCase()) {
-    throw new Error("RPC network identity does not match Bradbury Phase 2; chain ID 4221 alone is insufficient.");
+    throw new Error(
+      "RPC network identity does not match Bradbury Phase 2; chain ID 4221 alone is insufficient.",
+    );
   }
   for (const contract of [chain.consensusMainContract, chain.stakingContract]) {
     if (!contract) continue;

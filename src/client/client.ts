@@ -62,7 +62,7 @@ const assertChainMatch = async (
       const currentId = parseInt(currentChainId as string, 16);
       throw new Error(
         `Wallet is on chain ${currentId} but client is configured for chain ${chainConfig.id} (${chainConfig.name}). ` +
-        `Call client.connect("${chainConfig.name}") or switch your wallet to the correct network before sending transactions.`,
+          `Call client.connect("${chainConfig.name}") or switch your wallet to the correct network before sending transactions.`,
       );
     }
   } catch (err) {
@@ -74,22 +74,43 @@ const getCustomTransportConfig = (config: ClientConfig, chainConfig: GenLayerCha
   const isAddress = typeof config.account !== "object";
 
   const rpc = async ({method, params = []}: {method: string; params?: any[]}) => {
-    const response = await fetch(chainConfig.rpcUrls.default.http[0], {
-      method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({jsonrpc: "2.0", id: Date.now(), method, params}),
-    });
-    if (!response.ok) throw new Error(`RPC HTTP ${response.status}`);
-    const data = await response.json();
-    if (data.error) throw data.error;
-    return data.result;
+    const retryable =
+      /^(eth_get\w+|eth_call|eth_chainId|eth_blockNumber|eth_gasPrice|eth_estimateGas|net_version)$/.test(
+        method,
+      );
+    for (let attempt = 0; ; attempt++) {
+      const response = await fetch(chainConfig.rpcUrls.default.http[0], {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({jsonrpc: "2.0", id: Date.now(), method, params}),
+      });
+      if (response.status === 429 && retryable && attempt < 3) {
+        const retryAfter = Number(response.headers.get("retry-after"));
+        const delay = retryAfter > 0 ? Math.min(retryAfter * 1000, 10000) : 1000 * 2 ** attempt;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      if (!response.ok) throw new Error(`RPC HTTP ${response.status}`);
+      const data = await response.json();
+      if (data.error) throw data.error;
+      return data.result;
+    }
   };
   let identityCheck: Promise<void> | undefined;
   return {
     async request({method, params = []}: {method: string; params: any[]}) {
       if (chainConfig.genesisHash) {
         // Recheck before every broadcast, including locally signed transactions.
-        if (!identityCheck || method === "eth_sendRawTransaction" || method === "eth_sendTransaction" || method === "eth_signTransaction") {
-          identityCheck = assertNetworkIdentity(rpc, chainConfig).catch(error => {identityCheck = undefined; throw error;});
+        if (
+          !identityCheck ||
+          method === "eth_sendRawTransaction" ||
+          method === "eth_sendTransaction" ||
+          method === "eth_signTransaction"
+        ) {
+          identityCheck = assertNetworkIdentity(rpc, chainConfig).catch(error => {
+            identityCheck = undefined;
+            throw error;
+          });
         }
         await identityCheck;
       }
@@ -135,7 +156,10 @@ export const createClient = (config: ClientConfig = {chain: localnet}): GenLayer
     ? {...source, rpcUrls: {...source.rpcUrls, default: {...source.rpcUrls.default, http: [config.endpoint]}}}
     : source;
 
-  const customTransport = custom(getCustomTransportConfig(config, chainConfig as GenLayerChain), {retryCount: 0, retryDelay: 0});
+  const customTransport = custom(getCustomTransportConfig(config, chainConfig as GenLayerChain), {
+    retryCount: 0,
+    retryDelay: 0,
+  });
   const publicClient = createPublicClient(chainConfig as GenLayerChain, customTransport).extend(
     publicActions,
   );
@@ -160,7 +184,10 @@ export const createClient = (config: ClientConfig = {chain: localnet}): GenLayer
 
   const clientWithAllActions = {
     ...clientWithTransactionActions,
-    ...contractActions(clientWithTransactionActions as unknown as GenLayerClient<GenLayerChain>, publicClient),
+    ...contractActions(
+      clientWithTransactionActions as unknown as GenLayerClient<GenLayerChain>,
+      publicClient,
+    ),
   } as unknown as GenLayerClient<GenLayerChain>;
 
   const clientWithReceiptActions = {
