@@ -69,6 +69,11 @@ const assertChainMatch = async (
   }
 };
 
+// Public chain RPCs rate-limit bursts with HTTP 429. Reads are retried with
+// backoff; writes never are, so a transaction cannot be broadcast twice (#110).
+const RATE_LIMIT_RETRIES = 3;
+const RETRYABLE_READS = /^(eth_call|eth_get\w+|eth_chainId|eth_blockNumber|eth_gasPrice|eth_estimateGas|net_version)$/;
+
 const getCustomTransportConfig = (config: ClientConfig, chainConfig: GenLayerChain) => {
   const isAddress = typeof config.account !== "object";
 
@@ -90,18 +95,26 @@ const getCustomTransportConfig = (config: ClientConfig, chainConfig: GenLayerCha
       }
 
       try {
-        const response = await fetch(chainConfig.rpcUrls.default.http[0], {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: Date.now(),
-            method,
-            params,
-          }),
-        });
+        let response: Response;
+        for (let attempt = 0; ; attempt++) {
+          response = await fetch(chainConfig.rpcUrls.default.http[0], {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              jsonrpc: "2.0",
+              id: Date.now(),
+              method,
+              params,
+            }),
+          });
+          if (response.status !== 429 || attempt >= RATE_LIMIT_RETRIES || !RETRYABLE_READS.test(method)) break;
+          const retryAfter = Number(response.headers.get("retry-after"));
+          await new Promise(resolve =>
+            setTimeout(resolve, retryAfter > 0 ? Math.min(retryAfter * 1000, 10_000) : 1000 * 2 ** attempt),
+          );
+        }
 
         const data = await response.json();
 
@@ -129,10 +142,11 @@ const getCustomTransportConfig = (config: ClientConfig, chainConfig: GenLayerCha
  * @returns Configured client with contract, transaction, and staking methods
  */
 export const createClient = (config: ClientConfig = {chain: localnet}): GenLayerClient<GenLayerChain> => {
-  const chainConfig = config.chain || localnet;
-  if (config.endpoint) {
-    chainConfig.rpcUrls.default.http = [config.endpoint];
-  }
+  const baseChain = config.chain || localnet;
+  // Copy instead of mutating: exported chain presets are shared by every client.
+  const chainConfig = config.endpoint
+    ? {...baseChain, rpcUrls: {...baseChain.rpcUrls, default: {...baseChain.rpcUrls.default, http: [config.endpoint]}}}
+    : baseChain;
 
   const customTransport = custom(getCustomTransportConfig(config, chainConfig as GenLayerChain), {retryCount: 0, retryDelay: 0});
   const publicClient = createPublicClient(chainConfig as GenLayerChain, customTransport).extend(

@@ -23,7 +23,18 @@ const NETWORKS_BASE = `https://raw.githubusercontent.com/genlayerlabs/genlayer-n
 
 const CHAINS = [
   { name: "asimov", deploymentKey: "deployment_asimov_phase5" },
-  { name: "bradbury", deploymentKey: "deployment_bradbury" },
+  // Bradbury Phase 2 is not in genlayer-networks yet. Its deployment file is a
+  // copy of genlayer-consensus deployments/bradbury-phase-2.json @ 7a46314 (a private
+  // repo), and its ABIs come from the explorer-verified implementations.
+  // Point this entry back at genlayer-networks once Phase 2 is published there.
+  {
+    name: "bradbury",
+    deploymentKey: "deployment_bradbury_phase_2",
+    networkKey: "genlayerOrbitTestnet",
+    deploymentsFile: "scripts/deployments/bradbury-phase-2.json",
+    abiUrl: (group, networksKey) =>
+      `https://contracts.conduit.xyz/v2/contract/4221/${group[`${networksKey}Implementation`]}?fields=abi`,
+  },
 ];
 
 // For each contract: where to find the ABI in genlayer-networks and whether
@@ -134,19 +145,19 @@ async function main() {
   const chains = await loadChains();
   const failures = [];
 
-  for (const { name, deploymentKey } of CHAINS) {
+  for (const { name, deploymentKey, networkKey = "genlayerTestnet", deploymentsFile, abiUrl } of CHAINS) {
     const chain = chains[name];
     if (!chain) {
       failures.push(`[${name}] chain export missing from dist/chains`);
       continue;
     }
-    const deployments = await fetchJson(
-      `${NETWORKS_BASE}/${name}/testnet_deployments.json`,
-    );
-    const group = deployments.genlayerTestnet?.[deploymentKey];
+    const deployments = deploymentsFile
+      ? JSON.parse(readFileSync(join(REPO_ROOT, deploymentsFile), "utf8"))
+      : await fetchJson(`${NETWORKS_BASE}/${name}/testnet_deployments.json`);
+    const group = deployments[networkKey]?.[deploymentKey];
     if (!group) {
       failures.push(
-        `[${name}] testnet_deployments.json has no .genlayerTestnet.${deploymentKey}`,
+        `[${name}] deployments JSON has no .${networkKey}.${deploymentKey}`,
       );
       continue;
     }
@@ -172,7 +183,9 @@ async function main() {
       }
 
       const nwAbi = (
-        await fetchJson(`${NETWORKS_BASE}/${name}/${abiPath}`)
+        await fetchJson(
+          abiUrl ? abiUrl(group, networksKey) : `${NETWORKS_BASE}/${name}/${abiPath}`,
+        )
       ).abi;
       const jsSet = canonicalSet(jsContract.abi);
       const nwSet = canonicalSet(nwAbi);
