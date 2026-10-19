@@ -1,5 +1,15 @@
 
 
+## [2.0.0-rc.2](https://github.com/genlayerlabs/genlayer-js/compare/v2.0.0-rc.1...v2.0.0-rc.2) (2026-10-19)
+
+
+### Bug Fixes
+
+* **consumers:** align staking and lifecycle reads with the v0.6 producer ([#220](https://github.com/genlayerlabs/genlayer-js/issues/220)) ([6ee12f8](https://github.com/genlayerlabs/genlayer-js/commit/6ee12f8607632192e3d857396b855d7590271fcd)), closes [genlayerlabs/genlayer-consensus#1403](https://github.com/genlayerlabs/genlayer-consensus/issues/1403)
+* **fees:** price receipt floor with wrapper and terminal reserve ([#223](https://github.com/genlayerlabs/genlayer-js/issues/223)) ([4dabdf2](https://github.com/genlayerlabs/genlayer-js/commit/4dabdf296f5594a6dcce2c2af6e7d53168ab4397)), closes [#1692](https://github.com/genlayerlabs/genlayer-js/issues/1692)
+* qualify Bradbury Phase 2 contracts and RPC identity ([#236](https://github.com/genlayerlabs/genlayer-js/issues/236)) ([b629021](https://github.com/genlayerlabs/genlayer-js/commit/b629021092e23db08fd884f982d8eb34682f7bad)), closes [#110](https://github.com/genlayerlabs/genlayer-js/issues/110) [#110](https://github.com/genlayerlabs/genlayer-js/issues/110)
+* **release:** keep tag publish workflows active ([#218](https://github.com/genlayerlabs/genlayer-js/issues/218)) ([8c899cc](https://github.com/genlayerlabs/genlayer-js/commit/8c899cc53bdb17372782ac538a8d77e166be912a))
+
 ## [2.0.0-rc.1](https://github.com/genlayerlabs/genlayer-js/compare/v1.1.6...v2.0.0-rc.1) (2026-09-03)
 
 
