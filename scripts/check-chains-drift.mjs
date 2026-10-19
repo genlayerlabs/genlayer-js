@@ -21,6 +21,10 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NETWORKS_REF = process.env.GENLAYER_NETWORKS_REF || "main";
 const NETWORKS_BASE = `https://raw.githubusercontent.com/genlayerlabs/genlayer-networks/${NETWORKS_REF}`;
 
+// Phase 2 is not yet represented by genlayer-networks/bradbury. Verify its
+// pinned, explorer-verified implementation ABIs instead of the legacy deployment.
+const BRADBURY = JSON.parse(readFileSync(join(REPO_ROOT, "scripts/bradbury-phase-2-contracts.json"), "utf8"));
+
 const CHAINS = [
   { name: "asimov", deploymentKey: "deployment_asimov_phase5" },
   { name: "bradbury", deploymentKey: "deployment_bradbury" },
@@ -140,10 +144,12 @@ async function main() {
       failures.push(`[${name}] chain export missing from dist/chains`);
       continue;
     }
-    const deployments = await fetchJson(
+    const deployments = name === "bradbury" ? null : await fetchJson(
       `${NETWORKS_BASE}/${name}/testnet_deployments.json`,
     );
-    const group = deployments.genlayerTestnet?.[deploymentKey];
+    const group = name === "bradbury"
+      ? Object.fromEntries(Object.entries(BRADBURY).map(([key, value]) => [key, value.address]))
+      : deployments.genlayerTestnet?.[deploymentKey];
     if (!group) {
       failures.push(
         `[${name}] testnet_deployments.json has no .genlayerTestnet.${deploymentKey}`,
@@ -172,7 +178,9 @@ async function main() {
       }
 
       const nwAbi = (
-        await fetchJson(`${NETWORKS_BASE}/${name}/${abiPath}`)
+        await fetchJson(name === "bradbury"
+          ? `https://contracts.conduit.xyz/v2/contract/4221/${BRADBURY[networksKey].implementation}?fields=abi`
+          : `${NETWORKS_BASE}/${name}/${abiPath}`)
       ).abi;
       const jsSet = canonicalSet(jsContract.abi);
       const nwSet = canonicalSet(nwAbi);
@@ -199,7 +207,7 @@ async function main() {
     process.exit(1);
   }
   console.log(
-    "No drift. Chain files match genlayer-networks/" + NETWORKS_REF + ".",
+    "No drift. Bradbury matches its verified Phase 2 implementations; other chains match genlayer-networks/" + NETWORKS_REF + ".",
   );
 }
 
