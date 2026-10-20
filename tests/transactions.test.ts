@@ -1112,4 +1112,40 @@ describe("simplifyTransactionReceipt", () => {
     expect(genvm.stderr).toBe("some error");
     expect(genvm.exit_code).toBe(1);
   });
+
+  it("should preserve decoded calldata Map (method + args) instead of dropping it", () => {
+    // Matches decodeCalldata's TYPE_MAP output: a Map<string, CalldataEncodable>,
+    // not a plain object.
+    const tx = {
+      txDataDecoded: {
+        callData: new Map<string, unknown>([
+          ["", "inspect_delivery"],
+          ["args", ["synthetic-reference"]],
+        ]),
+        leaderOnly: false,
+        type: "call",
+      },
+    } as any;
+
+    const simplified = simplifyTransactionReceipt(tx) as any;
+
+    expect(simplified.txDataDecoded.callData).toEqual({
+      "": "inspect_delivery",
+      args: ["synthetic-reference"],
+    });
+    expect(simplified.txDataDecoded.leaderOnly).toBe(false);
+  });
+
+  it("should preserve a Map-shaped constructorArgs the same way", () => {
+    const tx = {
+      txDataDecoded: {
+        constructorArgs: new Map<string, unknown>([["owner", "0xabc"]]),
+        type: "deploy",
+      },
+    } as any;
+
+    const simplified = simplifyTransactionReceipt(tx) as any;
+
+    expect(simplified.txDataDecoded.constructorArgs).toEqual({owner: "0xabc"});
+  });
 });
