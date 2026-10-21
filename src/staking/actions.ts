@@ -1,5 +1,5 @@
 import {getContract, decodeEventLog, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress, GetContractReturnType, toHex, encodeFunctionData, BaseError, ContractFunctionRevertedError, decodeErrorResult, RawContractError, zeroAddress} from "viem";
-import {GenLayerClient, GenLayerChain, Address} from "@/types";
+import {ClientRequester, Address} from "@/types";
 import {STAKING_ABI, VALIDATOR_WALLET_ABI} from "@/abi/staking";
 import {ADDRESS_MANAGER_ABI, CONSENSUS_ADDRESS_MANAGER_ABI} from "@/abi/vesting";
 import {parseStakingAmount, formatStakingAmount} from "./utils";
@@ -104,7 +104,7 @@ function extractRevertReason(err: unknown): string {
 }
 
 export const stakingActions = (
-  client: GenLayerClient<GenLayerChain>,
+  client: ClientRequester,
   publicClient: PublicClient,
 ) => {
   const executeWrite = async (options: {

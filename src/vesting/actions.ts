@@ -16,7 +16,7 @@ import {
 } from "viem";
 import {ADDRESS_MANAGER_ABI, CONSENSUS_ADDRESS_MANAGER_ABI, VESTING_ABI, VESTING_FACTORY_ABI} from "@/abi/vesting";
 import {STAKING_ABI} from "@/abi/staking";
-import {Address, GenLayerChain, GenLayerClient} from "@/types";
+import {Address, ClientRequester} from "@/types";
 import {
   VestingCategory,
   VestingContract,
@@ -104,7 +104,7 @@ function encodeExtraCid(extraCid?: string): `0x${string}` {
 }
 
 export const vestingActions = (
-  client: GenLayerClient<GenLayerChain>,
+  client: ClientRequester,
   publicClient: PublicClient,
 ) => {
   const executeWrite = async (options: {

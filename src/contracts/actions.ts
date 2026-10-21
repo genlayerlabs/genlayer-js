@@ -6,8 +6,8 @@ import {
   Account,
   ContractSchema,
   DeveloperNft,
-  GenLayerChain,
-  GenLayerClient,
+  ClientRequester,
+  ContractWriter,
   CalldataEncodable,
   Address,
   TransactionHash,
@@ -133,7 +133,7 @@ function transactionFeesToRpc(fees?: TransactionFeeOptions) {
   };
 }
 
-export const contractActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => {
+export const contractActions = (client: ContractWriter, publicClient: PublicClient) => {
   const estimateFeeValue = async (
     distribution: FeesDistribution,
     policy?: FeePolicyQuote,
@@ -1310,7 +1310,7 @@ const _resolveAddressManagerAddress = async ({
   client,
   publicClient,
 }: {
-  client: GenLayerClient<GenLayerChain>;
+  client: ContractWriter;
   publicClient: PublicClient;
 }): Promise<`0x${string}`> => {
   const consensusMainContract = client.chain.consensusMainContract;
@@ -1346,7 +1346,7 @@ const _resolveNftMinterAddress = async ({
   client,
   publicClient,
 }: {
-  client: GenLayerClient<GenLayerChain>;
+  client: ContractWriter;
   publicClient: PublicClient;
 }): Promise<`0x${string}`> => {
   const addressManagerAddress = await _resolveAddressManagerAddress({client, publicClient});
@@ -1533,7 +1533,7 @@ const extractStudioFeePolicy = (config: unknown): FeePolicyQuote => {
 };
 
 const readCurrentFeePolicy = async (
-  client: GenLayerClient<GenLayerChain>,
+  client: ClientRequester,
   publicClient: PublicClient,
 ): Promise<FeePolicyQuote> => {
   if (client.chain.isStudio) {
@@ -2037,7 +2037,7 @@ const _resolveTransactionFees = async ({
   fees,
   numOfInitialValidators,
 }: {
-  client: GenLayerClient<GenLayerChain>;
+  client: ClientRequester;
   publicClient: PublicClient;
   fees?: TransactionFeeOptions;
   numOfInitialValidators: number;
@@ -2095,7 +2095,7 @@ const _encodeAddTransactionData = ({
   userValue = 0n,
   transactionFees,
 }: {
-  client: GenLayerClient<GenLayerChain>;
+  client: ClientRequester;
   senderAccount?: Account;
   recipient?: `0x${string}`;
   data?: `0x${string}`;
@@ -2252,7 +2252,7 @@ const _readLifecycleIdentity = async ({
   blockNumber,
   blockTimestamp,
 }: {
-  client: GenLayerClient<GenLayerChain>;
+  client: ContractWriter;
   publicClient: PublicClient;
   txId: `0x${string}`;
   blockNumber?: bigint;
@@ -2327,7 +2327,7 @@ const _readAppealContext = async ({
   txId,
   includeQuote = true,
 }: {
-  client: GenLayerClient<GenLayerChain>;
+  client: ContractWriter;
   publicClient: PublicClient;
   txId: `0x${string}`;
   includeQuote?: boolean;
@@ -2418,7 +2418,7 @@ const _waitForSentEnvelope = async ({
   operationName,
   revertDetails,
 }: {
-  client: GenLayerClient<GenLayerChain>;
+  client: ContractWriter;
   publicClient: PublicClient;
   evmHash: `0x${string}`;
   operationName: string;
@@ -2468,7 +2468,7 @@ const _sendEvmContractCall = async ({
   value = 0n,
   operationName = "Contract call",
 }: {
-  client: GenLayerClient<GenLayerChain>;
+  client: ContractWriter;
   publicClient: PublicClient;
   to: Address;
   encodedData: `0x${string}`;
@@ -2546,7 +2546,7 @@ const _sendConsensusCall = async ({
   value = 0n,
   operationName = "Consensus call",
 }: {
-  client: GenLayerClient<GenLayerChain>;
+  client: ContractWriter;
   publicClient: PublicClient;
   encodedData: `0x${string}`;
   senderAccount?: Account;
@@ -2613,7 +2613,7 @@ const _sendConsensusCall = async ({
  * NewTransaction (immediately activated) or CreatedTransaction (queued) events.
  */
 const extractTxIdFromLogs = (
-  client: GenLayerClient<GenLayerChain>,
+  client: ClientRequester,
   logs: any[],
 ): `0x${string}` | null => {
   const newTxEvents = parseEventLogs({
@@ -2645,7 +2645,7 @@ const _sendTransaction = async ({
   transactionVariants,
   senderAccount,
 }: {
-  client: GenLayerClient<GenLayerChain>;
+  client: ContractWriter;
   publicClient: PublicClient;
   transactionVariants: EncodedTransactionVariant[];
   senderAccount?: Account;
