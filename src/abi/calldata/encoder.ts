@@ -6,6 +6,21 @@ function reportError(msg: string, data: CalldataEncodable): never {
   throw new Error(`invalid calldata input '${data}'`);
 }
 
+function hasUnpairedSurrogates(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      if (i + 1 >= s.length) return true;
+      const next = s.charCodeAt(i + 1);
+      if (next < 0xdc00 || next > 0xdfff) return true;
+      i++;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function writeNum(to: number[], data: bigint) {
   if (data === 0n) {
     to.push(0);
@@ -48,11 +63,16 @@ function encodeMap(to: number[], arr: Iterable<[string, CalldataEncodable]>) {
   // unicode code points array, utf8 encoded array, item
   const newEntries: [number[], Uint8Array, CalldataEncodable][] = Array.from(
     arr,
-    ([k, v]): [number[], Uint8Array, CalldataEncodable] => [
-      Array.from(k, x => x.codePointAt(0)!),
-      new TextEncoder().encode(k),
-      v,
-    ],
+    ([k, v]): [number[], Uint8Array, CalldataEncodable] => {
+      if (hasUnpairedSurrogates(k)) {
+        throw new Error(`unpaired UTF-16 surrogate in map key '${k}'`);
+      }
+      return [
+        Array.from(k, x => x.codePointAt(0)!),
+        new TextEncoder().encode(k),
+        v,
+      ];
+    },
   );
   newEntries.sort((v1, v2) => compareString(v1[0], v2[0]));
   for (let i = 1; i < newEntries.length; i++) {
@@ -89,6 +109,9 @@ function encodeImpl(to: number[], data: CalldataEncodable) {
       if (!Number.isInteger(data)) {
         reportError("floats are not supported", data);
       }
+      if (!Number.isSafeInteger(data)) {
+        reportError("unsafe integer: use bigint for exact integers", data);
+      }
       encodeNum(to, BigInt(data));
       return;
     }
@@ -97,6 +120,9 @@ function encodeImpl(to: number[], data: CalldataEncodable) {
       return;
     }
     case "string": {
+      if (hasUnpairedSurrogates(data)) {
+        reportError("unpaired UTF-16 surrogate in string", data);
+      }
       const str = new TextEncoder().encode(data);
       encodeNumWithType(to, BigInt(str.length), consts.TYPE_STR);
       for (const c of str) {
