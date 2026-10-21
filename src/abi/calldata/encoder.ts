@@ -6,6 +6,37 @@ function reportError(msg: string, data: CalldataEncodable): never {
   throw new Error(`invalid calldata input '${data}'`);
 }
 
+function isWellFormedUnicode(value: string): boolean {
+  for (let i = 0; i < value.length; i++) {
+    const codeUnit = value.charCodeAt(i);
+
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      if (i + 1 >= value.length) {
+        return false;
+      }
+      const next = value.charCodeAt(i + 1);
+      if (next < 0xdc00 || next > 0xdfff) {
+        return false;
+      }
+      i++;
+      continue;
+    }
+
+    if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function encodeUtf8(value: string): Uint8Array {
+  if (!isWellFormedUnicode(value)) {
+    throw new Error("invalid calldata string: unpaired UTF-16 surrogate");
+  }
+  return new TextEncoder().encode(value);
+}
+
 function writeNum(to: number[], data: bigint) {
   if (data === 0n) {
     to.push(0);
@@ -50,7 +81,7 @@ function encodeMap(to: number[], arr: Iterable<[string, CalldataEncodable]>) {
     arr,
     ([k, v]): [number[], Uint8Array, CalldataEncodable] => [
       Array.from(k, x => x.codePointAt(0)!),
-      new TextEncoder().encode(k),
+      encodeUtf8(k),
       v,
     ],
   );
@@ -86,8 +117,10 @@ function encodeImpl(to: number[], data: CalldataEncodable) {
   }
   switch (typeof data) {
     case "number": {
-      if (!Number.isInteger(data)) {
-        reportError("floats are not supported", data);
+      if (!Number.isSafeInteger(data)) {
+        throw new Error(
+          "calldata numbers must be safe integers; use bigint for exact large integers",
+        );
       }
       encodeNum(to, BigInt(data));
       return;
@@ -97,7 +130,7 @@ function encodeImpl(to: number[], data: CalldataEncodable) {
       return;
     }
     case "string": {
-      const str = new TextEncoder().encode(data);
+      const str = encodeUtf8(data);
       encodeNumWithType(to, BigInt(str.length), consts.TYPE_STR);
       for (const c of str) {
         to.push(c);
