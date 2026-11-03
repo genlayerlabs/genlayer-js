@@ -42,7 +42,6 @@ const transaction = await client.getTransaction({ hash: transactionHash })
 ```typescript
 import { localnet } from 'genlayer-js/chains';
 import { createClient } from "genlayer-js";
-import { TransactionStatus } from "genlayer-js/types";
 
 const client = createClient({
   chain: localnet,
@@ -51,17 +50,20 @@ const client = createClient({
 // Get simplified receipt (default - removes binary data, keeps execution results)
 const receipt = await client.waitForTransactionReceipt({
   hash: "0x...",
-  status: TransactionStatus.FINALIZED,
+  waitUntil: "finalized", // or "decided" (the default)
   fullTransaction: false // Default - simplified for readability
 });
 
 // Get complete receipt with all fields
 const fullReceipt = await client.waitForTransactionReceipt({
   hash: "0x...",
-  status: TransactionStatus.FINALIZED,
+  waitUntil: "finalized",
   fullTransaction: true // Complete receipt with all internal data
 });
 ```
+
+`waitForDecision({ hash })` and `waitForFinalization({ hash })` are shorthands
+for the two targets. The `status` argument is deprecated.
 
 ### Reading a contract
 ```typescript
@@ -100,8 +102,8 @@ const transactionHash = await client.writeContract({
 });
 
 const receipt = await client.waitForTransactionReceipt({
-  hash: txHash,
-  status: TransactionStatus.FINALIZED, // or ACCEPTED
+  hash: transactionHash,
+  waitUntil: "finalized", // or "decided"
   fullTransaction: false // False by default - returns simplified receipt for better readability
 })
 
@@ -109,9 +111,28 @@ const receipt = await client.waitForTransactionReceipt({
 
 ### Fee presets for transactions
 
-Apps can build a trusted fee preset once they know the transaction shape, then
-submit the same preset with the transaction. The user may still override these
-values in wallet or app UI before signing.
+`deployContract` and `writeContract` resolve `fees` as follows:
+
+| `fees` passed | Fee policy enabled | Fee policy disabled |
+| --- | --- | --- |
+| omitted (or `{}`) | the SDK submits its canonical estimate (see below) | gasless, as before |
+| `distribution` and/or `messageAllocations` without `feeValue` | unset distribution fields are filled the way `estimateTransactionFees` fills them, then `feeValue` is derived | `feeValue` is derived from the distribution as given |
+| `feeValue` set (with or without `distribution`) | submitted exactly as given | submitted exactly as given |
+
+The fee policy comes from `sim_getFeeConfig` on Studio and from FeeManager on
+network backends. On a chain that exposes neither, omitted fees stay gasless.
+
+For omitted fees, a deploy uses the `estimateTransactionFees()` default preset
+and a write uses `estimateTransactionFeesForWrite` for the same call. When that
+write simulation reports an execution failure, the SDK falls back to the
+default preset so the transaction can still be submitted and record its failed
+result; other estimation errors are thrown. Fields you set explicitly are never
+overridden, including explicit zeros. To submit without fees on purpose (for
+example to test fee admission), pass `fees: { feeValue: 0n }`.
+
+Apps can also build a trusted fee preset once they know the transaction shape,
+then submit the same preset with the transaction. The user may still override
+these values in wallet or app UI before signing.
 
 ```typescript
 const estimate = await client.estimateTransactionFees({
@@ -135,10 +156,12 @@ When `rotations` is omitted from an estimate, the SDK funds every round through
 the chain's `defaultConsensusMaxRotations`. Pass `rotations` explicitly—including
 `[0n]`—when the transaction should use a lower rotation budget.
 
-If `fees.distribution` is provided without `feeValue`, the SDK derives the fee
-deposit from FeeManager on network backends, or from `sim_getFeeConfig` on
-Studio. Use `messageAllocations` with `estimateTransactionFees` for transactions
-that can emit funded messages.
+If `fees.distribution` is provided without `feeValue`, the SDK completes the
+unset fields from the current fee policy (execution budget, price caps,
+time-unit allocations, and rotations) and derives the fee deposit from
+FeeManager on network backends, or from `sim_getFeeConfig` on Studio. Use
+`messageAllocations` with `estimateTransactionFees` for transactions that can
+emit funded messages.
 
 Use the SDK call-key helpers when targeting a specific emitted message. Internal
 messages are keyed by the GenVM method name; external EVM messages are keyed by
@@ -353,7 +376,6 @@ When building a browser dApp, create two clients: one for reads (no wallet neede
 ```typescript
 import { createClient } from "genlayer-js";
 import { testnetBradbury } from "genlayer-js/chains";
-import { TransactionStatus } from "genlayer-js/types";
 
 // Read client — talks directly to GenLayer RPC, no wallet needed
 const readClient = createClient({
@@ -387,7 +409,7 @@ const txHash = await writeClient.writeContract({
 // Either client can wait for receipts
 const receipt = await readClient.waitForTransactionReceipt({
   hash: txHash,
-  status: TransactionStatus.ACCEPTED,
+  waitUntil: "decided",
 });
 ```
 

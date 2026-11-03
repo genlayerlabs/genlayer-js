@@ -164,7 +164,16 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
     throw new Error("Fee value estimation is not supported on this chain (missing feeManagerContract).");
   };
 
-  return {
+  const estimateDefaultTransactionFees = async (policy: FeePolicyQuote): Promise<TransactionFeeOptions> => {
+    const distribution = buildEstimatedFeesDistribution(
+      undefined,
+      policy,
+      client.chain.defaultConsensusMaxRotations,
+    );
+    return {distribution, feeValue: await estimateFeeValue(distribution, policy)};
+  };
+
+  const actions = {
     /** Retrieves the source code of a deployed contract. */
     getContractCode: async (address: Address): Promise<string> => {
       const params = (client.chain.isStudio ? [address] : [{address}]) as
@@ -384,6 +393,23 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         publicClient,
         fees,
         numOfInitialValidators: client.chain.defaultNumberOfInitialValidators,
+        estimateOmittedFees: async (policy) => {
+          try {
+            return await actions.estimateTransactionFeesForWrite({
+              account: senderAccount,
+              address,
+              functionName,
+              args: callArgs,
+              kwargs,
+              value,
+              leaderOnly,
+            });
+          } catch (error) {
+            // A call that reverts in simulation must still be submittable to record its failure.
+            if (!_isSimulationExecutionFailure(error)) throw error;
+            return estimateDefaultTransactionFees(policy);
+          }
+        },
       });
       const transactionVariants = _encodeAddTransactionData({
         client,
@@ -436,6 +462,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         publicClient,
         fees,
         numOfInitialValidators: client.chain.defaultNumberOfInitialValidators,
+        estimateOmittedFees: estimateDefaultTransactionFees,
       });
       const transactionVariants = _encodeAddTransactionData({
         client,
@@ -1069,6 +1096,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       });
     },
   };
+  return actions;
 };
 
 const validateAccount = (Account?: Account): Account => {
@@ -2031,17 +2059,67 @@ const calculateLocalRoundFees = (
     (distribution.executionBudgetPerRound * leaderRounds);
 };
 
+const _readFeePolicyIfSupported = async (
+  client: GenLayerClient<GenLayerChain>,
+  publicClient: PublicClient,
+): Promise<FeePolicyQuote | undefined> => (
+  client.chain.isStudio || client.chain.feeManagerContract?.address
+    ? readCurrentFeePolicy(client, publicClient)
+    : undefined
+);
+
+const _isSimulationExecutionFailure = (error: unknown): boolean => {
+  let current = error;
+  for (let depth = 0; current && depth < 8; depth += 1) {
+    const {details, message} = current as {details?: unknown; message?: unknown};
+    if ([details, message].some((text) => (
+      typeof text === "string" && /^(execution failed|gen_call failed:|sim_call failed:)/.test(text)
+    ))) {
+      return true;
+    }
+    current = (current as {cause?: unknown}).cause;
+  }
+  return false;
+};
+
 const _resolveTransactionFees = async ({
   client,
   publicClient,
-  fees,
+  fees: callerFees,
   numOfInitialValidators,
+  estimateOmittedFees,
 }: {
   client: GenLayerClient<GenLayerChain>;
   publicClient: PublicClient;
   fees?: TransactionFeeOptions;
   numOfInitialValidators: number;
+  estimateOmittedFees: (policy: FeePolicyQuote) => Promise<TransactionFeeOptions>;
 }): Promise<NormalizedTransactionFees> => {
+  let fees = callerFees;
+  let policy: FeePolicyQuote | undefined;
+  const callerSetFees = fees?.distribution !== undefined ||
+    fees?.messageAllocations !== undefined ||
+    fees?.feeValue !== undefined;
+  if (!callerSetFees) {
+    policy = await _readFeePolicyIfSupported(client, publicClient);
+    if (policy?.enabled) {
+      fees = await estimateOmittedFees(policy);
+    }
+  } else if (fees?.feeValue === undefined) {
+    policy = await _readFeePolicyIfSupported(client, publicClient);
+    if (policy?.enabled) {
+      // Fill only unset fields so the derived deposit funds an admissible envelope.
+      fees = {
+        ...fees,
+        distribution: buildEstimatedFeesDistribution(
+          {...fees?.distribution, messageAllocations: fees?.messageAllocations},
+          policy,
+          client.chain.defaultConsensusMaxRotations,
+        ),
+      };
+    }
+  }
+
   const transactionFees = normalizeTransactionFees(fees);
   if (transactionFees.feeValue !== undefined || !requiresFeeDepositCalculation(transactionFees.distribution)) {
     return {
@@ -2052,14 +2130,14 @@ const _resolveTransactionFees = async ({
 
   if (!client.chain.feeManagerContract?.address) {
     if (client.chain.isStudio) {
-      const policy = await readCurrentFeePolicy(client, publicClient);
+      const studioPolicy = policy ?? await readCurrentFeePolicy(client, publicClient);
       return {
         ...transactionFees,
-        feeValue: policy.enabled
+        feeValue: studioPolicy.enabled
           ? calculateLocalRoundFees(
               transactionFees.distribution,
               numOfInitialValidators,
-              policy,
+              studioPolicy,
             ) + transactionFees.distribution.totalMessageFees
           : 0n,
       };

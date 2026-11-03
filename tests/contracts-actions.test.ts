@@ -12,6 +12,7 @@ import {
   CALL_KEY_DEPLOY,
   CALL_KEY_UNNAMED,
   CALL_KEY_WILDCARD,
+  createFeesDistribution,
   createTopUpFeesDistribution,
   DEPLOY_CALL_KEY,
   deployCallKey,
@@ -221,6 +222,48 @@ const selectorForFees = encodeFunctionData({
     messageAllocations: [],
   }],
 }).slice(0, 10);
+
+const enabledFeeManagerPublicClient = (roundFees: bigint) => ({
+  readContract: vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
+    if (functionName === "GENPerTimeUnit") return 10n;
+    if (functionName === "storageUnitPrice") return 20n;
+    if (functionName === "quoteGasPrice") return 30n;
+    if (functionName === "receiptWrapperBytes") return 1_024n;
+    if (functionName === "useChainDerivedReceiptPrice") return false;
+    if (functionName === "calculateRoundFees") return roundFees;
+    throw new Error(`unexpected readContract ${functionName}`);
+  }),
+  getGasPrice: vi.fn().mockResolvedValue(1n),
+  call: vi.fn().mockResolvedValue({data: toHex(315_408n, {size: 32})}),
+});
+
+const studioFeeRequestMock = ({
+  enabled,
+  estimate,
+}: {
+  enabled: boolean;
+  estimate?: () => Promise<unknown>;
+}) => vi.fn().mockImplementation(async ({method}: {method: string}) => {
+  if (method === "sim_getFeeConfig") {
+    return {
+      enabled,
+      policy: enabled
+        ? {genPerTimeUnit: "10", storageUnitPrice: "20", receiptGasPrice: "30"}
+        : {genPerTimeUnit: "0", storageUnitPrice: "0", receiptGasPrice: "0"},
+    };
+  }
+  if (method === "sim_estimateTransactionFees" && estimate) return estimate();
+  if (method === "eth_gasPrice") return "0x1";
+  throw new Error(`unexpected request ${method}`);
+});
+
+const decodeAddTransactionParams = (estimateTransactionGas: ReturnType<typeof vi.fn>) => {
+  const decoded = decodeFunctionData({
+    abi: ADD_TRANSACTION_ABI_WITH_FEES as any,
+    data: estimateTransactionGas.mock.calls[0][0].data as `0x${string}`,
+  });
+  return decoded.args[0] as any;
+};
 
 const setupWriteContractHarness = ({
   initialAbi,
@@ -810,9 +853,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
   });
 
   it("calculates v0.6 fee deposit from FeeManager when feeValue is omitted", async () => {
-    const publicClient = {
-      readContract: vi.fn().mockResolvedValue(77n),
-    };
+    const publicClient = enabledFeeManagerPublicClient(77n);
     const {actions, estimateTransactionGas} = setupWriteContractHarness({
       initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
       publicClient,
@@ -834,17 +875,25 @@ describe("contractActions addTransaction ABI compatibility", () => {
       }),
     ).rejects.toThrow("stop_after_encoding");
 
-    expect(publicClient.readContract).toHaveBeenCalledWith(expect.objectContaining({
-      functionName: "calculateRoundFees",
-      args: [expect.any(Object), 5n, 0n],
-    }));
+    const roundFeesCall = publicClient.readContract.mock.calls.find(
+      ([call]: [{functionName: string}]) => call.functionName === "calculateRoundFees",
+    )?.[0];
+    expect(roundFeesCall.args.slice(1)).toEqual([5n, 0n]);
+    expect(roundFeesCall.args[0]).toMatchObject({
+      leaderTimeunitsAllocation: 10n,
+      validatorTimeunitsAllocation: 200n,
+      totalMessageFees: 3n,
+      rotations: [3n],
+      maxPriceGenPerTimeUnit: 12n,
+      storageFeeMaxGasPrice: 24n,
+      receiptFeeMaxGasPrice: 36n,
+      executionBudgetPerRound: 3_000_300_000n,
+    });
     expect(estimateTransactionGas.mock.calls[0][0].value).toBe(82n);
   });
 
   it("calculates v0.6 fee deposit from FeeManager when only execution budget is provided", async () => {
-    const publicClient = {
-      readContract: vi.fn().mockResolvedValue(500_000n),
-    };
+    const publicClient = enabledFeeManagerPublicClient(500_000n);
     const {actions, estimateTransactionGas} = setupWriteContractHarness({
       initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
       publicClient,
@@ -864,28 +913,179 @@ describe("contractActions addTransaction ABI compatibility", () => {
       }),
     ).rejects.toThrow("stop_after_encoding");
 
-    expect(publicClient.readContract).toHaveBeenCalledWith(expect.objectContaining({
-      functionName: "calculateRoundFees",
-      args: [expect.any(Object), 5n, 0n],
-    }));
+    const roundFeesCall = publicClient.readContract.mock.calls.find(
+      ([call]: [{functionName: string}]) => call.functionName === "calculateRoundFees",
+    )?.[0];
+    expect(roundFeesCall.args.slice(1)).toEqual([5n, 0n]);
+    expect(roundFeesCall.args[0].executionBudgetPerRound).toBe(500_000n);
     expect(estimateTransactionGas.mock.calls[0][0].value).toBe(500_000n);
   });
 
-  it("calculates v0.6 fee deposit locally on Studio when feeValue is omitted", async () => {
-    const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
-      if (method === "sim_getFeeConfig") {
-        return {
-          enabled: true,
-          policy: {
-            genPerTimeUnit: "10",
-            storageUnitPrice: "20",
-            receiptGasPrice: "30",
-          },
-        };
-      }
-      if (method === "eth_gasPrice") return "0x1";
-      throw new Error(`unexpected request ${method}`);
+  it("fills unset distribution fields on Studio before deriving the omitted feeValue", async () => {
+    const requestMock = studioFeeRequestMock({enabled: true});
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
     });
+    const callerDistribution = {
+      leaderTimeunitsAllocation: 50n,
+      validatorTimeunitsAllocation: 70n,
+      maxPriceGenPerTimeUnit: 10n,
+    };
+
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        validUntil: 123n,
+        fees: {distribution: callerDistribution},
+      }),
+    ).rejects.toThrow("stop_after_encoding");
+
+    const expected = await actions.estimateTransactionFees(callerDistribution);
+    const {feesDistribution} = decodeAddTransactionParams(estimateTransactionGas);
+    expect(feesDistribution).toEqual(expected.distribution);
+    expect(feesDistribution).toMatchObject({
+      ...callerDistribution,
+      executionBudgetPerRound: 3_000_000_000n,
+      rotations: [3n],
+      storageFeeMaxGasPrice: 24n,
+      receiptFeeMaxGasPrice: 36n,
+    });
+    expect(estimateTransactionGas.mock.calls[0][0].value).toBe(expected.feeValue);
+    expect(requestMock.mock.calls.some(([call]) => call.method === "sim_estimateTransactionFees")).toBe(false);
+  });
+
+  it("submits the canonical deploy estimate when fees are omitted and the policy is enabled", async () => {
+    const requestMock = studioFeeRequestMock({enabled: true});
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    await expect(
+      actions.deployContract({code: "contract", validUntil: 123n}),
+    ).rejects.toThrow("stop_after_encoding");
+
+    const expected = await actions.estimateTransactionFees();
+    expect(decodeAddTransactionParams(estimateTransactionGas).feesDistribution).toEqual(expected.distribution);
+    expect(estimateTransactionGas.mock.calls[0][0].value).toBe(expected.feeValue);
+  });
+
+  it("submits the write-specific estimate when fees are omitted and the policy is enabled", async () => {
+    const requestMock = studioFeeRequestMock({
+      enabled: true,
+      estimate: async () => ({
+        recommendedPreset: {
+          distribution: {
+            leaderTimeunitsAllocation: "100",
+            validatorTimeunitsAllocation: "200",
+            executionBudgetPerRound: "4000",
+            rotations: ["3"],
+            maxPriceGenPerTimeUnit: "12",
+            storageFeeMaxGasPrice: "24",
+            receiptFeeMaxGasPrice: "36",
+          },
+          feeValue: "98765",
+        },
+      }),
+    });
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    await expect(
+      actions.writeContract({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+        value: 2n,
+        validUntil: 123n,
+      }),
+    ).rejects.toThrow("stop_after_encoding");
+
+    const estimateRequest = requestMock.mock.calls.find(
+      ([call]) => call.method === "sim_estimateTransactionFees",
+    )?.[0];
+    expect(estimateRequest.params[0]).toMatchObject({type: "write", to: RECIPIENT_ADDRESS, value: "0x2"});
+    const {feesDistribution, userValue} = decodeAddTransactionParams(estimateTransactionGas);
+    expect(feesDistribution.executionBudgetPerRound).toBe(4000n);
+    expect(userValue).toBe(2n);
+    expect(estimateTransactionGas.mock.calls[0][0].value).toBe(98_767n);
+  });
+
+  it("falls back to the default estimate when the omitted-fee write simulation fails execution", async () => {
+    const executionFailure = Object.assign(new Error("Missing or invalid parameters."), {
+      details: "execution failed",
+    });
+    const requestMock = studioFeeRequestMock({
+      enabled: true,
+      estimate: async () => {
+        throw executionFailure;
+      },
+    });
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    await expect(
+      actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "boom", validUntil: 123n}),
+    ).rejects.toThrow("stop_after_encoding");
+
+    const expected = await actions.estimateTransactionFees();
+    expect(decodeAddTransactionParams(estimateTransactionGas).feesDistribution).toEqual(expected.distribution);
+    expect(estimateTransactionGas.mock.calls[0][0].value).toBe(expected.feeValue);
+  });
+
+  it("propagates omitted-fee write estimation errors that are not execution failures", async () => {
+    const requestMock = studioFeeRequestMock({
+      enabled: true,
+      estimate: async () => {
+        throw new Error("Contract 0x1 not found");
+      },
+    });
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    await expect(
+      actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping", validUntil: 123n}),
+    ).rejects.toThrow("not found");
+    expect(estimateTransactionGas).not.toHaveBeenCalled();
+  });
+
+  it("keeps omitted fees gasless when the fee policy is disabled", async () => {
+    const requestMock = studioFeeRequestMock({enabled: false});
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    await expect(
+      actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping", validUntil: 123n}),
+    ).rejects.toThrow("stop_after_encoding");
+    await expect(
+      actions.deployContract({code: "contract", validUntil: 123n}),
+    ).rejects.toThrow("stop_after_encoding");
+
+    for (const [call] of estimateTransactionGas.mock.calls) {
+      const decoded = decodeFunctionData({abi: ADD_TRANSACTION_ABI_WITH_FEES as any, data: call.data});
+      expect((decoded.args[0] as any).feesDistribution).toEqual(createFeesDistribution());
+      expect(call.value).toBe(0n);
+    }
+    expect(requestMock.mock.calls.some(([call]) => call.method === "sim_estimateTransactionFees")).toBe(false);
+  });
+
+  it("submits explicit fees untouched when the policy is enabled", async () => {
+    const requestMock = studioFeeRequestMock({enabled: true});
     const {actions, estimateTransactionGas} = setupWriteContractHarness({
       initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
       isStudio: true,
@@ -898,16 +1098,25 @@ describe("contractActions addTransaction ABI compatibility", () => {
         functionName: "ping",
         validUntil: 123n,
         fees: {
-          distribution: {
-            leaderTimeunitsAllocation: 100n,
-            validatorTimeunitsAllocation: 200n,
-            maxPriceGenPerTimeUnit: 10n,
-          },
+          distribution: {leaderTimeunitsAllocation: 100n, executionBudgetPerRound: 0n},
+          feeValue: 5n,
         },
       }),
     ).rejects.toThrow("stop_after_encoding");
+    await expect(
+      actions.deployContract({code: "contract", validUntil: 123n, fees: {feeValue: 0n}}),
+    ).rejects.toThrow("stop_after_encoding");
 
-    expect(estimateTransactionGas.mock.calls[0][0].value).toBe(11_000n);
+    const [explicitCall, gaslessCall] = estimateTransactionGas.mock.calls.map(([call]) => call);
+    const explicit = decodeFunctionData({abi: ADD_TRANSACTION_ABI_WITH_FEES as any, data: explicitCall.data});
+    expect((explicit.args[0] as any).feesDistribution).toEqual(
+      createFeesDistribution({leaderTimeunitsAllocation: 100n}),
+    );
+    expect(explicitCall.value).toBe(5n);
+    const gasless = decodeFunctionData({abi: ADD_TRANSACTION_ABI_WITH_FEES as any, data: gaslessCall.data});
+    expect((gasless.args[0] as any).feesDistribution).toEqual(createFeesDistribution());
+    expect(gaslessCall.value).toBe(0n);
+    expect(requestMock.mock.calls.some(([call]) => call.method === "sim_getFeeConfig")).toBe(false);
   });
 
   it("matches the consensus cap, overlay, appeal reserve, and round ladder locally on Studio", async () => {
