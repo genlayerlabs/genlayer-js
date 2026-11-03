@@ -876,7 +876,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     ).rejects.toThrow("stop_after_encoding");
 
     const roundFeesCall = publicClient.readContract.mock.calls.find(
-      ([call]: [{functionName: string}]) => call.functionName === "calculateRoundFees",
+      ([call]: any) => call.functionName === "calculateRoundFees",
     )?.[0];
     expect(roundFeesCall.args.slice(1)).toEqual([5n, 0n]);
     expect(roundFeesCall.args[0]).toMatchObject({
@@ -914,7 +914,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     ).rejects.toThrow("stop_after_encoding");
 
     const roundFeesCall = publicClient.readContract.mock.calls.find(
-      ([call]: [{functionName: string}]) => call.functionName === "calculateRoundFees",
+      ([call]: any) => call.functionName === "calculateRoundFees",
     )?.[0];
     expect(roundFeesCall.args.slice(1)).toEqual([5n, 0n]);
     expect(roundFeesCall.args[0].executionBudgetPerRound).toBe(500_000n);
