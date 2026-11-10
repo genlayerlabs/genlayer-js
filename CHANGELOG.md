@@ -1,5 +1,12 @@
 
 
+## [2.0.0-rc.3](https://github.com/genlayerlabs/genlayer-js/compare/v2.0.0-rc.2...v2.0.0-rc.3) (2026-11-10)
+
+
+### Bug Fixes
+
+* **fees:** stop double-counting the observed execution fee ([#242](https://github.com/genlayerlabs/genlayer-js/issues/242)) ([a9b97e7](https://github.com/genlayerlabs/genlayer-js/commit/a9b97e74b64c51d43f3a2c33a3932298c7fb304f)), closes [genlayerlabs/genlayer-js#241](https://github.com/genlayerlabs/genlayer-js/issues/241)
+
 ## [2.0.0-rc.2](https://github.com/genlayerlabs/genlayer-js/compare/v2.0.0-rc.1...v2.0.0-rc.2) (2026-10-19)
 
 
