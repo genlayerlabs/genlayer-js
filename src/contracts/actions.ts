@@ -1763,7 +1763,21 @@ const observedSimulationFeeUsage = (
     report?.totalEstimatedFee,
     "simulation.feeReport.totalEstimatedFee",
   );
-  const observedExecutionBudget = executionFeeConsumed + executionFeeReportTotal;
+  const chargeableExecutionTotal = bigintFromUnknown(
+    asRecord(report?.chargeableExecution)?.totalExecution,
+    "simulation.feeReport.chargeableExecution.totalExecution",
+  );
+  const genvmExecutionRequired = bigintFromUnknown(
+    asRecord(report?.genvmBuckets)?.execution,
+    "simulation.feeReport.genvmBuckets.execution",
+  );
+  // Alternative readings of the same round's fee: pick one, never sum (mirrors Studio rc.11).
+  const observedExecutionFee = executionFeeConsumed > 0n
+    ? executionFeeConsumed
+    : chargeableExecutionTotal > 0n
+      ? chargeableExecutionTotal
+      : executionFeeReportTotal;
+  const observedExecutionBudget = maxBigint(observedExecutionFee, genvmExecutionRequired);
   const recommendedExecutionBudgetPerRound = observedExecutionBudget > 0n
     ? maxBigint(
         policy.executionBudgetFloor,
@@ -1818,6 +1832,9 @@ const observedSimulationFeeUsage = (
   return {
     executionFeeConsumed,
     executionFeeReportTotal,
+    observedExecutionFee,
+    genvmExecutionRequired,
+    observedExecutionBudget,
     recommendedExecutionBudgetPerRound,
     genvmMessageFeeConsumed,
     messageFeeBudget,

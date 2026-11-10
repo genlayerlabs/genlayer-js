@@ -21,6 +21,7 @@ import {
   encodeInternalMessageFeeParams,
   MessageType,
 } from "../src/transactions/fees";
+import type {StudioFeeAccounting} from "../src/types/transactions";
 
 const MAIN_CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000001";
 const SENDER_ADDRESS = "0x0000000000000000000000000000000000000002";
@@ -1452,16 +1453,16 @@ describe("contractActions addTransaction ABI compatibility", () => {
       priceCapHeadroomBps: 10_000n,
     });
 
-    const observedExecutionBudget = 100n + 501_664n;
-    const observedExecutionBudgetWithHeadroom = (observedExecutionBudget * 12_000n + 9_999n) / 10_000n;
-    const expectedExecutionBudgetPerRound = observedExecutionBudgetWithHeadroom > 400_000n
-      ? observedExecutionBudgetWithHeadroom
-      : 400_000n;
-    expect(expectedExecutionBudgetPerRound).toBe(602_117n);
+    const observedExecutionBudgetWithHeadroom = (100n * 12_000n + 9_999n) / 10_000n;
+    expect(observedExecutionBudgetWithHeadroom).toBe(120n);
+    const expectedExecutionBudgetPerRound = 400_000n;
 
     expect(fees.observed).toEqual({
       executionFeeConsumed: 100n,
       executionFeeReportTotal: 501_664n,
+      observedExecutionFee: 100n,
+      genvmExecutionRequired: 0n,
+      observedExecutionBudget: 100n,
       recommendedExecutionBudgetPerRound: expectedExecutionBudgetPerRound,
       genvmMessageFeeConsumed: 5n,
       messageFeeBudget: 10n,
@@ -1475,7 +1476,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     });
     expect(fees.distribution.executionBudgetPerRound).toBe(expectedExecutionBudgetPerRound);
     expect(fees.distribution.totalMessageFees).toBe(6n);
-    expect(fees.feeValue).toBe(2_452_474n);
+    expect(fees.feeValue).toBe(1_644_006n);
   });
 
   it("uses the execution budget floor for simulation recommendations when observed usage is lower", async () => {
@@ -1510,10 +1511,171 @@ describe("contractActions addTransaction ABI compatibility", () => {
       },
     });
 
-    const observedExecutionBudgetWithHeadroom = ((100n + 100n) * 12_000n + 9_999n) / 10_000n;
-    expect(observedExecutionBudgetWithHeadroom).toBe(240n);
+    const observedExecutionBudgetWithHeadroom = (100n * 12_000n + 9_999n) / 10_000n;
+    expect(observedExecutionBudgetWithHeadroom).toBe(120n);
+    expect(fees.observed?.observedExecutionBudget).toBe(100n);
     expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(400_000n);
     expect(fees.distribution.executionBudgetPerRound).toBe(400_000n);
+  });
+
+  describe("observed execution budget (genlayer-js#241)", () => {
+    const feeConfigRequestMock = () => vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "sim_getFeeConfig") {
+        return {
+          enabled: true,
+          policy: {
+            genPerTimeUnit: "10",
+            storageUnitPrice: "20",
+            receiptGasPrice: "30",
+            messageFeeParamsBudgetFloor: "400000",
+          },
+        };
+      }
+      throw new Error(`unexpected request ${method}`);
+    });
+
+    const estimateObserved = async (
+      feeAccounting: StudioFeeAccounting,
+    ) => {
+      const {actions} = setupWriteContractHarness({
+        initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+        isStudio: true,
+        requestMock: feeConfigRequestMock(),
+      });
+      return actions.estimateTransactionFeesFromSimulation({simulation: {feeAccounting}});
+    };
+
+    it("does not sum execution_fee_consumed and totalEstimatedFee (rc.11 vector)", async () => {
+      const fees = await estimateObserved({
+        execution_fee_consumed: "78628500000000",
+        execution_fee_consumed_buckets: ["78628000000000", "500000000"],
+        execution_fee_report: {
+          totalEstimatedFee: "78628000000000",
+          genvmBuckets: {execution: "78852500000000"},
+        },
+      });
+
+      expect(fees.observed?.executionFeeConsumed).toBe(78_628_500_000_000n);
+      expect(fees.observed?.executionFeeReportTotal).toBe(78_628_000_000_000n);
+      expect(fees.observed?.observedExecutionFee).toBe(78_628_500_000_000n);
+      expect(fees.observed?.genvmExecutionRequired).toBe(78_852_500_000_000n);
+      expect(fees.observed?.observedExecutionBudget).toBe(78_852_500_000_000n);
+      expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(94_623_000_000_000n);
+      expect(fees.observed?.recommendedExecutionBudgetPerRound).not.toBe(188_707_800_000_000n);
+      expect(fees.distribution.executionBudgetPerRound).toBe(94_623_000_000_000n);
+    });
+
+    it("uses chargeableExecution.totalExecution when nothing was consumed", async () => {
+      const fees = await estimateObserved({
+        execution_fee_consumed: "0",
+        execution_fee_report: {
+          chargeableExecution: {totalExecution: "1000000"},
+          totalEstimatedFee: "900000",
+        },
+      });
+
+      expect(fees.observed?.observedExecutionFee).toBe(1_000_000n);
+      expect(fees.observed?.genvmExecutionRequired).toBe(0n);
+      expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(1_200_000n);
+    });
+
+    it("falls back to totalEstimatedFee when consumed and chargeable totals are zero", async () => {
+      const fees = await estimateObserved({
+        execution_fee_consumed: "0",
+        execution_fee_report: {
+          chargeableExecution: {totalExecution: "0"},
+          totalEstimatedFee: "900000",
+        },
+      });
+
+      expect(fees.observed?.observedExecutionFee).toBe(900_000n);
+      expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(1_080_000n);
+    });
+
+    it("uses the observed fee alone when genvmBuckets is absent", async () => {
+      const fees = await estimateObserved({
+        execution_fee_consumed: "1000001",
+        execution_fee_report: {totalEstimatedFee: "1000000"},
+      });
+
+      expect(fees.observed?.genvmExecutionRequired).toBe(0n);
+      expect(fees.observed?.observedExecutionBudget).toBe(1_000_001n);
+      expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(1_200_002n);
+    });
+
+    it("recommends no execution budget when every observed figure is zero", async () => {
+      const fees = await estimateObserved({
+        execution_fee_consumed: "0",
+        execution_fee_report: {
+          chargeableExecution: {totalExecution: "0"},
+          genvmBuckets: {execution: "0"},
+          totalEstimatedFee: "0",
+        },
+      });
+
+      expect(fees.observed?.observedExecutionBudget).toBe(0n);
+      expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(0n);
+    });
+
+    it("keeps the policy floor when it exceeds the padded observation", async () => {
+      const fees = await estimateObserved({
+        execution_fee_consumed: "1000",
+        execution_fee_report: {
+          totalEstimatedFee: "1000",
+          genvmBuckets: {execution: "2000"},
+        },
+      });
+
+      expect(fees.observed?.observedExecutionBudget).toBe(2_000n);
+      expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(400_000n);
+    });
+
+    it("applies the corrected budget on the gen_call fallback of a write estimate", async () => {
+      const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+        if (method === "sim_getFeeConfig") {
+          return {
+            enabled: true,
+            policy: {
+              genPerTimeUnit: "10",
+              storageUnitPrice: "20",
+              receiptGasPrice: "30",
+              messageFeeParamsBudgetFloor: "400000",
+            },
+          };
+        }
+        if (method === "eth_gasPrice") return "0x1";
+        if (method === "sim_estimateTransactionFees") return {};
+        if (method === "gen_call") {
+          return {
+            data: "0x",
+            genvm_result: {
+              fee_accounting: {
+                execution_fee_consumed: "78628500000000",
+                execution_fee_report: {
+                  totalEstimatedFee: "78628000000000",
+                  genvmBuckets: {execution: "78852500000000"},
+                },
+              },
+            },
+          };
+        }
+        throw new Error(`unexpected request ${method}`);
+      });
+      const {actions} = setupWriteContractHarness({
+        initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+        isStudio: true,
+        requestMock,
+      });
+
+      const fees = await actions.estimateTransactionFeesForWrite({
+        address: RECIPIENT_ADDRESS,
+        functionName: "ping",
+      });
+
+      expect(fees.observed?.observedExecutionBudget).toBe(78_852_500_000_000n);
+      expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(94_623_000_000_000n);
+      expect(fees.distribution.executionBudgetPerRound).toBe(94_623_000_000_000n);
+    });
   });
 
   it("builds a Studio trusted fee preset for a target write in one call", async () => {
@@ -1615,7 +1777,8 @@ describe("contractActions addTransaction ABI compatibility", () => {
     expect(simCall.params[0].fees.feeValue).toBe("12001244110");
     expect(simCall.params[0].fees.distribution.totalMessageFees).toBe("110");
     expect(simCall.params[0].fees.messageAllocations[0].budget).toBe("110");
-    expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(602_117n);
+    expect(fees.observed?.observedExecutionFee).toBe(100n);
+    expect(fees.observed?.recommendedExecutionBudgetPerRound).toBe(400_000n);
     expect(fees.observed?.messageFeeBudget).toBe(110n);
     expect(fees.observed?.messageFeeConsumed).toBe(50n);
     expect(fees.distribution.executionBudgetPerRound).toBe(3_000_000_000n);

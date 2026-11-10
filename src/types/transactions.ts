@@ -513,6 +513,9 @@ export type StudioGenvmFeeBucket = {
 };
 
 export type StudioGenvmFeeBucketReport = {
+  layout?: string;
+  execution?: BigNumberish;
+  receipt?: BigNumberish;
   receiptAndNondetOutput?: BigNumberish;
   storage?: BigNumberish;
   message?: BigNumberish;
@@ -607,6 +610,12 @@ export type SimulateWriteContractResult<
 export type SimulationFeeUsage = {
   executionFeeConsumed: bigint;
   executionFeeReportTotal: bigint;
+  /** Execution fee observed for one round: consumed, else chargeable total, else report total. */
+  observedExecutionFee: bigint;
+  /** GenVM execution bucket the simulated round needed (`feeReport.genvmBuckets.execution`). */
+  genvmExecutionRequired: bigint;
+  /** Larger of `observedExecutionFee` and `genvmExecutionRequired`; headroom is applied to this. */
+  observedExecutionBudget: bigint;
   recommendedExecutionBudgetPerRound: bigint;
   genvmMessageFeeConsumed: bigint;
   messageFeeBudget: bigint;
