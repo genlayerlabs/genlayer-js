@@ -142,6 +142,21 @@ export const simplifyTransactionReceipt = (tx: GenLayerTransaction): GenLayerTra
       return obj.map(item => simplifyObject(item, path)).filter(item => item !== undefined);
     }
 
+    // Decoded calldata (`txDataDecoded.callData` / `constructorArgs`, see
+    // abi/calldata/decoder.ts's TYPE_MAP) is a `Map<string, CalldataEncodable>`,
+    // not a plain object. `Object.entries()` below only sees a plain object's
+    // own enumerable properties, so a Map falls through it as `{}` — the
+    // decoded method name and arguments are silently dropped instead of
+    // simplified. Convert it to a plain object first so its entries go
+    // through the same simplification as everything else.
+    if (obj instanceof Map) {
+      const result: any = {};
+      for (const [key, value] of obj.entries()) {
+        result[key] = simplifyObject(value, path ? `${path}.${key}` : key);
+      }
+      return result;
+    }
+
     if (typeof obj === "object") {
       const result: any = {};
       
