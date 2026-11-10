@@ -52,6 +52,14 @@ Defined in: [types/transactions.ts:15](https://github.com/genlayerlabs/genlayer-
 
 ***
 
+### LEADER\_REVEALING
+
+> **LEADER\_REVEALING**: `"LEADER_REVEALING"`
+
+Defined in: [types/transactions.ts:23](https://github.com/genlayerlabs/genlayer-js/blob/eaba6adec6803bdd0b4968e3f0763cf22107acd1/src/types/transactions.ts#L23)
+
+***
+
 ### LEADER\_TIMEOUT
 
 > **LEADER\_TIMEOUT**: `"LEADER_TIMEOUT"`
@@ -73,14 +81,6 @@ Defined in: [types/transactions.ts:9](https://github.com/genlayerlabs/genlayer-j
 > **PROPOSING**: `"PROPOSING"`
 
 Defined in: [types/transactions.ts:10](https://github.com/genlayerlabs/genlayer-js/blob/eaba6adec6803bdd0b4968e3f0763cf22107acd1/src/types/transactions.ts#L10)
-
-***
-
-### READY\_TO\_FINALIZE
-
-> **READY\_TO\_FINALIZE**: `"READY_TO_FINALIZE"`
-
-Defined in: [types/transactions.ts:19](https://github.com/genlayerlabs/genlayer-js/blob/eaba6adec6803bdd0b4968e3f0763cf22107acd1/src/types/transactions.ts#L19)
 
 ***
 

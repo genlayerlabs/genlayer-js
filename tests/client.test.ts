@@ -20,6 +20,15 @@ describe("Client Creation", () => {
     expect(client).toBeDefined();
     expect(client.chain).toBe(localnet);
   });
+
+  it("should not change the shared chain preset when overriding the endpoint", () => {
+    const defaultRpc = localnet.rpcUrls.default.http;
+    const first = createClient({chain: localnet, endpoint: "https://first.example"});
+    const second = createClient({chain: localnet, endpoint: "https://second.example"});
+    expect(first.chain.rpcUrls.default.http).toEqual(["https://first.example"]);
+    expect(second.chain.rpcUrls.default.http).toEqual(["https://second.example"]);
+    expect(localnet.rpcUrls.default.http).toEqual(defaultRpc);
+  });
 });
 
 describe("Client Overrides", () => {
@@ -182,5 +191,36 @@ describe("Client Overrides", () => {
         transaction_hash_variant: TransactionHashVariant.LATEST_NONFINAL,
       },
     ]);
+  });
+});
+
+describe("RPC rate limiting", () => {
+  beforeEach(() => mockFetch.mockReset());
+
+  it("retries a rate-limited read", async () => {
+    vi.useFakeTimers();
+    try {
+      mockFetch
+        .mockResolvedValueOnce(new Response("", {status: 429}))
+        .mockResolvedValueOnce(new Response(JSON.stringify({jsonrpc: "2.0", id: 1, result: "0x107d"})));
+      const client = createClient({chain: localnet});
+      const result = client.request({method: "eth_chainId"});
+      await vi.runAllTimersAsync();
+      await expect(result).resolves.toBe("0x107d");
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never retries a rate-limited broadcast", async () => {
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({jsonrpc: "2.0", id: 1, error: {code: 429, message: "Rate Limit Exceeded"}}), {
+        status: 429,
+      }),
+    );
+    const client = createClient({chain: localnet});
+    await expect(client.request({method: "eth_sendRawTransaction", params: ["0x01"]})).rejects.toBeDefined();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
