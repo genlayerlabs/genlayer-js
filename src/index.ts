@@ -27,3 +27,4 @@ export type {
   OperatorRegistrationProof,
 } from "./vesting";
 export {buildGenVmPositionalArgs} from "./contracts/schema";
+// fees feature marker (placeholder for v2-dev fees work)
