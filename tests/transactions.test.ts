@@ -1112,4 +1112,73 @@ describe("simplifyTransactionReceipt", () => {
     expect(genvm.stderr).toBe("some error");
     expect(genvm.exit_code).toBe(1);
   });
+
+  it("preserves decoded callData Map instead of dropping it as an empty object (#219)", () => {
+    const tx = {
+      txDataDecoded: {
+        callData: new Map<string, unknown>([
+          ["", "inspect_delivery"],
+          ["args", ["synthetic-reference"]],
+        ]),
+        leaderOnly: false,
+        type: "call",
+      },
+    } as any;
+
+    const simplified = simplifyTransactionReceipt(tx);
+    const callData = (simplified.txDataDecoded as any)?.callData;
+
+    // Before the fix, txDataDecoded.callData was entirely absent here -
+    // Object.entries() on a Map returns [], so it simplified to {} and
+    // the parent's empty-object filter dropped the key altogether.
+    expect(callData).toBeDefined();
+    expect(callData[""]).toBe("inspect_delivery");
+    expect(callData.args).toEqual(["synthetic-reference"]);
+  });
+
+  it("preserves decoded constructorArgs Map the same way as callData (#219)", () => {
+    const tx = {
+      txDataDecoded: {
+        constructorArgs: new Map<string, unknown>([["args", [42, "hello"]]]),
+        leaderOnly: false,
+        type: "deploy",
+      },
+    } as any;
+
+    const simplified = simplifyTransactionReceipt(tx);
+    const constructorArgs = (simplified.txDataDecoded as any)?.constructorArgs;
+
+    expect(constructorArgs).toBeDefined();
+    expect(constructorArgs.args).toEqual([42, "hello"]);
+  });
+
+  it("recursively simplifies values nested inside a decoded calldata Map", () => {
+    const tx = {
+      txDataDecoded: {
+        callData: new Map<string, unknown>([
+          ["", "nested_call"],
+          ["kwargs", {result: {stderr: "warn", exit_code: 0}}],
+        ]),
+      },
+    } as any;
+
+    const simplified = simplifyTransactionReceipt(tx);
+    const callData = (simplified.txDataDecoded as any)?.callData;
+
+    expect(callData.kwargs.result).toEqual({stderr: "warn", exit_code: 0});
+  });
+
+  it("drops an empty Map the same way an empty object is dropped, without erroring", () => {
+    const tx = {
+      txDataDecoded: {
+        callData: new Map<string, unknown>(),
+        leaderOnly: false,
+        type: "call",
+      },
+    } as any;
+
+    const simplified = simplifyTransactionReceipt(tx);
+
+    expect((simplified.txDataDecoded as any)?.callData).toBeUndefined();
+  });
 });
