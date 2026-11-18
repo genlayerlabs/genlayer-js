@@ -28,6 +28,20 @@ Have ideas for new features or use cases? We're eager to hear them! But first:
 - Ensure you have the SDK installed to explore existing use cases.
 - After familiarizing yourself with the SDK, contribute your unique use case and share your ideas in our [Discord channel](https://discord.gg/8Jm4v89VAu).
 
+## Branch model
+
+See [docs/BRANCHING.md](docs/BRANCHING.md) for the current release-train model.
+In short: independently releasable work may target the stable branch directly;
+multi-feature or cross-repo train work uses the active `*-dev` integration
+branch and is promoted to the matching stable branch when ready. `main` is only
+the default/static GitHub branch.
+
+## Releases
+
+Releases are deliberate, not automatic. `scripts/release.sh` bumps the version, updates `CHANGELOG.md`, commits, tags, and pushes; CI takes over from the tag push and publishes to npm. See `.claude/skills/release/SKILL.md` for the full flow.
+
+If you're using Claude Code, ask it to "release a patch" (or "release v1.2.0") and the skill walks through the pre-flight checks before invoking the script.
+
 ### Bug fixing and Feature development
 
 #### 1. Set yourself up to start coding
