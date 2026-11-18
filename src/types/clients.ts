@@ -33,6 +33,8 @@ import {VestingActions} from "./vesting";
 export type GenLayerMethod =
   | {method: "sim_fundAccount"; params: [address: Address, amount: number]}
   | {method: "eth_getTransactionByHash"; params: [hash: TransactionHash]}
+  | {method: "sim_getTransactionByHash"; params: [hash: TransactionHash, full?: boolean]}
+  | {method: "gen_getTransactionStatus"; params: [hash: TransactionHash]}
   | {method: "eth_call"; params: [requestParams: any, blockNumberOrHash: string]}
   | {method: "eth_sendRawTransaction"; params: [signedTransaction: string]}
   | {method: "gen_getContractSchema"; params: [address: Address] | [{address: Address}] | [{code: string}]}
@@ -123,6 +125,10 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       /** Protocol lifecycle read with projection and resolution action details. */
       getTransactionLifecycle: (args: TransactionProtocolLifecycleArgs) => Promise<TransactionProtocolLifecycle>;
     };
+    /** Requires sim_getTransactionByHash. Omitting full uses the server default. Studio status and lifecycle are normalized like getTransaction. */
+    getStudioTransactionByHash: (args: {hash: TransactionHash; full?: boolean}) => Promise<GenLayerTransaction>;
+    /** Returns the status name from an RPC supporting gen_getTransactionStatus. */
+    getTransactionStatus: (args: {hash: TransactionHash}) => Promise<TransactionStatus>;
     getCurrentNonce: (args: {address: Address}) => Promise<number>;
     transfer: (args: {to: Address; value: bigint}) => Promise<TransactionReceipt>;
     estimateTransactionGas: (transactionParams: {

@@ -153,6 +153,19 @@ const readAddressPages = async (
   return items;
 };
 
+const decodeStudioTransaction = (transaction: GenLayerTransaction): GenLayerTransaction => {
+  const localnetStatus =
+    (transaction.status as string) === "ACTIVATED" ? TransactionStatus.PENDING : transaction.status;
+
+  transaction.status = Number(transactionsStatusNameToNumber[localnetStatus as TransactionStatus]);
+  transaction.statusName = localnetStatus as TransactionStatus;
+  transaction.lifecycle = transactionLifecycleFromStoredStatus(
+    localnetStatus as TransactionStatus,
+    transaction.result,
+  );
+  return decodeLocalnetTransaction(transaction as unknown as GenLayerTransaction);
+};
+
 let didWarnWaitForTransactionReceiptStatus = false;
 
 const warnDeprecatedReceiptStatus = () => {
@@ -392,16 +405,7 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
   getTransaction: async ({hash}: {hash: TransactionHash}): Promise<GenLayerTransaction> => {
     if (client.chain.isStudio) {
       const transaction = await client.getTransaction({hash});
-      const localnetStatus =
-        (transaction.status as string) === "ACTIVATED" ? TransactionStatus.PENDING : transaction.status;
-
-      transaction.status = Number(transactionsStatusNameToNumber[localnetStatus as TransactionStatus]);
-      transaction.statusName = localnetStatus as TransactionStatus;
-      transaction.lifecycle = transactionLifecycleFromStoredStatus(
-        localnetStatus as TransactionStatus,
-        transaction.result,
-      );
-      return decodeLocalnetTransaction(transaction as unknown as GenLayerTransaction);
+      return decodeStudioTransaction(transaction as unknown as GenLayerTransaction);
     }
     const consensusDataAddress = client.chain.consensusDataContract?.address as Address;
     if (!consensusDataAddress || consensusDataAddress === zeroAddress) {
@@ -525,6 +529,25 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
       },
     } as unknown as GenLayerRawTransaction;
     return decodeTransaction(transaction);
+  },
+  /** Fetches a Studio transaction, normalizing status and lifecycle like getTransaction. Requires sim_getTransactionByHash. */
+  getStudioTransactionByHash: async ({hash, full}: {hash: TransactionHash; full?: boolean}): Promise<GenLayerTransaction> => {
+    const transaction = await client.request({
+      method: "sim_getTransactionByHash",
+      params: full === undefined ? [hash] : [hash, full],
+    }) as GenLayerTransaction | null;
+
+    if (!transaction) {
+      throw new Error(`Transaction not found: ${hash}`);
+    }
+    return client.chain.isStudio ? decodeStudioTransaction(transaction) : transaction;
+  },
+  /** Returns the status name from an RPC supporting gen_getTransactionStatus. */
+  getTransactionStatus: async ({hash}: {hash: TransactionHash}): Promise<TransactionStatus> => {
+    return await client.request({
+      method: "gen_getTransactionStatus",
+      params: [hash],
+    }) as TransactionStatus;
   },
   /**
    * Returns canonical child IDs committed for this parent, including deferred delivery.
