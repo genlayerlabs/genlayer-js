@@ -81,6 +81,22 @@ const result = await client.readContract({
 })
 ```
 
+### Contract pending queue
+
+On chains whose consensus data contract exposes `getLatestPendingTxCount`,
+query the number of pending transactions for an intelligent contract:
+
+```typescript
+const pendingCount = await client.getContractPendingQueue(contractAddress);
+console.log(pendingCount.toString()); // bigint; preserves the full uint256 range
+```
+
+This is a current queue count, not a transaction's position or an execution-time
+estimate. The method rejects if the consensus data deployment is missing, the
+chain ABI does not expose this function, or the RPC call fails. The bundled
+localnet and studionet ABIs expose it; the current testnetAsimov and
+testnetBradbury ABIs do not.
+
 ### Writing a transaction
 ```typescript
 import { localnet } from 'genlayer-js/chains';
