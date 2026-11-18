@@ -32,6 +32,7 @@ import {
 } from "@/types";
 import {fromHex, toHex, zeroAddress, encodeFunctionData, decodeFunctionResult, PublicClient, parseEventLogs, type Abi} from "viem";
 import {toJsonSafeDeep, b64ToArray, arrayToB64} from "@/utils/jsonifier";
+import {acquireNonceLock, nonceLockKey} from "@/utils/nonceLock";
 import {
   CALL_KEY_WILDCARD,
   createFeesDistribution,
@@ -2515,57 +2516,67 @@ const _sendEvmContractCall = async ({
   operationName?: string;
 }): Promise<`0x${string}`> => {
   const validatedAccount = validateAccount(senderAccount);
-  const nonce = await client.getCurrentNonce({address: validatedAccount.address});
-
-  let estimatedGas: bigint;
+  // Serialize nonce allocation with other in-flight submissions from this
+  // sender so concurrent calls do not reuse the same pending nonce. Released
+  // right after broadcast; receipt waits still run in parallel.
+  const releaseNonceLock = await acquireNonceLock(nonceLockKey(client.chain.id, validatedAccount.address));
   try {
-    estimatedGas = await client.estimateTransactionGas({
-      from: validatedAccount.address,
-      to,
-      data: encodedData,
-      value,
-    });
-  } catch (err) {
-    console.error("Gas estimation failed, using default 200_000:", err);
-    estimatedGas = 200_000n;
-  }
+    const nonce = await client.getCurrentNonce({address: validatedAccount.address});
 
-  const gasPriceHex = (await client.request({method: "eth_gasPrice"})) as string;
-
-  if (validatedAccount.type === "local") {
-    if (!validatedAccount.signTransaction) {
-      throw new Error("Local account does not support signTransaction.");
+    let estimatedGas: bigint;
+    try {
+      estimatedGas = await client.estimateTransactionGas({
+        from: validatedAccount.address,
+        to,
+        data: encodedData,
+        value,
+      });
+    } catch (err) {
+      console.error("Gas estimation failed, using default 200_000:", err);
+      estimatedGas = 200_000n;
     }
-    const txRequest = {
-      account: validatedAccount,
-      to,
-      data: encodedData,
-      value,
-      gas: estimatedGas,
-      gasPrice: BigInt(gasPriceHex),
-      nonce,
-      chainId: client.chain.id,
-    };
-    const serializedTransaction = await validatedAccount.signTransaction(txRequest);
-    const evmHash = await client.sendRawTransaction({serializedTransaction});
+
+    const gasPriceHex = (await client.request({method: "eth_gasPrice"})) as string;
+
+    if (validatedAccount.type === "local") {
+      if (!validatedAccount.signTransaction) {
+        throw new Error("Local account does not support signTransaction.");
+      }
+      const txRequest = {
+        account: validatedAccount,
+        to,
+        data: encodedData,
+        value,
+        gas: estimatedGas,
+        gasPrice: BigInt(gasPriceHex),
+        nonce,
+        chainId: client.chain.id,
+      };
+      const serializedTransaction = await validatedAccount.signTransaction(txRequest);
+      const evmHash = await client.sendRawTransaction({serializedTransaction});
+      releaseNonceLock();
+      await _waitForSentEnvelope({client, publicClient, evmHash, operationName});
+      return evmHash;
+    }
+
+    const evmHash = (await client.request({
+      method: "eth_sendTransaction",
+      params: [{
+        from: validatedAccount.address,
+        to,
+        data: encodedData,
+        value: value ? (`0x${value.toString(16)}` as `0x${string}`) : undefined,
+        gas: `0x${estimatedGas.toString(16)}` as `0x${string}`,
+        nonce: `0x${BigInt(nonce).toString(16)}` as `0x${string}`,
+        gasPrice: gasPriceHex as `0x${string}`,
+      }],
+    })) as `0x${string}`;
+    releaseNonceLock();
     await _waitForSentEnvelope({client, publicClient, evmHash, operationName});
     return evmHash;
+  } finally {
+    releaseNonceLock();
   }
-
-  const evmHash = (await client.request({
-    method: "eth_sendTransaction",
-    params: [{
-      from: validatedAccount.address,
-      to,
-      data: encodedData,
-      value: value ? (`0x${value.toString(16)}` as `0x${string}`) : undefined,
-      gas: `0x${estimatedGas.toString(16)}` as `0x${string}`,
-      nonce: `0x${BigInt(nonce).toString(16)}` as `0x${string}`,
-      gasPrice: gasPriceHex as `0x${string}`,
-    }],
-  })) as `0x${string}`;
-  await _waitForSentEnvelope({client, publicClient, evmHash, operationName});
-  return evmHash;
 };
 
 /**
@@ -2596,54 +2607,64 @@ const _sendConsensusCall = async ({
   }
 
   const validatedAccount = validateAccount(senderAccount);
-  const nonce = await client.getCurrentNonce({address: validatedAccount.address});
-
-  let estimatedGas: bigint;
+  // Serialize nonce allocation with other in-flight submissions from this
+  // sender so concurrent calls do not reuse the same pending nonce. Released
+  // right after broadcast; receipt waits still run in parallel.
+  const releaseNonceLock = await acquireNonceLock(nonceLockKey(client.chain.id, validatedAccount.address));
   try {
-    estimatedGas = await client.estimateTransactionGas({
-      to: client.chain.consensusMainContract.address,
-      data: encodedData,
-      value,
-    });
-  } catch (err) {
-    console.error("Gas estimation failed, using default 200_000:", err);
-    estimatedGas = 200_000n;
-  }
+    const nonce = await client.getCurrentNonce({address: validatedAccount.address});
 
-  const gasPriceHex = (await client.request({method: "eth_gasPrice"})) as string;
-
-  if (validatedAccount.type === "local") {
-    if (!validatedAccount.signTransaction) {
-      throw new Error("Local account does not support signTransaction.");
+    let estimatedGas: bigint;
+    try {
+      estimatedGas = await client.estimateTransactionGas({
+        to: client.chain.consensusMainContract.address,
+        data: encodedData,
+        value,
+      });
+    } catch (err) {
+      console.error("Gas estimation failed, using default 200_000:", err);
+      estimatedGas = 200_000n;
     }
-    const txRequest = {
-      account: validatedAccount,
-      to: client.chain.consensusMainContract.address as `0x${string}`,
-      data: encodedData,
-      value,
-      gas: estimatedGas,
-      gasPrice: BigInt(gasPriceHex),
-      nonce,
-      chainId: client.chain.id,
-    };
-    const serializedTransaction = await validatedAccount.signTransaction(txRequest);
-    const evmHash = await client.sendRawTransaction({serializedTransaction});
+
+    const gasPriceHex = (await client.request({method: "eth_gasPrice"})) as string;
+
+    if (validatedAccount.type === "local") {
+      if (!validatedAccount.signTransaction) {
+        throw new Error("Local account does not support signTransaction.");
+      }
+      const txRequest = {
+        account: validatedAccount,
+        to: client.chain.consensusMainContract.address as `0x${string}`,
+        data: encodedData,
+        value,
+        gas: estimatedGas,
+        gasPrice: BigInt(gasPriceHex),
+        nonce,
+        chainId: client.chain.id,
+      };
+      const serializedTransaction = await validatedAccount.signTransaction(txRequest);
+      const evmHash = await client.sendRawTransaction({serializedTransaction});
+      releaseNonceLock();
+      await _waitForSentEnvelope({client, publicClient, evmHash, operationName});
+      return evmHash;
+    }
+
+    const evmHash = (await client.request({
+      method: "eth_sendTransaction",
+      params: [{
+        from: validatedAccount.address,
+        to: client.chain.consensusMainContract.address,
+        data: encodedData,
+        value: value ? (`0x${value.toString(16)}` as `0x${string}`) : undefined,
+        gas: `0x${estimatedGas.toString(16)}` as `0x${string}`,
+      }],
+    })) as `0x${string}`;
+    releaseNonceLock();
     await _waitForSentEnvelope({client, publicClient, evmHash, operationName});
     return evmHash;
+  } finally {
+    releaseNonceLock();
   }
-
-  const evmHash = (await client.request({
-    method: "eth_sendTransaction",
-    params: [{
-      from: validatedAccount.address,
-      to: client.chain.consensusMainContract.address,
-      data: encodedData,
-      value: value ? (`0x${value.toString(16)}` as `0x${string}`) : undefined,
-      gas: `0x${estimatedGas.toString(16)}` as `0x${string}`,
-    }],
-  })) as `0x${string}`;
-  await _waitForSentEnvelope({client, publicClient, evmHash, operationName});
-  return evmHash;
 };
 
 /**
@@ -2696,170 +2717,180 @@ const _sendTransaction = async ({
   }
 
   const validatedSenderAccount = validateAccount(senderAccount);
-  const nonce = await client.getCurrentNonce({address: validatedSenderAccount.address});
+  // Serialize nonce allocation with other in-flight submissions from this
+  // sender so concurrent calls do not reuse the same pending nonce. Released
+  // right after broadcast; receipt waits still run in parallel.
+  const releaseNonceLock = await acquireNonceLock(nonceLockKey(client.chain.id, validatedSenderAccount.address));
+  try {
+    const nonce = await client.getCurrentNonce({address: validatedSenderAccount.address});
 
-  const knownRevertSelectorNames: Record<string, string> = {
-    "0x8d53e553": "InsufficientFees",
-    "0xb4132db3": "MaxPriceExceeded",
-    "0x57df8523": "ExecutionBudgetExceeded",
-    "0x305e533c": "BudgetTooLow",
-    "0xa70732ee": "RollupBudgetBelowFloor",
-    "0x632be5a1": "FeeValueMustBeNonZero",
-  };
+    const knownRevertSelectorNames: Record<string, string> = {
+      "0x8d53e553": "InsufficientFees",
+      "0xb4132db3": "MaxPriceExceeded",
+      "0x57df8523": "ExecutionBudgetExceeded",
+      "0x305e533c": "BudgetTooLow",
+      "0xa70732ee": "RollupBudgetBelowFloor",
+      "0x632be5a1": "FeeValueMustBeNonZero",
+    };
 
-  const stringifyRpcError = (error: unknown): string => {
-    const parts: string[] = [];
-    if (error instanceof Error) {
-      parts.push(error.message);
-    }
-    const record = error && typeof error === "object" ? error as Record<string, unknown> : {};
-    for (const key of ["details", "shortMessage", "data"]) {
-      const value = record[key];
-      if (typeof value === "string" && value.trim() !== "") {
-        parts.push(value);
+    const stringifyRpcError = (error: unknown): string => {
+      const parts: string[] = [];
+      if (error instanceof Error) {
+        parts.push(error.message);
       }
-    }
-    const cause = record.cause;
-    if (cause && typeof cause === "object") {
-      const causeRecord = cause as Record<string, unknown>;
-      for (const key of ["message", "data"]) {
-        const value = causeRecord[key];
+      const record = error && typeof error === "object" ? error as Record<string, unknown> : {};
+      for (const key of ["details", "shortMessage", "data"]) {
+        const value = record[key];
         if (typeof value === "string" && value.trim() !== "") {
           parts.push(value);
         }
       }
-    }
-    const text = Array.from(new Set(parts)).join(" ");
-    const selectorName = Object.entries(knownRevertSelectorNames)
-      .find(([selector]) => text.includes(selector))?.[1];
-    return selectorName && !text.includes(selectorName)
-      ? `${text} (${selectorName})`
-      : text;
-  };
+      const cause = record.cause;
+      if (cause && typeof cause === "object") {
+        const causeRecord = cause as Record<string, unknown>;
+        for (const key of ["message", "data"]) {
+          const value = causeRecord[key];
+          if (typeof value === "string" && value.trim() !== "") {
+            parts.push(value);
+          }
+        }
+      }
+      const text = Array.from(new Set(parts)).join(" ");
+      const selectorName = Object.entries(knownRevertSelectorNames)
+        .find(([selector]) => text.includes(selector))?.[1];
+      return selectorName && !text.includes(selectorName)
+        ? `${text} (${selectorName})`
+        : text;
+    };
 
-  const sendWithEncodedData = async (transactionVariant: EncodedTransactionVariant) => {
-    let estimatedGas: bigint;
-    let gasEstimationError: string | undefined;
-    try {
-      estimatedGas = await client.estimateTransactionGas({
+    const sendWithEncodedData = async (transactionVariant: EncodedTransactionVariant) => {
+      let estimatedGas: bigint;
+      let gasEstimationError: string | undefined;
+      try {
+        estimatedGas = await client.estimateTransactionGas({
+          from: validatedSenderAccount.address,
+          to: client.chain.consensusMainContract?.address as Address,
+          data: transactionVariant.encodedData,
+          value: transactionVariant.value,
+        });
+        estimatedGas = withTransactionGasHeadroom(estimatedGas);
+      } catch (err) {
+        gasEstimationError = stringifyRpcError(err);
+        console.error("Gas estimation failed, using default 200_000:", err);
+        estimatedGas = 200_000n;
+      }
+
+      // For local accounts, build transaction request directly to avoid viem's
+      // prepareTransactionRequest which calls eth_fillTransaction (unsupported by GenLayer RPC)
+      if (validatedSenderAccount?.type === "local") {
+        if (!validatedSenderAccount?.signTransaction) {
+          throw new Error("Local account does not support signTransaction. Use a private key account created via privateKeyToAccount().");
+        }
+
+        const gasPriceHex = (await client.request({
+          method: "eth_gasPrice",
+        })) as string;
+
+        const transactionRequest = {
+          account: validatedSenderAccount,
+          to: client.chain.consensusMainContract?.address as Address,
+          data: transactionVariant.encodedData,
+          type: "legacy" as const,
+          nonce: Number(nonce),
+          value: transactionVariant.value,
+          gas: estimatedGas,
+          gasPrice: BigInt(gasPriceHex),
+          chainId: client.chain.id,
+        };
+
+        const serializedTransaction = await validatedSenderAccount.signTransaction(transactionRequest);
+        const txHash = await client.sendRawTransaction({serializedTransaction: serializedTransaction});
+        releaseNonceLock();
+        const receipt = await _waitForSentEnvelope({
+          client,
+          publicClient,
+          evmHash: txHash,
+          operationName: "Transaction",
+          revertDetails: gasEstimationError ? `Gas estimation error: ${gasEstimationError}` : undefined,
+        });
+
+        if (client.chain.isStudio) return txHash;
+
+        const txId = extractTxIdFromLogs(client, receipt.logs);
+        if (!txId) {
+          throw new Error(
+            `Transaction not processed by consensus: EVM tx ${txHash} succeeded but no NewTransaction or CreatedTransaction event was found in the receipt logs.`,
+          );
+        }
+
+        return txId;
+      }
+
+      // For injected/external wallets (e.g. MetaMask), avoid viem's
+      // prepareTransactionRequest() because it may call eth_fillTransaction and
+      // eth_getBlockByNumber, which are not available on all GenLayer-compatible RPCs.
+      let gasPriceHex: `0x${string}` | undefined;
+      try {
+        const gasPriceResult = await client.request({
+          method: "eth_gasPrice",
+        });
+        if (typeof gasPriceResult === "string") {
+          gasPriceHex = gasPriceResult as `0x${string}`;
+        }
+      } catch (error) {
+        console.warn("Failed to fetch gas price, delegating gas price selection to wallet:", error);
+      }
+
+      const nonceBigInt =
+        typeof nonce === "bigint"
+          ? nonce
+          : typeof nonce === "string"
+            ? BigInt(nonce)
+            : BigInt(Number(nonce));
+
+      const formattedRequest = {
         from: validatedSenderAccount.address,
         to: client.chain.consensusMainContract?.address as Address,
         data: transactionVariant.encodedData,
-        value: transactionVariant.value,
-      });
-      estimatedGas = withTransactionGasHeadroom(estimatedGas);
-    } catch (err) {
-      gasEstimationError = stringifyRpcError(err);
-      console.error("Gas estimation failed, using default 200_000:", err);
-      estimatedGas = 200_000n;
-    }
-
-    // For local accounts, build transaction request directly to avoid viem's
-    // prepareTransactionRequest which calls eth_fillTransaction (unsupported by GenLayer RPC)
-    if (validatedSenderAccount?.type === "local") {
-      if (!validatedSenderAccount?.signTransaction) {
-        throw new Error("Local account does not support signTransaction. Use a private key account created via privateKeyToAccount().");
-      }
-
-      const gasPriceHex = (await client.request({
-        method: "eth_gasPrice",
-      })) as string;
-
-      const transactionRequest = {
-        account: validatedSenderAccount,
-        to: client.chain.consensusMainContract?.address as Address,
-        data: transactionVariant.encodedData,
-        type: "legacy" as const,
-        nonce: Number(nonce),
-        value: transactionVariant.value,
-        gas: estimatedGas,
-        gasPrice: BigInt(gasPriceHex),
-        chainId: client.chain.id,
+        value: `0x${transactionVariant.value.toString(16)}`,
+        gas: `0x${estimatedGas.toString(16)}`,
+        nonce: `0x${nonceBigInt.toString(16)}`,
+        type: "0x0", // legacy tx
+        chainId: `0x${client.chain.id.toString(16)}`,
+        ...(gasPriceHex ? {gasPrice: gasPriceHex} : {}),
       };
 
-      const serializedTransaction = await validatedSenderAccount.signTransaction(transactionRequest);
-      const txHash = await client.sendRawTransaction({serializedTransaction: serializedTransaction});
-      const receipt = await _waitForSentEnvelope({
+      const evmTxHash = (await client.request({
+        method: "eth_sendTransaction",
+        params: [formattedRequest as any],
+      })) as `0x${string}`;
+      releaseNonceLock();
+
+      const externalReceipt = await _waitForSentEnvelope({
         client,
         publicClient,
-        evmHash: txHash,
+        evmHash: evmTxHash,
         operationName: "Transaction",
         revertDetails: gasEstimationError ? `Gas estimation error: ${gasEstimationError}` : undefined,
       });
 
-      if (client.chain.isStudio) return txHash;
+      if (client.chain.isStudio) return evmTxHash;
 
-      const txId = extractTxIdFromLogs(client, receipt.logs);
-      if (!txId) {
+      const externalTxId = extractTxIdFromLogs(client, externalReceipt.logs);
+      if (!externalTxId) {
         throw new Error(
-          `Transaction not processed by consensus: EVM tx ${txHash} succeeded but no NewTransaction or CreatedTransaction event was found in the receipt logs.`,
+          `Transaction not processed by consensus: EVM tx ${evmTxHash} succeeded but no NewTransaction or CreatedTransaction event was found in the receipt logs.`,
         );
       }
 
-      return txId;
-    }
-
-    // For injected/external wallets (e.g. MetaMask), avoid viem's
-    // prepareTransactionRequest() because it may call eth_fillTransaction and
-    // eth_getBlockByNumber, which are not available on all GenLayer-compatible RPCs.
-    let gasPriceHex: `0x${string}` | undefined;
-    try {
-      const gasPriceResult = await client.request({
-        method: "eth_gasPrice",
-      });
-      if (typeof gasPriceResult === "string") {
-        gasPriceHex = gasPriceResult as `0x${string}`;
-      }
-    } catch (error) {
-      console.warn("Failed to fetch gas price, delegating gas price selection to wallet:", error);
-    }
-
-    const nonceBigInt =
-      typeof nonce === "bigint"
-        ? nonce
-        : typeof nonce === "string"
-          ? BigInt(nonce)
-          : BigInt(Number(nonce));
-
-    const formattedRequest = {
-      from: validatedSenderAccount.address,
-      to: client.chain.consensusMainContract?.address as Address,
-      data: transactionVariant.encodedData,
-      value: `0x${transactionVariant.value.toString(16)}`,
-      gas: `0x${estimatedGas.toString(16)}`,
-      nonce: `0x${nonceBigInt.toString(16)}`,
-      type: "0x0", // legacy tx
-      chainId: `0x${client.chain.id.toString(16)}`,
-      ...(gasPriceHex ? {gasPrice: gasPriceHex} : {}),
+      return externalTxId;
     };
 
-    const evmTxHash = (await client.request({
-      method: "eth_sendTransaction",
-      params: [formattedRequest as any],
-    })) as `0x${string}`;
-
-    const externalReceipt = await _waitForSentEnvelope({
-      client,
-      publicClient,
-      evmHash: evmTxHash,
-      operationName: "Transaction",
-      revertDetails: gasEstimationError ? `Gas estimation error: ${gasEstimationError}` : undefined,
-    });
-
-    if (client.chain.isStudio) return evmTxHash;
-
-    const externalTxId = extractTxIdFromLogs(client, externalReceipt.logs);
-    if (!externalTxId) {
-      throw new Error(
-        `Transaction not processed by consensus: EVM tx ${evmTxHash} succeeded but no NewTransaction or CreatedTransaction event was found in the receipt logs.`,
-      );
+    if (transactionVariants.length !== 1) {
+      throw new Error(`Train transaction encoding expected one variant, received ${transactionVariants.length}`);
     }
-
-    return externalTxId;
-  };
-
-  if (transactionVariants.length !== 1) {
-    throw new Error(`Train transaction encoding expected one variant, received ${transactionVariants.length}`);
+    return await sendWithEncodedData(transactionVariants[0]);
+  } finally {
+    releaseNonceLock();
   }
-  return sendWithEncodedData(transactionVariants[0]);
 };
