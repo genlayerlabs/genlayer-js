@@ -1,6 +1,6 @@
-import {GenLayerClient, GenLayerChain} from "@/types";
+import {ChainSwitcher} from "@/types";
 
-export function chainActions(_client: GenLayerClient<GenLayerChain>) {
+export function chainActions(_client: ChainSwitcher) {
   return {
     /**
      * @deprecated This method is deprecated and will be removed in a future release.

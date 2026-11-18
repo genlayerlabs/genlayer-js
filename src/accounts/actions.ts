@@ -1,8 +1,8 @@
 import {Address as ViemAddress, PublicClient, TransactionReceipt} from "viem";
-import {GenLayerClient, TransactionHash, GenLayerChain, Address} from "../types";
+import {ClientRequester, TransactionHash, Address} from "../types";
 import {localnet} from "../chains";
 
-export function accountActions(client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) {
+export function accountActions(client: ClientRequester, publicClient: PublicClient) {
   return {
     fundAccount: async ({address, amount}: {address: Address; amount: number}): Promise<TransactionHash> => {
       if (client.chain?.id !== localnet.id) {
