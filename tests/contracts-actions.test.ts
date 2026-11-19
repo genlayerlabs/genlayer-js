@@ -3238,6 +3238,29 @@ describe("contractActions concurrent submissions from the same sender", () => {
     expect(node.assignedNonces).toEqual([0, 1, 2]);
   });
 
+  it("assigns distinct nonces to parallel direct EVM contract calls (claimNftRewards)", async () => {
+    const node = makePendingNonceNode();
+    const signTransaction = vi.fn().mockImplementation(
+      async (tx: {nonce: number}) => `0x${Number(tx.nonce).toString(16).padStart(2, "0")}`,
+    );
+    const {actions, client} = setupDeveloperNftHarness({signTransactionMock: signTransaction});
+    (client as any).getCurrentNonce = node.getCurrentNonce;
+    (client as any).sendRawTransaction = vi.fn().mockImplementation(
+      async ({serializedTransaction}: {serializedTransaction: string}) => {
+        await node.broadcast(parseInt(serializedTransaction.slice(2), 16));
+        return MOCK_EVM_TX_HASH;
+      },
+    );
+
+    await Promise.all([
+      actions.claimNftRewards({nftId: 7n}),
+      actions.claimNftRewards({nftId: 7n}),
+      actions.claimNftEpochs({nftId: 7n, numberOfEpochsToClaim: 2n}),
+    ]);
+
+    expect(node.assignedNonces).toEqual([0, 1, 2]);
+  });
+
   it("releases the lock when a submission fails before broadcast", async () => {
     const {actions, client, sendRawTransaction} = setupFinalizeHarness();
     sendRawTransaction.mockRejectedValueOnce(new Error("rpc down"));

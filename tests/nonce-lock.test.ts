@@ -1,5 +1,5 @@
-import {describe, it, expect} from "vitest";
-import {acquireNonceLock, nonceLockKey} from "../src/utils/nonceLock";
+import {describe, it, expect, vi} from "vitest";
+import {acquireNonceLock, nonceLockKey, NonceLockTimeoutError} from "../src/utils/nonceLock";
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -43,5 +43,43 @@ describe("nonceLock", () => {
     const releaseB = await acquireNonceLock(nonceLockKey(1, "0x03"));
     releaseA();
     releaseB();
+  });
+});
+
+describe("nonceLock bounds", () => {
+  it("releases a holder that never finishes once its lease expires", async () => {
+    const key = nonceLockKey(1, "0x10");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    // Holder acquires and never calls release (e.g. a hung RPC call).
+    await acquireNonceLock(key, {leaseMs: 20});
+    const releaseNext = await acquireNonceLock(key, {waitTimeoutMs: 1_000});
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("releasing it"));
+    releaseNext();
+    warn.mockRestore();
+  });
+
+  it("rejects with NonceLockTimeoutError when the wait exceeds waitTimeoutMs, without breaking the queue", async () => {
+    const key = nonceLockKey(1, "0x11");
+    const releaseHolder = await acquireNonceLock(key, {leaseMs: 10_000});
+
+    const timedOut = acquireNonceLock(key, {waitTimeoutMs: 20});
+    const later = acquireNonceLock(key, {waitTimeoutMs: 1_000});
+
+    await expect(timedOut).rejects.toBeInstanceOf(NonceLockTimeoutError);
+    await expect(timedOut).rejects.toThrow(/Timed out after 20ms/);
+
+    let laterAcquired = false;
+    void later.then(() => {
+      laterAcquired = true;
+    });
+    await tick();
+    expect(laterAcquired).toBe(false);
+
+    // Once the holder finishes, the timed-out slot passes straight through.
+    releaseHolder();
+    const releaseLater = await later;
+    releaseLater();
   });
 });
