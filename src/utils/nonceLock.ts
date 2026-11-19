@@ -13,17 +13,16 @@
  * count. The lock is released as soon as the transaction is broadcast, so
  * waiting for receipts still happens in parallel.
  *
- * The lock is bounded so a single hung RPC call cannot stall every later
- * submission from the same sender:
- * - A holder's lease expires after `leaseMs`; the next waiter then proceeds.
- *   If the stalled holder later broadcasts with the same nonce, the node
- *   rejects that one submission, as it would have without the lock.
- * - A waiter that cannot acquire the lock within `waitTimeoutMs` rejects with
- *   a `NonceLockTimeoutError` instead of waiting indefinitely.
+ * The holder keeps the lock until it finishes (broadcast or failure): it is
+ * never released on a timer, because a stalled holder that resumes after
+ * losing the lock would broadcast a nonce another submission already used.
+ * Instead the wait is bounded: a submission that cannot acquire the lock
+ * within `waitTimeoutMs` rejects with `NonceLockTimeoutError` rather than
+ * queueing indefinitely behind a hung RPC call. The active holder is not
+ * affected.
  */
 const nonceLocks = new Map<string, Promise<void>>();
 
-export const DEFAULT_NONCE_LOCK_LEASE_MS = 60_000;
 export const DEFAULT_NONCE_LOCK_WAIT_TIMEOUT_MS = 120_000;
 
 export class NonceLockTimeoutError extends Error {
@@ -37,8 +36,6 @@ export class NonceLockTimeoutError extends Error {
 }
 
 export type NonceLockOptions = {
-  /** Max time the lock may be held before it is released automatically. */
-  leaseMs?: number;
   /** Max time to wait for the lock before rejecting with NonceLockTimeoutError. */
   waitTimeoutMs?: number;
 };
@@ -47,17 +44,14 @@ export const nonceLockKey = (chainId: number | undefined, address: string): stri
   `${chainId ?? "unknown"}:${address.toLowerCase()}`;
 
 /**
- * Waits for any in-flight submission from the same sender/chain to broadcast
- * (or for its lease to expire), then returns an idempotent `release` function
- * that must be called once the transaction has been broadcast or the
- * submission failed.
+ * Waits for any in-flight submission from the same sender/chain to broadcast,
+ * then returns an idempotent `release` function that must be called once the
+ * transaction has been broadcast or the submission failed. Rejects with
+ * `NonceLockTimeoutError` if the lock is not acquired within `waitTimeoutMs`.
  */
 export const acquireNonceLock = async (
   key: string,
-  {
-    leaseMs = DEFAULT_NONCE_LOCK_LEASE_MS,
-    waitTimeoutMs = DEFAULT_NONCE_LOCK_WAIT_TIMEOUT_MS,
-  }: NonceLockOptions = {},
+  {waitTimeoutMs = DEFAULT_NONCE_LOCK_WAIT_TIMEOUT_MS}: NonceLockOptions = {},
 ): Promise<() => void> => {
   const previous = nonceLocks.get(key) ?? Promise.resolve();
   let resolveCurrent!: () => void;
@@ -68,11 +62,9 @@ export const acquireNonceLock = async (
   nonceLocks.set(key, tail);
 
   let released = false;
-  let leaseTimer: ReturnType<typeof setTimeout> | undefined;
   const release = () => {
     if (released) return;
     released = true;
-    if (leaseTimer !== undefined) clearTimeout(leaseTimer);
     resolveCurrent();
     if (nonceLocks.get(key) === tail) {
       nonceLocks.delete(key);
@@ -89,22 +81,11 @@ export const acquireNonceLock = async (
   clearTimeout(waitTimer);
 
   if (!acquired) {
-    // Keep queue order: our slot passes straight through once the earlier
-    // holder finishes, so later waiters are neither skipped nor blocked by us.
+    // Our slot passes straight through once the earlier holder finishes, so
+    // later waiters keep their order and still wait for that holder.
     void previous.then(release);
     throw new NonceLockTimeoutError(key, waitTimeoutMs);
   }
-
-  leaseTimer = setTimeout(() => {
-    if (!released) {
-      console.warn(
-        `Nonce lock for ${key} held for more than ${leaseMs}ms; releasing it so later transactions can proceed.`,
-      );
-      release();
-    }
-  }, leaseMs);
-  // Don't keep a Node.js process alive just for the lease timer.
-  (leaseTimer as {unref?: () => void}).unref?.();
 
   return release;
 };

@@ -1,4 +1,4 @@
-import {describe, it, expect, vi} from "vitest";
+import {describe, it, expect} from "vitest";
 import {acquireNonceLock, nonceLockKey, NonceLockTimeoutError} from "../src/utils/nonceLock";
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
@@ -47,22 +47,31 @@ describe("nonceLock", () => {
 });
 
 describe("nonceLock bounds", () => {
-  it("releases a holder that never finishes once its lease expires", async () => {
+  it("keeps a stalled holder exclusive: waiters time out, nobody else acquires until it releases", async () => {
     const key = nonceLockKey(1, "0x10");
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const releaseHolder = await acquireNonceLock(key);
 
-    // Holder acquires and never calls release (e.g. a hung RPC call).
-    await acquireNonceLock(key, {leaseMs: 20});
-    const releaseNext = await acquireNonceLock(key, {waitTimeoutMs: 1_000});
+    // A waiter that gives up must not hand the lock to anyone else.
+    await expect(acquireNonceLock(key, {waitTimeoutMs: 20})).rejects.toBeInstanceOf(NonceLockTimeoutError);
 
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("releasing it"));
+    let nextAcquired = false;
+    const next = acquireNonceLock(key, {waitTimeoutMs: 1_000}).then(release => {
+      nextAcquired = true;
+      return release;
+    });
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(nextAcquired).toBe(false);
+
+    // The stalled holder resumes and finishes; only then does the next one run.
+    releaseHolder();
+    const releaseNext = await next;
+    expect(nextAcquired).toBe(true);
     releaseNext();
-    warn.mockRestore();
   });
 
   it("rejects with NonceLockTimeoutError when the wait exceeds waitTimeoutMs, without breaking the queue", async () => {
     const key = nonceLockKey(1, "0x11");
-    const releaseHolder = await acquireNonceLock(key, {leaseMs: 10_000});
+    const releaseHolder = await acquireNonceLock(key);
 
     const timedOut = acquireNonceLock(key, {waitTimeoutMs: 20});
     const later = acquireNonceLock(key, {waitTimeoutMs: 1_000});
