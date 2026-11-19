@@ -6,11 +6,13 @@ on:
       - v1
       - v2-dev
       - v2
+      - v3-dev
   push:
     branches:
       - v1
       - v2-dev
       - v2
+      - v3-dev
   schedule:
     # Daily at 07:00 UTC. Catches upstream contract deployments even when no
     # PRs are open against the SDK.
