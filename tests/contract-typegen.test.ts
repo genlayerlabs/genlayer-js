@@ -1,5 +1,6 @@
 import {describe, it, expect, vi} from "vitest";
-import {readFileSync} from "fs";
+import {mkdtempSync, readFileSync, rmSync, writeFileSync} from "fs";
+import {tmpdir} from "os";
 import path from "path";
 import ts from "typescript";
 import {generateContractTypes} from "../src/contracts/typegen";
@@ -16,7 +17,34 @@ const syntaxErrors = (source: string) =>
     (d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"),
   );
 
+/** Full TypeScript type-check (not just parsing) of a generated module. */
+const compileErrors = (source: string) => {
+  const dir = mkdtempSync(path.join(tmpdir(), "genlayer-typegen-"));
+  try {
+    const file = path.join(dir, "generated.ts");
+    writeFileSync(file, source.replace('"genlayer-js/types"', JSON.stringify(path.resolve(__dirname, "../src/types/calldata"))));
+    const program = ts.createProgram([file], {noEmit: true, strict: true, skipLibCheck: true, target: ts.ScriptTarget.ES2022, moduleResolution: ts.ModuleResolutionKind.Node10});
+    return ts.getPreEmitDiagnostics(program).map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"));
+  } finally {
+    rmSync(dir, {recursive: true, force: true});
+  }
+};
+
+// Every word TypeScript rejects as a tuple label, plus contextual keywords that must stay valid.
+const NAMES_TO_COMPILE = [
+  "default", "var", "class", "const", "enum", "export", "extends", "function", "import", "new", "null", "return",
+  "super", "switch", "this", "throw", "true", "false", "try", "typeof", "void", "while", "with", "yield", "let",
+  "static", "implements", "interface", "package", "private", "protected", "public", "await", "delete", "do",
+  "else", "finally", "for", "if", "in", "instanceof", "case", "catch", "continue", "debugger", "break",
+  "type", "string", "number", "any", "unknown", "readonly", "keyof", "infer", "is", "as", "from", "of",
+  "a-b", "a_b", "1st", "", "valid_name",
+];
+
 describe("generateContractTypes", () => {
+  it("produces a fixture that type-checks", () => {
+    expect(compileErrors(fixture("storage-contract.types.ts").replace('"../../src/types"', '"genlayer-js/types"'))).toEqual([]);
+  });
+
   it("matches the committed fixture (regenerate it if the generator output changes on purpose)", () => {
     expect(generateContractTypes(storageSchema, {contractName: "storage", importSource: "../../src/types"})).toBe(
       fixture("storage-contract.types.ts"),
@@ -50,6 +78,7 @@ describe("generateContractTypes", () => {
     expect(out).toContain("export type ContractMethods = {");
     expect(out).not.toContain("import type");
     expect(syntaxErrors(out)).toEqual([]);
+    expect(compileErrors(out)).toEqual([]);
   });
 
   it("maps argument types to what the calldata encoder accepts and imports CalldataAddress only when needed", () => {
@@ -66,6 +95,31 @@ describe("generateContractTypes", () => {
     expect(out).toContain("export type TokenConstructorArgs = [owner: CalldataAddress];");
     expect(out).toContain("args: [amount: number | bigint, data: Uint8Array];");
     expect(syntaxErrors(out)).toEqual([]);
+    expect(compileErrors(out)).toEqual([]);
+  });
+
+  it("escapes reserved words and de-duplicates labels so valid Python parameter names always compile", () => {
+    const params = NAMES_TO_COMPILE.map((name): [string, "int"] => [name, "int"]);
+    const out = generateContractTypes({
+      ctor: {params, kwparams: {}},
+      methods: {m: {params, kwparams: Object.fromEntries(params), ret: "null", readonly: false}},
+    });
+    expect(out).toContain("[_default: number | bigint, _var: number | bigint, _class: number | bigint,");
+    expect(out).toContain("a_b: number | bigint, a_b_");
+    expect(out).toContain("default: number | bigint;");
+    // The checker itself rejects the unescaped label the generator used to emit.
+    expect(compileErrors("export type X = [default: number];")).not.toEqual([]);
+    expect(syntaxErrors(out)).toEqual([]);
+    expect(compileErrors(out)).toEqual([]);
+  });
+
+  it("makes keyword-only parameters required, since the schema cannot tell which ones have defaults", () => {
+    const out = generateContractTypes({
+      ctor: {params: [], kwparams: {}},
+      methods: {send: {params: [], kwparams: {recipient: "address", memo: "string"}, ret: "null", readonly: false}},
+    });
+    expect(out).toContain("kwargs: { recipient: CalldataAddress; memo: string; };");
+    expect(compileErrors(out)).toEqual([]);
   });
 
   it("quotes non-identifier names, sanitizes tuple labels and tolerates unknown or missing schema parts", () => {
@@ -85,11 +139,12 @@ describe("generateContractTypes", () => {
     );
     expect(out).toContain('"weird-name": {');
     expect(out).toContain("args: [_1st: string, arg1: number | bigint];");
-    expect(out).toContain('kwargs: { "opt-in"?: boolean; };');
+    expect(out).toContain('kwargs: { "opt-in": boolean; };');
     expect(out).toContain('returns: { "a b": string; ok: unknown; empty: Record<string, never>; };');
     expect(out).toContain("no_ret: {\n    args: [];\n    kwargs: {};\n    returns: null;");
     expect(out).toContain("export type MyContractV2ConstructorArgs = [];");
     expect(syntaxErrors(out)).toEqual([]);
+    expect(compileErrors(out)).toEqual([]);
   });
 
   it("rejects input that is not a contract schema", () => {
@@ -139,10 +194,32 @@ describe("getContract", () => {
     });
   });
 
+  it("passes required keyword arguments through", async () => {
+    const {client, writeContract} = makeClient();
+    const storage = getContract<StorageMethods>({client, address});
+    const recipient = new CalldataAddress(new Uint8Array(20));
+
+    await storage.write.send([], {kwargs: {recipient, note: null}});
+    expect(writeContract).toHaveBeenCalledWith({address, functionName: "send", args: [], kwargs: {recipient, note: null}});
+  });
+
   it("is not mistaken for a thenable", async () => {
     const {client} = makeClient();
     const storage = getContract<StorageMethods>({client, address});
     expect((storage.read as Record<string, unknown>).then).toBeUndefined();
+    expect((storage.write as Record<string, unknown>).then).toBeUndefined();
     await expect(Promise.resolve(storage.read)).resolves.toBe(storage.read);
+    await expect(Promise.resolve(storage.write)).resolves.toBe(storage.write);
+  });
+
+  it("can still call a contract method named `then` through readMethod / writeMethod", async () => {
+    const {client, readContract, writeContract} = makeClient();
+    const storage = getContract<StorageMethods>({client, address});
+
+    await expect(storage.readMethod("then")([1])).resolves.toBe("stored");
+    expect(readContract).toHaveBeenCalledWith({address, functionName: "then", args: [1], kwargs: undefined, jsonSafeReturn: true});
+
+    await storage.writeMethod("update_storage")(["x"]);
+    expect(writeContract).toHaveBeenCalledWith({address, functionName: "update_storage", args: ["x"], kwargs: undefined});
   });
 });

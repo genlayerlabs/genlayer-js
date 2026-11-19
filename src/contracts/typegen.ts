@@ -11,10 +11,27 @@ const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
 const propertyKey = (key: string): string => (IDENTIFIER.test(key) ? key : JSON.stringify(key));
 
-const tupleLabel = (name: string, index: number): string => {
-  const cleaned = name.replace(/[^A-Za-z0-9_$]/g, "_");
-  if (cleaned === "") return `arg${index}`;
-  return IDENTIFIER.test(cleaned) ? cleaned : `_${cleaned}`;
+// Reserved words (including strict-mode and TypeScript type keywords) are not accepted as tuple labels.
+const RESERVED_WORDS = new Set([
+  "abstract", "any", "as", "asserts", "async", "await", "bigint", "boolean", "break", "case", "catch", "class",
+  "const", "constructor", "continue", "debugger", "declare", "default", "delete", "do", "else", "enum", "export",
+  "extends", "false", "finally", "for", "from", "function", "get", "if", "implements", "import", "in", "infer",
+  "instanceof", "interface", "is", "keyof", "let", "module", "namespace", "never", "new", "null", "number",
+  "object", "of", "package", "private", "protected", "public", "readonly", "require", "return", "satisfies",
+  "set", "static", "string", "super", "switch", "symbol", "this", "throw", "true", "try", "type", "typeof",
+  "undefined", "unique", "unknown", "var", "void", "while", "with", "yield",
+]);
+
+const tupleLabels = (names: string[]): string[] => {
+  const used = new Set<string>();
+  return names.map((name, index) => {
+    let label = name.replace(/[^A-Za-z0-9_$]/g, "_");
+    if (label === "") label = `arg${index}`;
+    if (!IDENTIFIER.test(label) || RESERVED_WORDS.has(label)) label = `_${label}`;
+    while (used.has(label)) label = `${label}_${index}`;
+    used.add(label);
+    return label;
+  });
 };
 
 const toTypeName = (name: string): string => {
@@ -101,13 +118,15 @@ function schemaToTs(schema: ContractParamsSchema, mode: TypeMode, usesAddress: {
 }
 
 function argsTuple(params: [string, ContractParamsSchema][], usesAddress: {value: boolean}): string {
-  return `[${params.map(([name, type], index) => `${tupleLabel(name, index)}: ${schemaToTs(type, "input", usesAddress)}`).join(", ")}]`;
+  const labels = tupleLabels(params.map(([name]) => name));
+  return `[${params.map(([, type], index) => `${labels[index]}: ${schemaToTs(type, "input", usesAddress)}`).join(", ")}]`;
 }
 
+// The schema does not say which keyword-only parameters have defaults, so all of them are required.
 function kwargsObject(kwparams: Record<string, ContractParamsSchema>, usesAddress: {value: boolean}): string {
   const entries = Object.entries(kwparams ?? {});
   if (entries.length === 0) return "{}";
-  return `{ ${entries.map(([key, type]) => `${propertyKey(key)}?: ${schemaToTs(type, "input", usesAddress)};`).join(" ")} }`;
+  return `{ ${entries.map(([key, type]) => `${propertyKey(key)}: ${schemaToTs(type, "input", usesAddress)};`).join(" ")} }`;
 }
 
 /**

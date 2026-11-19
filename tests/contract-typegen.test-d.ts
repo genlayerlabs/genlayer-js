@@ -22,6 +22,7 @@ test("generated contract types drive getContract", () => {
   expectTypeOf<StorageConstructorArgs>().toEqualTypeOf<[initial_storage: string]>();
 
   void storage.read.get_profile([user], {kwargs: {include_history: true}});
+  void storage.writeMethod("send")([], {kwargs: {recipient: user, note: "hi"}});
   void storage.write.update_storage(["new value"]);
   void storage.write.deposit([[1, 2n], null], {value: 1n});
 
@@ -37,4 +38,30 @@ test("generated contract types drive getContract", () => {
   void storage.write.get_storage();
   // @ts-expect-error methods missing from the schema do not exist
   void storage.read.missing();
+
+  // Required keyword-only arguments.
+  void storage.write.send([], {kwargs: {recipient: user, note: null}, value: 1n});
+  // @ts-expect-error send has required keyword arguments
+  void storage.write.send();
+  // @ts-expect-error send has required keyword arguments
+  void storage.write.send([]);
+  // @ts-expect-error the options object must carry kwargs
+  void storage.write.send([], {value: 1n});
+  // @ts-expect-error every keyword argument is required
+  void storage.write.send([], {kwargs: {recipient: user}});
+  // @ts-expect-error get_profile's include_history keyword argument is required
+  void storage.read.get_profile([user]);
+
+  // Reserved-word parameter names.
+  void storage.write.configure([1, "x", true]);
+
+  // A method named `then` is reachable through readMethod, but never through the proxy.
+  expectTypeOf(storage.readMethod("then")).returns.resolves.toEqualTypeOf<string>();
+  void storage.readMethod("then")([1]);
+  // @ts-expect-error `then` is not exposed on the read proxy
+  void storage.read.then;
+  // @ts-expect-error readMethod only accepts read-only methods
+  void storage.readMethod("update_storage");
+  // @ts-expect-error writeMethod only accepts state-changing methods
+  void storage.writeMethod("get_storage");
 });

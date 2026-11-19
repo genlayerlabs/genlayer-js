@@ -8,6 +8,13 @@ export type StorageConstructorArgs = [initial_storage: string];
 export type StorageConstructorKwargs = {};
 
 export type StorageMethods = {
+  configure: {
+    args: [_default: number | bigint, _var: string, _class: boolean];
+    kwargs: {};
+    returns: null;
+    readonly: false;
+    payable: false;
+  };
   deposit: {
     args: [amounts: (number | bigint)[], memo: string | null];
     kwargs: {};
@@ -45,7 +52,7 @@ export type StorageMethods = {
   };
   get_profile: {
     args: [user: CalldataAddress];
-    kwargs: { include_history?: boolean; };
+    kwargs: { include_history: boolean; };
     returns: { name: string; score: number | string; tags: string[]; avatar: `0x${string}` | null; };
     readonly: true;
     payable: false;
@@ -59,6 +66,20 @@ export type StorageMethods = {
   };
   get_storage: {
     args: [];
+    kwargs: {};
+    returns: string;
+    readonly: true;
+    payable: false;
+  };
+  send: {
+    args: [];
+    kwargs: { recipient: CalldataAddress; note: string | null; };
+    returns: null;
+    readonly: false;
+    payable: false;
+  };
+  then: {
+    args: [step: number | bigint];
     kwargs: {};
     returns: string;
     readonly: true;
