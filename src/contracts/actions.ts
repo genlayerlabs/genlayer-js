@@ -165,6 +165,27 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
   };
 
   return {
+    /**
+     * Returns the pending transaction count for a contract as a lossless bigint.
+     * Requires a consensus data ABI exposing getLatestPendingTxCount.
+     * This is a queue snapshot, not a transaction's position or an execution-time estimate.
+     */
+    getContractPendingQueue: async (address: Address): Promise<bigint> => {
+      const contract = client.chain.consensusDataContract;
+      if (!contract?.address) {
+        throw new Error("Consensus data contract not initialized.");
+      }
+      const abi = contract.abi as Abi;
+      if (!abi?.some((item) => item.type === "function" && item.name === "getLatestPendingTxCount")) {
+        throw new Error(`getContractPendingQueue is not supported on chain "${client.chain.name}" (missing getLatestPendingTxCount).`);
+      }
+      return publicClient.readContract({
+        address: contract.address as `0x${string}`,
+        abi,
+        functionName: "getLatestPendingTxCount",
+        args: [address],
+      }) as Promise<bigint>;
+    },
     /** Retrieves the source code of a deployed contract. */
     getContractCode: async (address: Address): Promise<string> => {
       const params = (client.chain.isStudio ? [address] : [{address}]) as
