@@ -149,3 +149,23 @@ test("type checks", () => {
     params: ["0x1234567890123456789012345678901234567890123456789012345678901234" as TransactionHash],
   });
 });
+
+test("transaction RPC types", () => {
+  const client = createClient({chain: localnet});
+  const hash = "0x1234" as TransactionHash;
+  void client.getStudioTransactionByHash({hash});
+  void client.getStudioTransactionByHash({hash, full: false});
+  const status: Promise<TransactionStatus> = client.getTransactionStatus({hash});
+  void status;
+  void client.request({method: "gen_getStudioTransactionByHash", params: [hash]});
+  void client.request({method: "gen_getStudioTransactionByHash", params: [hash, true]});
+  void client.request({method: "gen_getTransactionStatus", params: [{txId: hash}]});
+  // @ts-expect-error full must be a boolean
+  void client.getStudioTransactionByHash({hash, full: "true"});
+  // @ts-expect-error hash is required
+  void client.getTransactionStatus({});
+  // @ts-expect-error status RPC requires an object containing txId
+  void client.request({method: "gen_getTransactionStatus", params: [hash]});
+  // @ts-expect-error RPC full must be a boolean
+  void client.request({method: "gen_getStudioTransactionByHash", params: [hash, "true"]});
+});
