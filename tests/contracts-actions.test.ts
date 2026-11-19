@@ -3145,3 +3145,132 @@ describe("contractActions Studio decision-bound surface", () => {
     expect(decisionId).toBe(MOCK_DECISION_ID);
   });
 });
+
+describe("contractActions concurrent submissions from the same sender", () => {
+  // Simulates a node whose "pending" transaction count only advances once a
+  // transaction has actually been broadcast.
+  const makePendingNonceNode = () => {
+    let pendingCount = 0;
+    const assignedNonces: number[] = [];
+    const getCurrentNonce = vi.fn().mockImplementation(async () => {
+      await new Promise(resolve => setTimeout(resolve, 1));
+      return pendingCount;
+    });
+    const broadcast = async (nonce: number) => {
+      await new Promise(resolve => setTimeout(resolve, 1));
+      if (assignedNonces.includes(nonce)) {
+        throw new Error("already known");
+      }
+      assignedNonces.push(nonce);
+      pendingCount++;
+    };
+    return {getCurrentNonce, broadcast, assignedNonces};
+  };
+
+  it("assigns distinct nonces to parallel consensus calls and waits for receipts in parallel", async () => {
+    const node = makePendingNonceNode();
+    const {actions, client, signTransaction, waitForTransactionReceipt} = setupFinalizeHarness();
+    (client as any).getCurrentNonce = node.getCurrentNonce;
+    signTransaction.mockImplementation(async (tx: {nonce: number}) => `0x${tx.nonce.toString(16).padStart(2, "0")}`);
+    (client as any).sendRawTransaction = vi.fn().mockImplementation(
+      async ({serializedTransaction}: {serializedTransaction: string}) => {
+        await node.broadcast(parseInt(serializedTransaction.slice(2), 16));
+        return MOCK_EVM_TX_HASH;
+      },
+    );
+
+    // Receipts only resolve once every transaction has been broadcast, so this
+    // would deadlock if the nonce lock were held until the receipt arrived.
+    let releaseReceipts!: () => void;
+    const allBroadcast = new Promise<void>(resolve => {
+      releaseReceipts = resolve;
+    });
+    waitForTransactionReceipt.mockImplementation(async () => {
+      if (node.assignedNonces.length === 3) releaseReceipts();
+      await allBroadcast;
+      return {status: "success", logs: []};
+    });
+
+    await Promise.all([
+      actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID}),
+      actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID}),
+      actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID}),
+    ]);
+
+    expect(node.assignedNonces).toEqual([0, 1, 2]);
+  });
+
+  it("assigns distinct nonces to parallel writeContract calls", async () => {
+    const node = makePendingNonceNode();
+    const request = vi.fn().mockImplementation(async ({method, params}: {method: string; params: any[]}) => {
+      if (method === "eth_gasPrice") return "0x1";
+      if (method === "eth_sendTransaction") {
+        await node.broadcast(Number(BigInt(params[0].nonce)));
+        return MOCK_EVM_TX_HASH;
+      }
+      throw new Error(`Unexpected RPC method: ${method}`);
+    });
+
+    const client = {
+      chain: {
+        id: 61_127,
+        defaultNumberOfInitialValidators: 5,
+        defaultConsensusMaxRotations: 3,
+        consensusMainContract: {
+          address: MAIN_CONTRACT_ADDRESS,
+          abi: [...ADD_TRANSACTION_ABI_V6, NEW_TRANSACTION_EVENT_ABI],
+          bytecode: "0x",
+        },
+      },
+      account: {address: SENDER_ADDRESS, type: "json-rpc"},
+      initializeConsensusSmartContract: vi.fn().mockResolvedValue(undefined),
+      getCurrentNonce: node.getCurrentNonce,
+      estimateTransactionGas: vi.fn().mockResolvedValue(21_000n),
+      request,
+    };
+
+    const actions = contractActions(client as any, makeMockPublicClient() as any);
+    const results = await Promise.all(
+      [0, 1, 2].map(() => actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping", value: 0n})),
+    );
+
+    expect(results).toEqual([MOCK_GENLAYER_TX_ID, MOCK_GENLAYER_TX_ID, MOCK_GENLAYER_TX_ID]);
+    expect(node.assignedNonces).toEqual([0, 1, 2]);
+  });
+
+  it("assigns distinct nonces to parallel direct EVM contract calls (claimNftRewards)", async () => {
+    const node = makePendingNonceNode();
+    const signTransaction = vi.fn().mockImplementation(
+      async (tx: {nonce: number}) => `0x${Number(tx.nonce).toString(16).padStart(2, "0")}`,
+    );
+    const {actions, client} = setupDeveloperNftHarness({signTransactionMock: signTransaction});
+    (client as any).getCurrentNonce = node.getCurrentNonce;
+    (client as any).sendRawTransaction = vi.fn().mockImplementation(
+      async ({serializedTransaction}: {serializedTransaction: string}) => {
+        await node.broadcast(parseInt(serializedTransaction.slice(2), 16));
+        return MOCK_EVM_TX_HASH;
+      },
+    );
+
+    await Promise.all([
+      actions.claimNftRewards({nftId: 7n}),
+      actions.claimNftRewards({nftId: 7n}),
+      actions.claimNftEpochs({nftId: 7n, numberOfEpochsToClaim: 2n}),
+    ]);
+
+    expect(node.assignedNonces).toEqual([0, 1, 2]);
+  });
+
+  it("releases the lock when a submission fails before broadcast", async () => {
+    const {actions, client, sendRawTransaction} = setupFinalizeHarness();
+    sendRawTransaction.mockRejectedValueOnce(new Error("rpc down"));
+
+    const results = await Promise.allSettled([
+      actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID}),
+      actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID}),
+    ]);
+
+    expect(results.map(r => r.status)).toEqual(["rejected", "fulfilled"]);
+    expect((client as any).getCurrentNonce).toHaveBeenCalledTimes(2);
+  });
+});

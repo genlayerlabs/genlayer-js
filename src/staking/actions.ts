@@ -1,5 +1,6 @@
 import {getContract, decodeEventLog, PublicClient, Client, Transport, Chain, Account, Address as ViemAddress, GetContractReturnType, toHex, encodeFunctionData, BaseError, ContractFunctionRevertedError, decodeErrorResult, RawContractError, zeroAddress} from "viem";
 import {GenLayerClient, GenLayerChain, Address} from "@/types";
+import {acquireNonceLock, nonceLockKey} from "@/utils/nonceLock";
 import {STAKING_ABI, VALIDATOR_WALLET_ABI} from "@/abi/staking";
 import {ADDRESS_MANAGER_ABI, CONSENSUS_ADDRESS_MANAGER_ABI} from "@/abi/vesting";
 import {parseStakingAmount, formatStakingAmount} from "./utils";
@@ -147,25 +148,36 @@ export const stakingActions = (
 
     let hash: `0x${string}`;
     if (account.type === "local") {
-      const nonce = await publicClient.getTransactionCount({address: account.address as ViemAddress});
+      // Serialize nonce allocation with other in-flight submissions from this
+      // sender (including contract writes and transfers) so concurrent calls
+      // do not reuse the same pending nonce. Released right after broadcast.
+      const releaseNonceLock = await acquireNonceLock(nonceLockKey(client.chain.id, account.address));
+      try {
+        const nonce = await publicClient.getTransactionCount({
+          address: account.address as ViemAddress,
+          blockTag: "pending",
+        });
 
-      const txRequest = await publicClient.prepareTransactionRequest({
-        account,
-        to: options.to,
-        data: options.data,
-        value: options.value,
-        type: "legacy",
-        nonce,
-        gas: gasLimit,
-        chain: client.chain,
-      });
+        const txRequest = await publicClient.prepareTransactionRequest({
+          account,
+          to: options.to,
+          data: options.data,
+          value: options.value,
+          type: "legacy",
+          nonce,
+          gas: gasLimit,
+          chain: client.chain,
+        });
 
-      const signTransaction = account.signTransaction;
-      if (!signTransaction) {
-        throw new Error("Account does not support signing transactions");
+        const signTransaction = account.signTransaction;
+        if (!signTransaction) {
+          throw new Error("Account does not support signing transactions");
+        }
+        const serializedTx = await signTransaction(txRequest as Parameters<typeof signTransaction>[0]);
+        hash = await publicClient.sendRawTransaction({serializedTransaction: serializedTx});
+      } finally {
+        releaseNonceLock();
       }
-      const serializedTx = await signTransaction(txRequest as Parameters<typeof signTransaction>[0]);
-      hash = await publicClient.sendRawTransaction({serializedTransaction: serializedTx});
     } else {
       // Address-only / injected-provider lane: the connected wallet manages
       // nonce and signing. Mirrors the proven IC provider lane in

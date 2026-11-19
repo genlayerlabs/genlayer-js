@@ -1,6 +1,7 @@
 import {Address as ViemAddress, PublicClient, TransactionReceipt} from "viem";
 import {GenLayerClient, TransactionHash, GenLayerChain, Address} from "../types";
 import {localnet} from "../chains";
+import {acquireNonceLock, nonceLockKey} from "../utils/nonceLock";
 
 export function accountActions(client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) {
   return {
@@ -74,24 +75,33 @@ export function accountActions(client: GenLayerClient<GenLayerChain>, publicClie
         gasLimit = 21000n;
       }
 
-      const nonce = await publicClient.getTransactionCount({
-        address: account.address as ViemAddress,
-        blockTag: "pending",
-      });
+      // Serialize nonce allocation with other in-flight submissions from this
+      // sender (contract writes, staking, vesting) so concurrent calls do not
+      // reuse the same pending nonce. Released right after broadcast.
+      let hash: `0x${string}`;
+      const releaseNonceLock = await acquireNonceLock(nonceLockKey(client.chain.id, account.address));
+      try {
+        const nonce = await publicClient.getTransactionCount({
+          address: account.address as ViemAddress,
+          blockTag: "pending",
+        });
 
-      const txRequest = await publicClient.prepareTransactionRequest({
-        account,
-        to: to as ViemAddress,
-        value,
-        type: "legacy",
-        nonce,
-        gas: gasLimit,
-        chain: client.chain,
-      });
+        const txRequest = await publicClient.prepareTransactionRequest({
+          account,
+          to: to as ViemAddress,
+          value,
+          type: "legacy",
+          nonce,
+          gas: gasLimit,
+          chain: client.chain,
+        });
 
-      const signTransaction = account.signTransaction;
-      const serializedTx = await signTransaction(txRequest as Parameters<typeof signTransaction>[0]);
-      const hash = await publicClient.sendRawTransaction({serializedTransaction: serializedTx});
+        const signTransaction = account.signTransaction;
+        const serializedTx = await signTransaction(txRequest as Parameters<typeof signTransaction>[0]);
+        hash = await publicClient.sendRawTransaction({serializedTransaction: serializedTx});
+      } finally {
+        releaseNonceLock();
+      }
       const receipt = await publicClient.waitForTransactionReceipt({hash});
 
       if (receipt.status === "reverted") {
