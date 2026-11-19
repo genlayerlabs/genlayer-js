@@ -87,13 +87,15 @@ describe("transaction RPC actions", () => {
     },
   );
 
-  it("normalizes Studio's registered lookup not-found error and preserves its cause", async () => {
+  it.each(["getStudioTransactionByHash", "getTransactionStatus"] as const)("normalizes %s not-found errors and preserves their cause", async method => {
     mockFetch.mockResolvedValue({json: async () => ({
       error: {code: -32001, message: `Transaction ${hash} not found`, data: {hash}},
     })});
-    await expect(createClient({chain: localnet}).getStudioTransactionByHash({hash}))
+    await expect(createClient({chain: localnet})[method]({hash}))
       .rejects.toMatchObject({message: `Transaction not found: ${hash}`, cause: {code: -32001}});
-    expect(requestBody()).toMatchObject({method: "gen_getStudioTransactionByHash", params: [hash]});
+    expect(requestBody()).toMatchObject(method === "getStudioTransactionByHash"
+      ? {method: "gen_getStudioTransactionByHash", params: [hash]}
+      : {method: "gen_getTransactionStatus", params: [{txId: hash}]});
   });
 
   it.each(["getStudioTransactionByHash", "getTransactionStatus"] as const)("propagates RPC errors from %s", async method => {

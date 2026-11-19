@@ -550,12 +550,20 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
     }
     return client.chain.isStudio ? decodeStudioTransaction(transaction) : transaction;
   },
-  /** Returns the SDK status mapped from the canonical statusCode (Studio ACTIVATED becomes PENDING). Requires the object-form gen_getTransactionStatus RPC. */
+  /** Returns the SDK status mapped from the canonical statusCode (Studio ACTIVATED becomes PENDING). On Studio, requires Studio ≥ v0.123 (object-form `gen_getTransactionStatus`). */
   getTransactionStatus: async ({hash}: {hash: TransactionHash}): Promise<TransactionStatus> => {
-    const result = await client.request({
-      method: "gen_getTransactionStatus",
-      params: [{txId: hash}],
-    });
+    let result: unknown;
+    try {
+      result = await client.request({
+        method: "gen_getTransactionStatus",
+        params: [{txId: hash}],
+      });
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === -32001) {
+        throw new Error(`Transaction not found: ${hash}`, {cause: error});
+      }
+      throw error;
+    }
     const code = typeof result === "object" && result !== null && "statusCode" in result
       ? result.statusCode
       : undefined;

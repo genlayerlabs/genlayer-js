@@ -127,7 +127,7 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     };
     /** Requires gen_getStudioTransactionByHash. Omitting full uses the server default. Studio status and lifecycle are normalized like getTransaction. */
     getStudioTransactionByHash: (args: {hash: TransactionHash; full?: boolean}) => Promise<GenLayerTransaction>;
-    /** Returns the SDK status mapped from the canonical statusCode (Studio ACTIVATED becomes PENDING). Requires the object-form gen_getTransactionStatus RPC. */
+    /** Returns the SDK status mapped from the canonical statusCode (Studio ACTIVATED becomes PENDING). On Studio, requires Studio ≥ v0.123 (object-form `gen_getTransactionStatus`). */
     getTransactionStatus: (args: {hash: TransactionHash}) => Promise<TransactionStatus>;
     getCurrentNonce: (args: {address: Address}) => Promise<number>;
     transfer: (args: {to: Address; value: bigint}) => Promise<TransactionReceipt>;

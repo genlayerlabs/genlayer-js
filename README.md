@@ -38,6 +38,16 @@ const transactionHash = "0x...";
 const transaction = await client.getTransaction({ hash: transactionHash })
 ```
 
+### Reading a Transaction Status
+
+`client.getTransactionStatus({ hash })` returns an SDK `TransactionStatus`, mapping Studio's `ACTIVATED` status to `PENDING`. On Studio, it requires Studio ≥ v0.123 (object-form `gen_getTransactionStatus`). Older Studio deployments do not support this request form.
+
+```typescript
+const status = await client.getTransactionStatus({ hash: transactionHash });
+```
+
+Both `getTransactionStatus` and `getStudioTransactionByHash` report Studio's not-found error as `Transaction not found: <hash>`, preserving the original RPC error as `cause`.
+
 ### Waiting for Transaction Receipt
 ```typescript
 import { localnet } from 'genlayer-js/chains';
