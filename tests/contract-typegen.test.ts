@@ -1,5 +1,6 @@
 import {describe, it, expect, vi} from "vitest";
 import {mkdtempSync, readFileSync, rmSync, writeFileSync} from "fs";
+import {inspect} from "util";
 import {tmpdir} from "os";
 import path from "path";
 import ts from "typescript";
@@ -210,6 +211,34 @@ describe("getContract", () => {
     expect((storage.write as Record<string, unknown>).then).toBeUndefined();
     await expect(Promise.resolve(storage.read)).resolves.toBe(storage.read);
     await expect(Promise.resolve(storage.write)).resolves.toBe(storage.write);
+  });
+
+  it("never sends a call or transaction when the contract is serialised, logged or coerced", () => {
+    const {client, readContract, writeContract} = makeClient();
+    const storage = getContract<StorageMethods>({client, address});
+
+    expect(JSON.stringify(storage)).toBe(`{"address":"${address}","read":{},"write":{}}`);
+    inspect(storage, {depth: 5});
+    inspect(storage.read);
+    inspect(storage.write);
+    for (const key of ["then", "toJSON", "toString", "toLocaleString", "valueOf", "inspect", "constructor"]) {
+      expect((storage.read as Record<string, unknown>)[key]).toBeUndefined();
+      expect((storage.write as Record<string, unknown>)[key]).toBeUndefined();
+    }
+    expect(() => `${storage.write}`).toThrow(TypeError);
+
+    expect(readContract).not.toHaveBeenCalled();
+    expect(writeContract).not.toHaveBeenCalled();
+  });
+
+  it("can still call contract methods with probe names through readMethod / writeMethod", async () => {
+    const {client, readContract, writeContract} = makeClient();
+    const storage = getContract<StorageMethods>({client, address});
+
+    await storage.readMethod("toJSON")();
+    expect(readContract).toHaveBeenCalledWith({address, functionName: "toJSON", args: [], kwargs: undefined, jsonSafeReturn: true});
+    await storage.writeMethod("valueOf")([3], {value: 1n});
+    expect(writeContract).toHaveBeenCalledWith({address, functionName: "valueOf", args: [3], kwargs: undefined, value: 1n});
   });
 
   it("can still call a contract method named `then` through readMethod / writeMethod", async () => {

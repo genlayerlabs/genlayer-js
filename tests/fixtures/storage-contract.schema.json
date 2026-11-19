@@ -169,6 +169,26 @@
       "kwparams": {},
       "ret": "string",
       "readonly": true
+    },
+    "toJSON": {
+      "params": [],
+      "kwparams": {},
+      "ret": {
+        "$dict": "string"
+      },
+      "readonly": true
+    },
+    "valueOf": {
+      "params": [
+        [
+          "amount",
+          "int"
+        ]
+      ],
+      "kwparams": {},
+      "ret": "null",
+      "readonly": false,
+      "payable": true
     }
   }
 }

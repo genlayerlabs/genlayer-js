@@ -65,15 +65,34 @@ type CallParams<M, TOptions extends {kwargs?: unknown}> =
       : [args: MethodArgs<M>, options?: TOptions];
 
 type ReadMethod<M> = (...params: CallParams<M, TypedReadOptions<MethodKwargs<M>>>) => Promise<MethodReturns<M>>;
+/** `value` is only accepted by methods the schema marks as payable. */
+type WriteOptionsFor<M> = M extends {payable: true}
+  ? TypedWriteOptions<MethodKwargs<M>>
+  : Omit<TypedWriteOptions<MethodKwargs<M>>, "value">;
+
 type WriteMethod<M> = (
-  ...params: CallParams<M, TypedWriteOptions<MethodKwargs<M>>>
+  ...params: CallParams<M, WriteOptionsFor<M>>
 ) => ReturnType<GenLayerClient<GenLayerChain>["writeContract"]>;
 
 /**
- * `then` is never exposed on the `read` / `write` proxies so they are not mistaken for promises
- * (e.g. when returned from an async function). Use `readMethod("then")` / `writeMethod("then")` instead.
+ * Property names that runtimes, serialisers, loggers and devtools probe on arbitrary objects
+ * (`await`, `JSON.stringify`, string coercion, `util.inspect`, …). The `read` / `write` proxies return
+ * `undefined` for them so that merely inspecting a contract never sends a call or a transaction.
+ * Contract methods with these names stay callable through `readMethod(name)` / `writeMethod(name)`.
  */
-type ProxyKey<K> = Exclude<K & string, "then">;
+const RESERVED_PROXY_KEYS = [
+  "then",
+  "toJSON",
+  "toString",
+  "toLocaleString",
+  "valueOf",
+  "inspect",
+  "constructor",
+] as const;
+type ReservedProxyKey = (typeof RESERVED_PROXY_KEYS)[number];
+const RESERVED_PROXY_KEY_SET: ReadonlySet<string> = new Set(RESERVED_PROXY_KEYS);
+
+type ProxyKey<K> = Exclude<K & string, ReservedProxyKey>;
 
 export type TypedContract<TMethods extends ContractMethodsTypes<TMethods>> = {
   address: Address;
@@ -81,9 +100,9 @@ export type TypedContract<TMethods extends ContractMethodsTypes<TMethods>> = {
   read: {[K in ProxyKey<ReadKeys<TMethods>>]: ReadMethod<TMethods[K]>};
   /** State-changing methods. Resolves to whatever `writeContract` resolves to (the transaction hash). */
   write: {[K in ProxyKey<WriteKeys<TMethods>>]: WriteMethod<TMethods[K]>};
-  /** Typed accessor for any read-only method by name, including ones the proxy cannot expose (`then`). */
+  /** Typed accessor for any read-only method by name, including ones the proxy cannot expose (`RESERVED_PROXY_KEYS`). */
   readMethod: <K extends ReadKeys<TMethods> & string>(functionName: K) => ReadMethod<TMethods[K]>;
-  /** Typed accessor for any state-changing method by name, including ones the proxy cannot expose (`then`). */
+  /** Typed accessor for any state-changing method by name, including ones the proxy cannot expose (`RESERVED_PROXY_KEYS`). */
   writeMethod: <K extends WriteKeys<TMethods> & string>(functionName: K) => WriteMethod<TMethods[K]>;
 };
 
@@ -108,7 +127,9 @@ export function getContract<TMethods extends ContractMethodsTypes<TMethods>>(par
   const methodProxy = (call: Call) =>
     new Proxy({}, {
       get: (_target, functionName) =>
-        typeof functionName !== "string" || functionName === "then" ? undefined : bind(call, functionName),
+        typeof functionName !== "string" || RESERVED_PROXY_KEY_SET.has(functionName)
+          ? undefined
+          : bind(call, functionName),
     });
 
   const read: Call = (functionName, args, options) =>

@@ -40,13 +40,29 @@ test("generated contract types drive getContract", () => {
   void storage.read.missing();
 
   // Required keyword-only arguments.
-  void storage.write.send([], {kwargs: {recipient: user, note: null}, value: 1n});
+  void storage.write.send([], {kwargs: {recipient: user, note: null}, leaderOnly: true});
   // @ts-expect-error send has required keyword arguments
   void storage.write.send();
   // @ts-expect-error send has required keyword arguments
   void storage.write.send([]);
   // @ts-expect-error the options object must carry kwargs
-  void storage.write.send([], {value: 1n});
+  void storage.write.send([], {leaderOnly: true});
+  // @ts-expect-error send is not payable, so it does not accept value
+  void storage.write.send([], {kwargs: {recipient: user, note: null}, value: 1n});
+
+  // `value` is only accepted by payable methods.
+  // @ts-expect-error update_storage is not payable
+  void storage.write.update_storage(["x"], {value: 1n});
+  // @ts-expect-error configure is not payable
+  void storage.writeMethod("configure")([1, "x", true], {value: 1n});
+  void storage.writeMethod("valueOf")([1], {value: 1n});
+
+  // Probe names (toJSON, valueOf, ...) are never exposed on the proxies, only through the accessors.
+  expectTypeOf(storage.readMethod("toJSON")).returns.resolves.toEqualTypeOf<Record<string, string>>();
+  // @ts-expect-error `toJSON` is not exposed on the read proxy
+  void storage.read.toJSON;
+  // @ts-expect-error the write proxy does not map the contract method `valueOf` (only Object#valueOf is typed)
+  void storage.write.valueOf([1], {value: 1n});
   // @ts-expect-error every keyword argument is required
   void storage.write.send([], {kwargs: {recipient: user}});
   // @ts-expect-error get_profile's include_history keyword argument is required

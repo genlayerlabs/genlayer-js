@@ -85,11 +85,25 @@ export type StorageMethods = {
     readonly: true;
     payable: false;
   };
+  toJSON: {
+    args: [];
+    kwargs: {};
+    returns: Record<string, string>;
+    readonly: true;
+    payable: false;
+  };
   update_storage: {
     args: [new_storage: string];
     kwargs: {};
     returns: null;
     readonly: false;
     payable: false;
+  };
+  valueOf: {
+    args: [amount: number | bigint];
+    kwargs: {};
+    returns: null;
+    readonly: false;
+    payable: true;
   };
 };
