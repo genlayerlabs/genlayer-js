@@ -240,39 +240,39 @@ export const simplifyTransactionReceipt = (tx: GenLayerTransaction): GenLayerTra
 };
 
 export const decodeLocalnetTransaction = (tx: GenLayerTransaction): GenLayerTransaction => {
-  if (!tx.data) return tx;
   try {
     const leaderReceipt = tx.consensus_data?.leader_receipt;
-    if (leaderReceipt) {
-      const receipts = Array.isArray(leaderReceipt) ? leaderReceipt : [leaderReceipt];
-      receipts.forEach((receipt) => {
-        if (receipt.result && typeof receipt.result === "string") {
-          receipt.result = resultToUserFriendlyJson(receipt.result);
-        }
-        if (receipt.calldata && typeof receipt.calldata === "string") {
-          receipt.calldata = {
-            base64: receipt.calldata as string,
-            ...calldataToUserFriendlyJson(b64ToArray(receipt.calldata as string)),
-          };
-        }
-        if (receipt.eq_outputs) {
-          const decodedOutputs: any = {};
-          for (const [key, value] of Object.entries(receipt.eq_outputs)) {
-            if (typeof value === "object" && value !== null) {
+    const validationReceipt = tx.studio_data?.leader_validation_receipt;
+    const receipts = Array.isArray(leaderReceipt) ? [...leaderReceipt] : [];
+    if (leaderReceipt && !Array.isArray(leaderReceipt)) receipts.push(leaderReceipt);
+    if (validationReceipt) receipts.push(validationReceipt);
+    receipts.forEach((receipt) => {
+      if (receipt.result && typeof receipt.result === "string") {
+        receipt.result = resultToUserFriendlyJson(receipt.result);
+      }
+      if (receipt.calldata && typeof receipt.calldata === "string") {
+        receipt.calldata = {
+          base64: receipt.calldata as string,
+          ...calldataToUserFriendlyJson(b64ToArray(receipt.calldata as string)),
+        };
+      }
+      if (receipt.eq_outputs) {
+        const decodedOutputs: any = {};
+        for (const [key, value] of Object.entries(receipt.eq_outputs)) {
+          if (typeof value === "object" && value !== null) {
+            decodedOutputs[key] = value;
+          } else {
+            try {
+              decodedOutputs[key] = resultToUserFriendlyJson(value as string);
+            } catch (e) {
+              console.warn(`Error decoding eq_output ${key}: ${e}`);
               decodedOutputs[key] = value;
-            } else {
-              try {
-                decodedOutputs[key] = resultToUserFriendlyJson(value as string);
-              } catch (e) {
-                console.warn(`Error decoding eq_output ${key}: ${e}`);
-                decodedOutputs[key] = value;
-              }
             }
           }
-          receipt.eq_outputs = decodedOutputs;
         }
-      });
-    }
+        receipt.eq_outputs = decodedOutputs;
+      }
+    });
     if (tx.data?.calldata && typeof tx.data.calldata === "string") {
       tx.data.calldata = {
         base64: tx.data.calldata as string,

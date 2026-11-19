@@ -817,6 +817,9 @@ export type GenLayerTransaction = {
     validators?: Record<string, unknown>[];
     votes?: Record<string, string>;
   };
+  studio_data?: {
+    leader_validation_receipt?: LeaderReceipt;
+  };
   nonce?: number;
   value?: number;
   type?: number;
