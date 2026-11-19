@@ -20,6 +20,8 @@ const respond = (result: unknown) => {
 const requestBody = () => JSON.parse(mockFetch.mock.calls[0][1].body);
 
 describe("transaction RPC actions", () => {
+  // Producer contract: genlayer-studio@6f2053f2576d1cdb3ab536fdbc283b3117a4c36a
+  // backend/protocol_rpc/rpc_methods.py registers gen_getStudioTransactionByHash(hash, full=True).
   it.each([undefined, false, true])("forwards full=%s without overriding the server default", async full => {
     respond({hash, status: TransactionStatus.PENDING});
     const client = createClient({chain: localnet});
@@ -27,7 +29,7 @@ describe("transaction RPC actions", () => {
       hash, status: 1, statusName: TransactionStatus.PENDING,
     });
     expect(requestBody()).toMatchObject({
-      method: "sim_getTransactionByHash",
+      method: "gen_getStudioTransactionByHash",
       params: full === undefined ? [hash] : [hash, full],
     });
   });
@@ -64,11 +66,34 @@ describe("transaction RPC actions", () => {
       .rejects.toThrow(`Transaction not found: ${hash}`);
   });
 
-  it("retrieves the transaction status by hash", async () => {
-    respond(TransactionStatus.FINALIZED);
-    await expect(createClient({chain: localnet}).getTransactionStatus({hash}))
-      .resolves.toBe(TransactionStatus.FINALIZED);
-    expect(requestBody()).toMatchObject({method: "gen_getTransactionStatus", params: [hash]});
+  // Studio endpoints.get_transaction_status accepts {txId} and returns _status_payload.
+  // Node uses the same object request and canonical numeric statusCode.
+  it.each([
+    {backend: "Studio", chain: localnet, response: {status: "FINALIZED", statusCode: 7}, expected: TransactionStatus.FINALIZED},
+    {backend: "Studio ACTIVATED", chain: localnet, response: {status: "ACTIVATED", statusCode: 2}, expected: TransactionStatus.PENDING},
+    {backend: "node", chain: {...localnet, isStudio: false}, response: {status: "LeaderRevealing", statusCode: 13}, expected: TransactionStatus.LEADER_REVEALING},
+    {backend: "node Pending", chain: {...localnet, isStudio: false}, response: {status: "Pending", statusCode: 1}, expected: TransactionStatus.PENDING},
+  ])("retrieves and normalizes $backend status", async ({chain, response, expected}) => {
+    respond(response);
+    await expect(createClient({chain}).getTransactionStatus({hash})).resolves.toBe(expected);
+    expect(requestBody()).toMatchObject({method: "gen_getTransactionStatus", params: [{txId: hash}]});
+  });
+
+  it.each([null, "ACTIVATED", {}, {statusCode: 999}, {statusCode: "1"}, {statusCode: -1}])(
+    "rejects invalid status responses %j", async response => {
+      respond(response);
+      await expect(createClient({chain: localnet}).getTransactionStatus({hash}))
+        .rejects.toThrow("Invalid gen_getTransactionStatus response");
+    },
+  );
+
+  it("normalizes Studio's registered lookup not-found error and preserves its cause", async () => {
+    mockFetch.mockResolvedValue({json: async () => ({
+      error: {code: -32001, message: `Transaction ${hash} not found`, data: {hash}},
+    })});
+    await expect(createClient({chain: localnet}).getStudioTransactionByHash({hash}))
+      .rejects.toMatchObject({message: `Transaction not found: ${hash}`, cause: {code: -32001}});
+    expect(requestBody()).toMatchObject({method: "gen_getStudioTransactionByHash", params: [hash]});
   });
 
   it.each(["getStudioTransactionByHash", "getTransactionStatus"] as const)("propagates RPC errors from %s", async method => {
