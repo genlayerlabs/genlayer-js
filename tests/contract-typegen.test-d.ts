@@ -1,0 +1,40 @@
+import {expectTypeOf, test} from "vitest";
+import {getContract} from "../src/contracts/getContract";
+import {CalldataAddress} from "../src/types/calldata";
+import type {GenLayerChain, GenLayerClient} from "../src/types";
+import type {StorageConstructorArgs, StorageMethods} from "./fixtures/storage-contract.types";
+
+test("generated contract types drive getContract", () => {
+  const client = {} as GenLayerClient<GenLayerChain>;
+  const storage = getContract<StorageMethods>({client, address: "0x0000000000000000000000000000000000000001"});
+  const user = new CalldataAddress(new Uint8Array(20));
+
+  expectTypeOf(storage.read.get_storage).returns.resolves.toEqualTypeOf<string>();
+  expectTypeOf(storage.read.get_balance).returns.resolves.toEqualTypeOf<number | string>();
+  expectTypeOf(storage.read.get_owner).returns.resolves.toEqualTypeOf<`0x${string}`>();
+  expectTypeOf(storage.read.get_profile).returns.resolves.toEqualTypeOf<{
+    name: string;
+    score: number | string;
+    tags: string[];
+    avatar: `0x${string}` | null;
+  }>();
+  expectTypeOf(storage.read.get_pair).returns.resolves.toEqualTypeOf<[string, number | string, ...boolean[]]>();
+  expectTypeOf<StorageConstructorArgs>().toEqualTypeOf<[initial_storage: string]>();
+
+  void storage.read.get_profile([user], {kwargs: {include_history: true}});
+  void storage.write.update_storage(["new value"]);
+  void storage.write.deposit([[1, 2n], null], {value: 1n});
+
+  // @ts-expect-error get_balance takes an address argument
+  void storage.read.get_balance();
+  // @ts-expect-error get_balance expects a CalldataAddress, not a number
+  void storage.read.get_balance([1]);
+  // @ts-expect-error unknown keyword argument
+  void storage.read.get_profile([user], {kwargs: {nope: true}});
+  // @ts-expect-error write methods are not exposed on read
+  void storage.read.update_storage(["x"]);
+  // @ts-expect-error read methods are not exposed on write
+  void storage.write.get_storage();
+  // @ts-expect-error methods missing from the schema do not exist
+  void storage.read.missing();
+});
