@@ -51,6 +51,7 @@ Executes a read-only contract call without modifying state.
 | kwargs | `Map<string, CalldataEncodable> \| {[key: string]: CalldataEncodable}` | no |  |
 | rawReturn | `RawReturn` | no |  |
 | jsonSafeReturn | `boolean` | no |  |
+| schema | `ContractSchema` | no | Checks the decoded result against the method’s return schema. Pass the result of `getContractSchema(address)`. Raw hex responses bypass the schema check. |
 | leaderOnly | `boolean` | no |  |
 | transactionHashVariant | `TransactionHashVariant` | no |  |
 
