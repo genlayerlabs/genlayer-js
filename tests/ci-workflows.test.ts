@@ -28,7 +28,12 @@ describe("development branch CI coverage", () => {
   ])("smoke policy for %s / %s is %s", (event, base, expected) => {
     const smoke = workflow("smoke");
     expect(Object.keys(smoke.on)).toContain(event);
-    // This condition uses the shared JavaScript/GitHub expression subset.
+    // Guard the shared subset before evaluating it as JavaScript. GitHub-only
+    // functions require extending this test's evaluator, not changing CI.
+    expect(
+      smoke.jobs.smoke.if,
+      "Unsupported smoke expression: extend the test evaluator for GitHub-only syntax",
+    ).toMatch(/^(?:github\.(?:event_name|base_ref)|'[^'\\]*'|!=|&&|\|\||[()\s])+$/);
     const enabled = new Function("github", `return (${smoke.jobs.smoke.if});`);
     expect(enabled({ event_name: event, base_ref: base })).toBe(expected);
   });
