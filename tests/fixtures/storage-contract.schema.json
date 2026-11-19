@@ -1,0 +1,194 @@
+{
+  "ctor": {
+    "params": [
+      [
+        "initial_storage",
+        "string"
+      ]
+    ],
+    "kwparams": {}
+  },
+  "methods": {
+    "get_storage": {
+      "params": [],
+      "kwparams": {},
+      "ret": "string",
+      "readonly": true
+    },
+    "get_balance": {
+      "params": [
+        [
+          "account",
+          "address"
+        ]
+      ],
+      "kwparams": {},
+      "ret": "int",
+      "readonly": true
+    },
+    "get_owner": {
+      "params": [],
+      "kwparams": {},
+      "ret": "address",
+      "readonly": true
+    },
+    "get_profile": {
+      "params": [
+        [
+          "user",
+          "address"
+        ]
+      ],
+      "kwparams": {
+        "include_history": "bool"
+      },
+      "ret": {
+        "name": "string",
+        "score": "int",
+        "tags": [
+          {
+            "$rep": "string"
+          }
+        ],
+        "avatar": {
+          "$or": [
+            "bytes",
+            "null"
+          ]
+        }
+      },
+      "readonly": true
+    },
+    "get_scores": {
+      "params": [],
+      "kwparams": {},
+      "ret": {
+        "$dict": "int"
+      },
+      "readonly": true
+    },
+    "get_pair": {
+      "params": [],
+      "kwparams": {},
+      "ret": [
+        "string",
+        "int",
+        {
+          "$rep": "bool"
+        }
+      ],
+      "readonly": true
+    },
+    "get_anything": {
+      "params": [
+        [
+          "key-name",
+          "any"
+        ]
+      ],
+      "kwparams": {},
+      "ret": "any",
+      "readonly": true
+    },
+    "update_storage": {
+      "params": [
+        [
+          "new_storage",
+          "string"
+        ]
+      ],
+      "kwparams": {},
+      "ret": "null",
+      "readonly": false
+    },
+    "deposit": {
+      "params": [
+        [
+          "amounts",
+          [
+            {
+              "$rep": "int"
+            }
+          ]
+        ],
+        [
+          "memo",
+          {
+            "$or": [
+              "string",
+              "null"
+            ]
+          }
+        ]
+      ],
+      "kwparams": {},
+      "ret": "null",
+      "readonly": false,
+      "payable": true
+    },
+    "configure": {
+      "params": [
+        [
+          "default",
+          "int"
+        ],
+        [
+          "var",
+          "string"
+        ],
+        [
+          "class",
+          "bool"
+        ]
+      ],
+      "kwparams": {},
+      "ret": "null",
+      "readonly": false
+    },
+    "send": {
+      "params": [],
+      "kwparams": {
+        "recipient": "address",
+        "note": {
+          "$or": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "ret": "null",
+      "readonly": false
+    },
+    "then": {
+      "params": [
+        [
+          "step",
+          "int"
+        ]
+      ],
+      "kwparams": {},
+      "ret": "string",
+      "readonly": true
+    },
+    "toJSON": {
+      "params": [],
+      "kwparams": {},
+      "ret": {
+        "$dict": "string"
+      },
+      "readonly": true
+    },
+    "valueOf": {
+      "params": [
+        [
+          "amount",
+          "int"
+        ]
+      ],
+      "kwparams": {},
+      "ret": "null",
+      "readonly": false,
+      "payable": true
+    }
+  }
+}

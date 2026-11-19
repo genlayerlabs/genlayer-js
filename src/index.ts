@@ -27,3 +27,13 @@ export type {
   OperatorRegistrationProof,
 } from "./vesting";
 export {buildGenVmPositionalArgs} from "./contracts/schema";
+export {generateContractTypes} from "./contracts/typegen";
+export type {GenerateContractTypesOptions} from "./contracts/typegen";
+export {getContract} from "./contracts/getContract";
+export type {
+  ContractMethodTypes,
+  ContractMethodsTypes,
+  TypedContract,
+  TypedReadOptions,
+  TypedWriteOptions,
+} from "./contracts/getContract";

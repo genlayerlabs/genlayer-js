@@ -81,6 +81,32 @@ const result = await client.readContract({
 })
 ```
 
+### Typed contracts from the schema
+
+`readContract` returns loosely typed values. To get types for a contract's methods, generate them once from its schema and commit the file:
+
+```typescript
+import { writeFileSync } from "fs";
+import { createClient, generateContractTypes } from "genlayer-js";
+
+const client = createClient({ chain: localnet });
+const schema = await client.getContractSchema(contractAddress); // or getContractSchemaForCode(code)
+writeFileSync("src/contracts/storage.types.ts", generateContractTypes(schema, { contractName: "Storage" }));
+```
+
+The file declares `StorageMethods` (argument tuple, keyword arguments, return type, `readonly` and `payable` per method) plus `StorageConstructorArgs` / `StorageConstructorKwargs`. Pass it to `getContract` for typed calls:
+
+```typescript
+import { getContract } from "genlayer-js";
+import type { StorageMethods } from "./contracts/storage.types";
+
+const storage = getContract<StorageMethods>({ client, address: contractAddress });
+const value = await storage.read.get_storage();            // typed from the schema's return type
+const hash = await storage.write.update_storage(["hello"]); // only non-readonly methods appear on `write`
+```
+
+Return types describe what `readContract` returns by default (`jsonSafeReturn: true`): `int` is `number | string` (numbers above `Number.MAX_SAFE_INTEGER` arrive as decimal strings), `address` and `bytes` are `0x` hex strings, dicts and structs are plain objects. Argument types follow the calldata encoder: `int` accepts `number | bigint`, `address` takes a `CalldataAddress`, `bytes` a `Uint8Array`. Keyword-only parameters are required, because the schema does not say which ones have defaults; pass them as `options.kwargs`. `value` is only accepted by methods the schema marks as payable. Methods named `then`, `toJSON`, `toString`, `toLocaleString`, `valueOf`, `inspect` or `constructor` are not exposed on the `read`/`write` proxies, so awaiting, serialising or logging a contract never sends a call or transaction; call them with `contract.readMethod("toJSON")(args)` or `contract.writeMethod(name)(args)`. Regenerate the file when the contract changes.
+
 ### Contract pending queue
 
 On chains whose consensus data contract exposes `getLatestPendingTxCount`,
