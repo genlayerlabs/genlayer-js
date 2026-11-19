@@ -1,3 +1,4 @@
+import { CalldataAddress, type CalldataEncodable } from '@/types/calldata';
 import type { ContractParamsSchema, ContractSchema } from '@/types/contracts';
 
 export function buildGenVmPositionalArgs(options: {
@@ -111,4 +112,48 @@ function validateValueAgainstType(
   }
 
   return true;
+}
+
+/** Checks decoded calldata before JSON-safe conversion erases wire type distinctions. */
+export function matchesReturnSchema(
+  value: CalldataEncodable,
+  schema: ContractParamsSchema,
+): boolean {
+  if (typeof schema === 'string') {
+    switch (schema) {
+      case 'null': return value === null;
+      case 'bool': return typeof value === 'boolean';
+      case 'int': return typeof value === 'bigint';
+      case 'string': return typeof value === 'string';
+      case 'address': return value instanceof CalldataAddress;
+      case 'bytes': return value instanceof Uint8Array;
+      case 'array': return Array.isArray(value);
+      case 'dict': return value instanceof Map;
+      default: return true;
+    }
+  }
+
+  if (Array.isArray(schema)) {
+    if (!Array.isArray(value)) return false;
+
+    for (const [index, item] of schema.entries()) {
+      if (typeof item === 'object' && !Array.isArray(item) && '$rep' in item) {
+        return index === schema.length - 1 &&
+          value.slice(index).every((element) => matchesReturnSchema(element, item.$rep));
+      }
+      if (index >= value.length || !matchesReturnSchema(value[index], item)) return false;
+    }
+    return value.length === schema.length;
+  }
+
+  if ('$or' in schema && Array.isArray(schema.$or)) {
+    return (schema.$or as ContractParamsSchema[]).some((branch) => matchesReturnSchema(value, branch));
+  }
+  if (!(value instanceof Map)) return false;
+  if ('$dict' in schema) {
+    return Array.from(value.values()).every((element) => matchesReturnSchema(element, schema.$dict));
+  }
+  return Object.entries(schema).every(([key, field]) =>
+    value.has(key) && matchesReturnSchema(value.get(key)!, field),
+  );
 }

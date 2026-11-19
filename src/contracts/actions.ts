@@ -1,3 +1,4 @@
+import {matchesReturnSchema} from "./schema";
 import * as calldata from "@/abi/calldata";
 import {serialize} from "@/abi/transactions";
 import {ADDRESS_MANAGER_ABI, NFT_MINTER_ABI} from "@/abi/nftMinter";
@@ -246,6 +247,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       kwargs?: Map<string, CalldataEncodable> | {[key: string]: CalldataEncodable};
       rawReturn?: RawReturn;
       jsonSafeReturn?: boolean;
+      schema?: ContractSchema;
       leaderOnly?: boolean;
       transactionHashVariant?: TransactionHashVariant;
     }): Promise<RawReturn extends true ? `0x${string}` : CalldataEncodable> => {
@@ -256,6 +258,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         args: callArgs,
         kwargs,
         jsonSafeReturn = true,
+        schema,
         leaderOnly = false,
         transactionHashVariant = TransactionHashVariant.LATEST_NONFINAL,
       } = args;
@@ -283,6 +286,17 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       }
       const resultBinary = fromHex(prefixedResult, "bytes");
       const decoded = calldata.decode(resultBinary) as any;
+      if (schema) {
+        const method = Object.prototype.hasOwnProperty.call(schema.methods, functionName)
+          ? schema.methods[functionName]
+          : undefined;
+        if (!method) {
+          throw new Error(`Contract schema is missing read method "${functionName}"`);
+        }
+        if (!matchesReturnSchema(decoded, method.ret ?? "null")) {
+          throw new Error(`Return value of "${functionName}" does not match the contract schema`);
+        }
+      }
       if (!jsonSafeReturn) {
         return decoded;
       }
