@@ -5,8 +5,8 @@ This repo follows the GenLayer release-train model.
 ## Current Train
 
 - Current stable branch: `v1`
-- Active integration branch: `v2-dev`
-- Next stable target: `v2`
+- Active integration branch: `v3-dev`
+- Next stable target: `v3`
 - `main`: default/static branch alias for the active integration branch
 
 ## Stable Branches
