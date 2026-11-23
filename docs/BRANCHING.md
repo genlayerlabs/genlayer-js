@@ -4,33 +4,36 @@ This repo follows the GenLayer release-train model.
 
 ## Current Train
 
-- Current stable branch: `v1`
-- Active integration branch: `v2-dev`
-- Next stable target: `v2`
+- Current stable branch: `v2`
+- Active integration branch: `v2-dev` (patch releases of `v2`)
+- Next line: `v3-dev`, promoted to `v3` when it is ready
 - `main`: default/static branch alias for the active integration branch
 
 ## Stable Branches
 
-Stable branches are long-lived release lines. They are named after the version
-line they ship, for example `v1` or `v2`.
+Stable branches are long-lived release lines. They are named after the major
+line they ship, for example `v2` or `v3`.
 
-PRs may target a stable branch directly when the merged result should be
-releasable immediately. This is appropriate for bug fixes, small non-breaking
-features, isolated release fixes, or a breaking change that is intentionally
-shipping as the next version by itself.
+A stable branch is protected by a ruleset that rejects any commit without a
+green cross-repo `E2E Tests` check, and it only moves through
+`scripts/release.sh --promote`, which fast-forwards it to a release commit that
+was made and tested on its integration branch.
 
-Stable branches must remain releasable. PRs into stable branches are expected to
-pass the required cross-repo `E2E Tests` gate before merge.
+PRs do not target a stable branch directly. A commit that lands there first is
+missing from the integration branch, so the next release commit can no longer be
+fast-forwarded onto the stable branch. Every change for a line, a one-line fix
+included, lands on its integration branch and ships with the next release.
+
+When a new line opens, create its stable branch `vX` at a commit that is
+already in `vX-dev`, for example the commit the integration branch was created
+from. The ruleset does not apply to creating a branch, and the promotion PR
+needs the stable branch as its base.
 
 ## Integration Branches
 
-Integration branches are optional. Use one when multiple changes need to
-accumulate before release, especially for cross-repo work, dependent features,
-breaking changes that must ship together, or a train that needs advisory E2E
-while still expected to be red.
-
-Integration branches are named after the target stable branch plus `-dev`, for
-example `v2-dev`. Feature PRs for that train target the integration branch.
+Every release line has an integration branch, named after the stable branch
+plus `-dev`, for example `v2-dev`. All PRs for the line target it, and
+release commits are only made there.
 
 PRs into integration branches may run `E2E Tests` as advisory checks. They are
 not the release gate.
@@ -41,32 +44,46 @@ When an integration train is ready, open a promotion PR from the integration
 branch to the matching stable branch, for example `v2-dev` to `v2`.
 
 That promotion PR is the release-readiness gate and must pass required
-cross-repo `E2E Tests`. The stable branch rejects any commit without a green
-`E2E Tests` check, so the final version bump is made on the integration branch
-before promotion, never on the stable branch after it:
+cross-repo `E2E Tests`. Because the stable branch rejects any commit without
+that check, the final version bump is made on the integration branch before
+promotion, never on the stable branch after it:
 
 1. `scripts/release.sh X.Y.Z` on `vX-dev` pushes the release commit
-   (`package.json`, `package-lock.json`, `CHANGELOG.md`) to the integration
-   branch, without a tag. It is now the head of the promotion PR.
-2. `Run Tests` and `E2E Tests` run on that commit.
-3. `scripts/release.sh --promote X.Y.Z` fast-forwards `vX` to that exact commit
-   with a plain push and pushes the annotated tag `vX.Y.Z` on it. The tag push
-   triggers the publish workflow.
+   (`package.json`, `package-lock.json`, `CHANGELOG.md`) to the integration branch, without a tag. It is now the head
+   of the promotion PR. The script refuses if the stable branch is not an
+   ancestor of the integration branch.
+2. Hold every merge into `vX-dev` until step 4 is done. A commit that lands
+   after the release commit forces a new release commit and a new E2E run.
+3. `Run Tests` and `E2E Tests` run on the release commit (comment
+   `/run-e2e all` on the promotion PR).
+4. `scripts/release.sh --promote X.Y.Z` fast-forwards `vX` to that exact
+   commit with a plain push and pushes the annotated tag `vX.Y.Z` on it. The
+   tag push triggers the publish workflow.
 
-The promotion PR is never merged with the merge button. This repo only allows
-squash merges, and a squash commit is a new commit that `E2E Tests` did not run
-on; it also breaks ancestry between the two branches, so the next promotion PR
-conflicts on the version lines. After the fast-forward GitHub marks the PR as
-merged by itself.
+Only `--promote` lands the promotion PR. It must not be merged with the merge
+button, with GitHub auto-merge, by the E2E app's merge train (`/merge-train` or
+its merge action) or by the Legatus self-merge loop.
+This repo only allows squash merges, and a squash commit is a new commit that
+`E2E Tests` did not run on; it also breaks ancestry between the two branches,
+so the next promotion PR conflicts on the version lines. After the fast-forward GitHub marks the PR as merged by itself.
 
-If a fix lands on the integration branch after the release commit, revert the
-release commit and run step 1 again, so the tested commit and the changelog
-include the fix.
+Run `--promote` from a checkout that has this version of the script: the
+integration branch, or the stable branch once it has been promoted with it.
+
+If a commit lands on the integration branch after the release commit and the
+stable branch has not moved yet, revert the release commit and run step 1
+again, so the tested commit and the changelog include that change.
+
+If `--promote` stops after it moved the stable branch and before the tag is on
+origin, run it again. It finds the release commit at the head of the stable
+branch, checks it again and pushes only the tag, even when the integration
+branch has moved on in the meantime. Do not revert anything in that case: the
+stable branch already holds the release.
 
 A release candidate may be cut earlier from the integration branch with
 `scripts/release.sh X.Y.Z-rc.N`; RC tags use `vX.Y.Z-rc.N`, sit on the
-integration branch, publish to the `rc` npm dist-tag, and never substitute for
-the promotion PR's final release gate.
+integration branch, publish to the `rc` npm dist-tag, and never substitute for the
+promotion PR's final release gate.
 
 An older stable line that has no integration branch needs one to release:
 create `vX-dev` from `vX`, land the fix there, and follow the same steps.

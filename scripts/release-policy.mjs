@@ -51,10 +51,60 @@ export function validateReleaseBranch(branch, version) {
   return normalized;
 }
 
-// Summarizes the workflow runs of one commit: green, red or missing.
+function compareIdentifiers(left, right) {
+  const leftNumeric = /^\d+$/.test(left);
+  const rightNumeric = /^\d+$/.test(right);
+  if (leftNumeric && rightNumeric) return Math.sign(Number(left) - Number(right));
+  if (leftNumeric !== rightNumeric) return leftNumeric ? -1 : 1;
+  return left === right ? 0 : left < right ? -1 : 1;
+}
+
+// Semver precedence: negative when a sorts before b.
+export function compareVersions(a, b) {
+  const left = parseVersion(a);
+  const right = parseVersion(b);
+  for (const part of ["major", "minor", "patch"]) {
+    if (left[part] !== right[part]) return Math.sign(left[part] - right[part]);
+  }
+  if (left.prerelease === right.prerelease) return 0;
+  if (left.prerelease === null) return 1;
+  if (right.prerelease === null) return -1;
+  const leftIds = left.prerelease.split(".");
+  const rightIds = right.prerelease.split(".");
+  for (let index = 0; index < Math.max(leftIds.length, rightIds.length); index += 1) {
+    if (leftIds[index] === undefined) return -1;
+    if (rightIds[index] === undefined) return 1;
+    const order = compareIdentifiers(leftIds[index], rightIds[index]);
+    if (order !== 0) return order;
+  }
+  return 0;
+}
+
+// Refuses a version that does not sort after every version already cut.
+export function assertNewer(version, existing) {
+  const {normalized} = parseVersion(version);
+  for (const raw of existing) {
+    let other;
+    try {
+      other = parseVersion(raw).normalized;
+    } catch {
+      // A tag that is not a release version does not order the line.
+      continue;
+    }
+    if (compareVersions(other, normalized) >= 0) {
+      throw new Error(`${normalized} is not newer than ${other}, which this line already has`);
+    }
+  }
+  return normalized;
+}
+
+// Summarizes the workflow runs of one commit: green, red, pending or missing.
 export function runsVerdict(conclusions) {
   if (conclusions.some((conclusion) => RED_CONCLUSIONS.has(conclusion))) {
     return "red";
+  }
+  if (conclusions.includes("pending")) {
+    return "pending";
   }
   return conclusions.includes("success") ? "green" : "missing";
 }
@@ -62,7 +112,8 @@ export function runsVerdict(conclusions) {
 const USAGE =
   "usage: release-policy.mjs normalize <version> | dev-branch <version> | " +
   "stable-branch <version> | is-prerelease <version> | " +
-  "validate <branch> <version> | runs-verdict [conclusion ...]";
+  "validate <branch> <version> | assert-newer <version> [existing ...] | " +
+  "runs-verdict [conclusion ...]";
 
 export function run(args) {
   const [command, ...rest] = args;
@@ -71,6 +122,7 @@ export function run(args) {
   if (command === "stable-branch" && rest.length === 1) return stableBranch(rest[0]);
   if (command === "is-prerelease" && rest.length === 1) return String(isPrerelease(rest[0]));
   if (command === "validate" && rest.length === 2) return validateReleaseBranch(rest[0], rest[1]);
+  if (command === "assert-newer" && rest.length >= 1) return assertNewer(rest[0], rest.slice(1));
   if (command === "runs-verdict") return runsVerdict(rest);
   throw new Error(USAGE);
 }

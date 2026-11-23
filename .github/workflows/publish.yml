@@ -5,8 +5,9 @@ name: Publish Package to NPM
 # CHANGELOG.md) is always made on the v<MAJOR>-dev branch: an RC is tagged
 # there, a final is tagged by `release.sh --promote` after the stable
 # branch was fast-forwarded to that commit. This workflow fires on the
-# tag push, builds, sanity-checks the tag matches package.json, and
-# publishes to npm. It never bumps or tags by itself.
+# tag push, sanity-checks that the tag matches package.json and that a
+# final tag is on its stable branch, builds, and publishes to npm. It
+# never bumps or tags by itself.
 on:
   workflow_dispatch:
   push:
@@ -24,6 +25,9 @@ jobs:
     steps:
       - name: Checkout tag
         uses: actions/checkout@v4
+        with:
+          # Full history: a final tag is checked against its stable branch.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -44,6 +48,17 @@ jobs:
           PKG_VERSION="$(node -p "require('./package.json').version")"
           node scripts/resolve-release-channel.mjs "$TAG_VERSION" "$PKG_VERSION" >> "$GITHUB_OUTPUT"
           echo "Tag $GITHUB_REF_NAME matches package.json $PKG_VERSION."
+
+          # A final is only published from its stable branch.
+          if [ "$(node scripts/release-policy.mjs is-prerelease "$TAG_VERSION")" = "false" ]; then
+            STABLE="$(node scripts/release-policy.mjs stable-branch "$TAG_VERSION")"
+            git fetch --no-tags origin "+refs/heads/$STABLE:refs/remotes/origin/$STABLE"
+            if ! git merge-base --is-ancestor HEAD "origin/$STABLE"; then
+              echo "Tag $GITHUB_REF_NAME is not on $STABLE. Finals are tagged by 'scripts/release.sh --promote', after $STABLE moved to the release commit." >&2
+              exit 1
+            fi
+            echo "Tag $GITHUB_REF_NAME is on $STABLE."
+          fi
 
       - run: npm run build
 

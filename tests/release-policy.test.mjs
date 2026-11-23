@@ -1,5 +1,7 @@
 import {describe, expect, it} from "vitest";
 import {
+  assertNewer,
+  compareVersions,
   devBranch,
   isPrerelease,
   parseVersion,
@@ -44,6 +46,42 @@ describe("release branch policy", () => {
   });
 });
 
+describe("version ordering", () => {
+  it.each([
+    ["2.0.1", "2.0.0", 1],
+    ["2.0.1-rc.1", "2.0.1", -1],
+    ["2.0.1", "2.0.1-rc.9", 1],
+    ["2.0.1-rc.2", "2.0.1-rc.10", -1],
+    ["2.0.1-rc.1", "v2.0.1-rc.1", 0],
+    ["2.0.1-rc.1", "2.0.1-rc", 1],
+    ["2.0.1-1", "2.0.1-rc", -1],
+    ["2.0.1-rc1", "2.0.1-rc.1", 1],
+    ["2.1.0", "2.0.9", 1],
+    ["3.0.0-rc.1", "2.9.9", 1],
+  ])("compares %s with %s as %i", (a, b, expected) => {
+    expect(compareVersions(a, b)).toBe(expected);
+    expect(compareVersions(b, a)).toBe(0 - expected);
+  });
+
+  it("accepts a version newer than everything the line has", () => {
+    expect(assertNewer("v2.0.1", ["2.0.0", "v2.0.0-rc.3", "v2.0.1-rc.2"])).toBe("2.0.1");
+    expect(assertNewer("2.0.1-rc.1", [])).toBe("2.0.1-rc.1");
+  });
+
+  it.each([
+    ["2.0.1-rc.1", ["2.0.1"]],
+    ["2.0.0-rc.9", ["2.0.1"]],
+    ["2.0.1", ["2.0.0", "v2.0.1"]],
+    ["2.0.1", ["v2.0.2-rc.1"]],
+  ])("refuses %s when the line already has %j", (version, existing) => {
+    expect(() => assertNewer(version, existing)).toThrow("is not newer than");
+  });
+
+  it("ignores tags that are not release versions", () => {
+    expect(assertNewer("2.0.1", ["v2.0", "latest", ""])).toBe("2.0.1");
+  });
+});
+
 describe("workflow run verdict", () => {
   it.each([
     [[], "missing"],
@@ -52,6 +90,8 @@ describe("workflow run verdict", () => {
     [["success", "cancelled"], "green"],
     [["success", "failure"], "red"],
     [["timed_out"], "red"],
+    [["success", "pending"], "pending"],
+    [["failure", "pending"], "red"],
   ])("%j is %s", (conclusions, verdict) => {
     expect(runsVerdict(conclusions)).toBe(verdict);
   });
@@ -64,10 +104,15 @@ describe("release-policy command line", () => {
     [["is-prerelease", "2.0.1-rc.1"], "true"],
     [["normalize", "v2.0.1"], "2.0.1"],
     [["validate", "v2-dev", "2.0.1"], "2.0.1"],
+    [["assert-newer", "2.0.1", "2.0.0", "v2.0.1-rc.1"], "2.0.1"],
     [["runs-verdict"], "missing"],
     [["runs-verdict", "success", "success"], "green"],
   ])("%j prints %s", (args, expected) => {
     expect(run(args)).toBe(expected);
+  });
+
+  it("fails assert-newer on a version the line already passed", () => {
+    expect(() => run(["assert-newer", "2.0.1-rc.1", "2.0.1"])).toThrow("is not newer than");
   });
 
   it("prints usage for an unknown command", () => {
