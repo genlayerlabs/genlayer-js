@@ -61,8 +61,8 @@ promotion, never on the stable branch after it:
    tag push triggers the publish workflow.
 
 Only `--promote` lands the promotion PR. It must not be merged with the merge
-button, with GitHub auto-merge, by the E2E app's merge train (`/merge-train` or
-its merge action) or by the Legatus self-merge loop.
+button, with GitHub auto-merge, by the E2E app's merge train (`/merge`,
+`/merge-train` or its merge action) or by the Legatus self-merge loop.
 This repo only allows squash merges, and a squash commit is a new commit that
 `E2E Tests` did not run on; it also breaks ancestry between the two branches,
 so the next promotion PR conflicts on the version lines. After the fast-forward GitHub marks the PR as merged by itself.

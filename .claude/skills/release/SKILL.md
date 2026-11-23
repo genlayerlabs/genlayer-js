@@ -23,7 +23,7 @@ If they ask "publish to npm directly" — refuse and point at this flow. The rep
 - Branches are named after the major they ship: `v2` (stable) and `v2-dev` (integration); `v3-dev` is the next major.
 - Tags live within those branches: `v2.0.1`, `v2.1.0`, ... on the stable branch; `v2.0.1-rc.1` on the dev branch.
 - The stable branch has a ruleset that rejects any commit without a green `E2E Tests` check. A release commit therefore can't be created on the stable branch: it is created on dev, tested there, and the stable branch is fast-forwarded to it.
-- The promotion PR `v2-dev` → `v2` is where `E2E Tests` runs. Only `--promote` lands it: it pushes the fast-forward and GitHub closes the PR as merged. It is never merged with the merge button, GitHub auto-merge, the E2E app's merge train (`/merge-train` or its merge action) or the Legatus self-merge loop: this repo only allows squash merges, and a squash commit is a commit `E2E Tests` did not run on that also breaks ancestry between the two branches.
+- The promotion PR `v2-dev` → `v2` is where `E2E Tests` runs. Only `--promote` lands it: it pushes the fast-forward and GitHub closes the PR as merged. It is never merged with the merge button, GitHub auto-merge, the E2E app's merge train (`/merge`, `/merge-train` or its merge action) or the Legatus self-merge loop: this repo only allows squash merges, and a squash commit is a commit `E2E Tests` did not run on that also breaks ancestry between the two branches.
 - A major bump means **cutting a new branch pair**, not tagging on the current one. The release script refuses major bumps unless `--allow-major` is passed.
 - `CHANGELOG.md` is updated in the release commit (release-it via `@release-it/conventional-changelog`).
 - `publish.yml` fires on the tag push and does the npm publish + GitHub Release. Finals go to the `latest` dist-tag, RCs to `rc`.
@@ -73,7 +73,7 @@ If they ask "publish to npm directly" — refuse and point at this flow. The rep
    ```text
    /run-e2e all
    ```
-   Wait for `Run Tests` and `E2E Tests` to be green on the release commit. Do not merge the PR, and do not let anything else merge it (auto-merge, `/merge-train`, Legatus).
+   Wait for `Run Tests` and `E2E Tests` to be green on the release commit. Do not merge the PR, and do not let anything else merge it (auto-merge, `/merge`, `/merge-train`, Legatus).
 
 6. **Promote.**
    ```bash
@@ -109,7 +109,7 @@ If they ask "publish to npm directly" — refuse and point at this flow. The rep
 
 - **Major bump on the current branch** without `--allow-major`. The right move for a major is a new branch pair + new track in the runner matrix (separate workflow).
 - **Releasing from `main` or from the stable branch** — the script only makes release commits on `v<MAJOR>-dev`.
-- **Merging the promotion PR** with the merge button, GitHub auto-merge, `/merge-train` (the E2E app's merge action) or the Legatus self-merge loop, or pushing anything to the stable branch other than the `--promote` fast-forward.
+- **Merging the promotion PR** with the merge button, GitHub auto-merge, `/merge` or `/merge-train` (the E2E app's merge commands) or the Legatus self-merge loop, or pushing anything to the stable branch other than the `--promote` fast-forward.
 - **Tagging a final by hand** — the tag must sit on the commit that `E2E Tests` ran on, which is what `--promote` guarantees.
 - **Hand-editing `package.json` to bump the version** instead of running the script. The script keeps `package.json`, the CHANGELOG entry, the commit message, and the tag in lockstep; doing it by hand drifts them.
 - **Publishing a tag where `publish.yml` failed** — fix the underlying issue, re-cut the release (delete the bad tag both locally and on origin, re-run the script). Don't manually `npm publish`.
