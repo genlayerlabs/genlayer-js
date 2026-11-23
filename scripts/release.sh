@@ -439,12 +439,8 @@ if [ "$next_major" != "$cur_major" ] && [ "$ALLOW_MAJOR" -ne 1 ]; then
   cat >&2 <<EOF
 Refusing major bump $current_version → $next_version without --allow-major.
 
-In this repo's release model, a major bump means cutting a new branch
-(v$next_major). Don't tag a major on top of
-the v$cur_major branch — see CONTRIBUTING.md.
-
-If you actually want this (rare, e.g. retroactively shipping a major
-that was developed on v$next_major-dev), pass --allow-major.
+$next_version is the first release of the v$next_major line. Pass
+--allow-major to confirm.
 EOF
   exit 1
 fi
