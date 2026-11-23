@@ -50,6 +50,75 @@ export type GenLayerMethod =
   | {method: "sim_getFeeConfig"; params: []};
 
 /*
+  The action factories below describe the slice of the client each one actually
+  touches, so the composition in `createClient` type-checks step by step instead
+  of being laundered through `as unknown as GenLayerClient<GenLayerChain>` at
+  every hop.
+*/
+
+/**
+ * The RPC surface the action factories call.
+ *
+ * This is deliberately *not* `GenLayerClient["request"]`: that type is an
+ * intersection with a GenLayer-specific overload, and no viem client satisfies
+ * it structurally, which is why every call site previously needed a cast. The
+ * factories cast their own results anyway, so accepting both call shapes here
+ * keeps the checks that do matter (method names, argument shapes) while letting
+ * the chain compose.
+ */
+export type ClientRequestFn = {
+  <TMethod extends GenLayerMethod>(
+    args: Extract<GenLayerMethod, {method: TMethod["method"]}>,
+  ): Promise<unknown>;
+  (args: {method: string; params?: unknown}): Promise<unknown>;
+};
+
+/** `request`, `account` and `chain`: enough for read-only RPC-backed actions. */
+export type ClientRequester = {
+  request: ClientRequestFn;
+  account?: GenLayerClient<GenLayerChain>["account"];
+  chain: GenLayerChain;
+};
+
+/** Adds the GenLayer-typed `getTransaction` the receipt actions poll with. */
+export type TransactionReader = ClientRequester & {
+  getTransaction: GenLayerClient<GenLayerChain>["getTransaction"];
+};
+
+/**
+ * What `transactionActions` reads from the client it is handed.
+ *
+ * It calls the underlying `getTransaction` and then installs its own
+ * GenLayer-typed override as a returned method, so the input cannot be typed as
+ * the override it produces. Studio answers with a mutable record carrying a
+ * string `status` and a `result`, not viem's decoded transaction, and the
+ * action rewrites those fields in place before decoding.
+ */
+export type RawTransactionRead = {
+  status?: unknown;
+  statusName?: unknown;
+  result?: unknown;
+  triggered_transactions?: unknown;
+  [key: string]: unknown;
+};
+
+export type TransactionActionInput = ClientRequester & {
+  getTransaction: (args: {hash: TransactionHash}) => Promise<RawTransactionRead>;
+};
+
+/** Adds the custom write helpers used by the contract actions. */
+export type ContractWriter = ClientRequester & {
+  estimateTransactionGas: GenLayerClient<GenLayerChain>["estimateTransactionGas"];
+  getCurrentNonce: GenLayerClient<GenLayerChain>["getCurrentNonce"];
+  sendRawTransaction: WalletActions<GenLayerChain>["sendRawTransaction"];
+};
+
+/** `connect` reassigns `chain`, so the wallet actions need it writable. */
+export type ChainSwitcher = {
+  chain: GenLayerChain;
+};
+
+/*
   Take all the properties from Client<Transport, TGenLayerChain>
   Remove getTransaction and readContract because they are redefined with custom implementations.
   Keep transport as it's needed for viem contract interactions (e.g., staking).
