@@ -153,6 +153,19 @@ const readAddressPages = async (
   return items;
 };
 
+const decodeStudioTransaction = (transaction: GenLayerTransaction): GenLayerTransaction => {
+  const localnetStatus =
+    (transaction.status as string) === "ACTIVATED" ? TransactionStatus.PENDING : transaction.status;
+
+  transaction.status = Number(transactionsStatusNameToNumber[localnetStatus as TransactionStatus]);
+  transaction.statusName = localnetStatus as TransactionStatus;
+  transaction.lifecycle = transactionLifecycleFromStoredStatus(
+    localnetStatus as TransactionStatus,
+    transaction.result,
+  );
+  return decodeLocalnetTransaction(transaction as unknown as GenLayerTransaction);
+};
+
 let didWarnWaitForTransactionReceiptStatus = false;
 
 const warnDeprecatedReceiptStatus = () => {
@@ -392,16 +405,7 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
   getTransaction: async ({hash}: {hash: TransactionHash}): Promise<GenLayerTransaction> => {
     if (client.chain.isStudio) {
       const transaction = await client.getTransaction({hash});
-      const localnetStatus =
-        (transaction.status as string) === "ACTIVATED" ? TransactionStatus.PENDING : transaction.status;
-
-      transaction.status = Number(transactionsStatusNameToNumber[localnetStatus as TransactionStatus]);
-      transaction.statusName = localnetStatus as TransactionStatus;
-      transaction.lifecycle = transactionLifecycleFromStoredStatus(
-        localnetStatus as TransactionStatus,
-        transaction.result,
-      );
-      return decodeLocalnetTransaction(transaction as unknown as GenLayerTransaction);
+      return decodeStudioTransaction(transaction as unknown as GenLayerTransaction);
     }
     const consensusDataAddress = client.chain.consensusDataContract?.address as Address;
     if (!consensusDataAddress || consensusDataAddress === zeroAddress) {
@@ -525,6 +529,52 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
       },
     } as unknown as GenLayerRawTransaction;
     return decodeTransaction(transaction);
+  },
+  /** Fetches a Studio transaction, normalizing status and lifecycle like getTransaction. Requires gen_getStudioTransactionByHash. */
+  getStudioTransactionByHash: async ({hash, full}: {hash: TransactionHash; full?: boolean}): Promise<GenLayerTransaction> => {
+    let transaction: GenLayerTransaction | null;
+    try {
+      transaction = await client.request({
+        method: "gen_getStudioTransactionByHash",
+        params: full === undefined ? [hash] : [hash, full],
+      }) as GenLayerTransaction | null;
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === -32001) {
+        throw new Error(`Transaction not found: ${hash}`, {cause: error});
+      }
+      throw error;
+    }
+
+    if (!transaction) {
+      throw new Error(`Transaction not found: ${hash}`);
+    }
+    return client.chain.isStudio ? decodeStudioTransaction(transaction) : transaction;
+  },
+  /** Returns the SDK status mapped from the canonical statusCode (Studio ACTIVATED becomes PENDING). On Studio, requires Studio ≥ v0.123 (object-form `gen_getTransactionStatus`). */
+  getTransactionStatus: async ({hash}: {hash: TransactionHash}): Promise<TransactionStatus> => {
+    let result: unknown;
+    try {
+      result = await client.request({
+        method: "gen_getTransactionStatus",
+        params: [{txId: hash}],
+      });
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === -32001) {
+        throw new Error(`Transaction not found: ${hash}`, {cause: error});
+      }
+      throw error;
+    }
+    const code = typeof result === "object" && result !== null && "statusCode" in result
+      ? result.statusCode
+      : undefined;
+    if (typeof result !== "object" || result === null ||
+        typeof code !== "number" || !Number.isInteger(code) ||
+        !Object.prototype.hasOwnProperty.call(transactionsStatusNumberToName, code)) {
+      throw new Error("Invalid gen_getTransactionStatus response: unknown statusCode");
+    }
+    // Preserve the SDK's Studio ACTIVATED alias even when the producer uses code 2.
+    if ("status" in result && result.status === "ACTIVATED") return TransactionStatus.PENDING;
+    return transactionsStatusNumberToName[String(code) as keyof typeof transactionsStatusNumberToName];
   },
   /**
    * Returns canonical child IDs committed for this parent, including deferred delivery.
