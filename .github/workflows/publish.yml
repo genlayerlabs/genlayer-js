@@ -55,7 +55,10 @@ jobs:
               echo "Cannot tell the stable branch of $TAG_VERSION; refusing to publish." >&2
               exit 1
             fi
-            git fetch --no-tags origin "+refs/heads/$STABLE:refs/remotes/origin/$STABLE"
+            if ! git fetch --no-tags origin "+refs/heads/$STABLE:refs/remotes/origin/$STABLE"; then
+              echo "Could not fetch $STABLE (git's error is above). A final is published only from its stable branch: $STABLE has to exist on origin and contain $GITHUB_REF_NAME." >&2
+              exit 1
+            fi
             if ! git merge-base --is-ancestor HEAD "origin/$STABLE"; then
               echo "Tag $GITHUB_REF_NAME is not on $STABLE. Finals are tagged by 'scripts/release.sh --promote', after $STABLE moved to the release commit." >&2
               exit 1
