@@ -1,5 +1,7 @@
 
 
+## [2.0.0](https://github.com/genlayerlabs/genlayer-js/compare/v2.0.0-rc.3...v2.0.0) (2026-11-23)
+
 ## [2.0.0-rc.3](https://github.com/genlayerlabs/genlayer-js/compare/v2.0.0-rc.2...v2.0.0-rc.3) (2026-11-10)
 
 
