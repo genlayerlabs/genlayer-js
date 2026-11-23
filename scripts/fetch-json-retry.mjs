@@ -7,6 +7,12 @@ export const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+export class FetchRetriesExhaustedError extends Error {
+  constructor(url, cause) {
+    super(`GET ${url} failed after retries: ${cause.message}`, { cause });
+  }
+}
+
 export async function fetchJson(
   url,
   {
@@ -18,6 +24,9 @@ export async function fetchJson(
     log = (msg) => console.warn(msg),
   } = {},
 ) {
+  if (!Number.isInteger(attempts) || attempts < 1) {
+    throw new RangeError("FETCH_RETRY_ATTEMPTS must be a positive integer");
+  }
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     let retryAfterMs;
@@ -49,5 +58,5 @@ export async function fetchJson(
       await sleepImpl(delay);
     }
   }
-  throw lastError;
+  throw new FetchRetriesExhaustedError(url, lastError);
 }
