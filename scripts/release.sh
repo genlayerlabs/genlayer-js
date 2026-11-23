@@ -406,7 +406,15 @@ policy assert-newer "$next_version" "$current_version" $(git tag -l "$stable.*")
 
 # A final has to reach the stable branch by fast-forward: catch a diverged
 # stable branch now, before an E2E run is spent on the release commit.
-if git fetch --quiet origin "+refs/heads/$stable:refs/remotes/origin/$stable" 2>/dev/null; then
+# ls-remote exits 2 when the branch is not there; anything else is a failed lookup.
+stable_rc=0
+git ls-remote --exit-code --heads origin "refs/heads/$stable" >/dev/null || stable_rc=$?
+if [ "$stable_rc" -ne 0 ] && [ "$stable_rc" -ne 2 ]; then
+  echo "Could not ask origin whether $stable exists (git's error is above); refusing to release." >&2
+  exit 1
+fi
+if [ "$stable_rc" -eq 0 ]; then
+  git fetch --quiet origin "+refs/heads/$stable:refs/remotes/origin/$stable"
   if ! git merge-base --is-ancestor "origin/$stable" HEAD; then
     if [ "$kind" = "final" ]; then
       cat >&2 <<EOF
