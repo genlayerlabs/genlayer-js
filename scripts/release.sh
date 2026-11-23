@@ -174,7 +174,7 @@ EOF
 }
 
 promote() {
-  local version dev stable tag sha dev_sha stable_sha tag_sha have_tag=0
+  local version dev stable tag sha dev_sha stable_sha tag_sha remote_tag have_tag=0
   version="$(policy normalize "$VERSION_ARG")" || exit 2
   if [ "$(policy is-prerelease "$version")" = "true" ]; then
     echo "$version is a prerelease: those are tagged on the dev branch and never promoted." >&2
@@ -189,16 +189,20 @@ promote() {
   stable="$(policy stable-branch "$version")"
   tag="v$version"
 
-  if ! git fetch --quiet --tags origin \
+  if ! git fetch --quiet --no-tags origin \
     "+refs/heads/$dev:refs/remotes/origin/$dev" \
     "+refs/heads/$stable:refs/remotes/origin/$stable"; then
-    echo "Could not fetch $dev and $stable from origin. Both branches must exist before promoting." >&2
+    echo "Could not fetch $dev and $stable from origin (git's error is above). Promoting needs both branches there." >&2
     exit 1
   fi
   dev_sha="$(git rev-parse "origin/$dev")"
   stable_sha="$(git rev-parse "origin/$stable")"
 
-  if [ -n "$(git ls-remote --tags origin "refs/tags/$tag")" ]; then
+  if ! remote_tag="$(git ls-remote --tags origin "refs/tags/$tag")"; then
+    echo "Could not ask origin whether tag $tag exists; refusing to promote." >&2
+    exit 1
+  fi
+  if [ -n "$remote_tag" ]; then
     echo "Tag $tag already exists on origin; $version is already released." >&2
     exit 1
   fi
@@ -345,15 +349,20 @@ fi
 current_version="$(node -p "require('./package.json').version")"
 
 # Asked from origin: a local tag may be left over from a failed tag push.
-if [ "$(policy is-prerelease "$current_version")" = "false" ] &&
-  [ -z "$(git ls-remote --tags origin "refs/tags/v$current_version")" ]; then
-  cat >&2 <<EOF
+if [ "$(policy is-prerelease "$current_version")" = "false" ]; then
+  if ! remote_tag="$(git ls-remote --tags origin "refs/tags/v$current_version")"; then
+    echo "Could not ask origin whether tag v$current_version exists; refusing to release." >&2
+    exit 1
+  fi
+  if [ -z "$remote_tag" ]; then
+    cat >&2 <<EOF
 package.json is at $current_version, which has no tag on origin: $branch
 carries an unpublished final release commit. Finish it with
 'scripts/release.sh --promote $current_version'. If it must not ship and the
 stable branch has not moved to it, revert that commit and run this again.
 EOF
-  exit 1
+    exit 1
+  fi
 fi
 
 # Resolve to a concrete X.Y.Z so the guards below can compare.
@@ -423,7 +432,7 @@ if [ "$next_major" != "$cur_major" ] && [ "$ALLOW_MAJOR" -ne 1 ]; then
 Refusing major bump $current_version → $next_version without --allow-major.
 
 In this repo's release model, a major bump means cutting a new branch
-(v$next_major) and switching the default. Don't tag a major on top of
+(v$next_major). Don't tag a major on top of
 the v$cur_major branch — see CONTRIBUTING.md.
 
 If you actually want this (rare, e.g. retroactively shipping a major
@@ -476,7 +485,7 @@ Next:
   3. When $TESTS_NAME and $E2E_CHECK are green on $release_sha:
        scripts/release.sh --promote $next_version
 
-Nothing else may merge that PR: no merge button, no auto-merge, no
-/merge-train, no Legatus self-merge. --promote fast-forwards $stable to
-this commit and GitHub then closes the PR as merged.
+Nothing else may merge that PR: no merge button, no auto-merge, no /merge
+or /merge-train comment, no Legatus self-merge. --promote fast-forwards
+$stable to this commit and GitHub then closes the PR as merged.
 EOF
