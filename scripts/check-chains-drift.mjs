@@ -16,6 +16,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { fetchJson } from "./fetch-json-retry.mjs";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NETWORKS_REF = process.env.GENLAYER_NETWORKS_REF || "main";
@@ -71,12 +72,6 @@ const CONTRACTS = [
     mode: "narrow",
   },
 ];
-
-async function fetchJson(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`GET ${url} → ${res.status}`);
-  return res.json();
-}
 
 // Canonical signature: selectors depend on (type, name, input types), not
 // parameter names or internalType. Events are keyed by topic hash, which
