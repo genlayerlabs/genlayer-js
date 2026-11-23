@@ -1,4 +1,4 @@
-import {GenLayerTransaction, GenLayerRawTransaction, DecodedCallData, DecodedDeployData,transactionsStatusNumberToName, transactionResultNumberToName, executionResultNumberToName, voteTypeNumberToName, VoteType} from "../types/transactions";
+import {GenLayerTransaction, GenLayerRawTransaction, DecodedCallData, DecodedDeployData,transactionsStatusNumberToName, transactionResultNumberToName, executionResultNumberToName, voteTypeNumberToName, VoteType, transactionLifecycleFromStoredStatus} from "../types/transactions";
 import {b64ToArray, calldataToUserFriendlyJson, resultToUserFriendlyJson} from "../utils/jsonifier";
 import {fromRlp, fromHex, Hex, Address} from "viem";
 import * as calldataAbi from "../abi/calldata";
@@ -74,19 +74,17 @@ export const decodeInputData = (
 };
 
 export const decodeTransaction = (tx: GenLayerRawTransaction): GenLayerTransaction => {
-  // Normalize field names across chain ABIs (Bradbury uses different names)
-  const txData = tx.txData ?? (tx as any).txCalldata;
-  const numOfInitialValidators = tx.numOfInitialValidators ?? (tx as any).initialRotations;
-
-  const txDataDecoded = decodeInputData(txData, tx.recipient);
+  const txDataDecoded = decodeInputData(tx.txCalldata, tx.recipient);
 
   const decodedTx = {
     ...tx,
-    txData: txData,
+    // Preserve the public SDK field names while decoding one canonical train
+    // wire layout. Deployments with the old tuple must use the old SDK.
+    txData: tx.txCalldata,
     txDataDecoded: txDataDecoded,
 
-    currentTimestamp: tx.currentTimestamp.toString(),
-    numOfInitialValidators: numOfInitialValidators?.toString() ?? "0",
+    currentTimestamp: tx.observedAt.toString(),
+    numOfInitialValidators: tx.numOfInitialValidators.toString(),
     txSlot: tx.txSlot.toString(),
     createdTimestamp: tx.createdTimestamp.toString(),
     lastVoteTimestamp: tx.lastVoteTimestamp.toString(),
@@ -102,6 +100,7 @@ export const decodeTransaction = (tx: GenLayerRawTransaction): GenLayerTransacti
 
     statusName:
       transactionsStatusNumberToName[String(tx.status) as keyof typeof transactionsStatusNumberToName],
+    lifecycle: transactionLifecycleFromStoredStatus(tx.status, tx.result),
     resultName:
       transactionResultNumberToName[String(tx.result) as keyof typeof transactionResultNumberToName],
 
@@ -284,4 +283,4 @@ export const decodeLocalnetTransaction = (tx: GenLayerTransaction): GenLayerTran
     console.error("Error in decodeLocalnetTransaction:", e);
   }
   return tx;
-}; 
+};
