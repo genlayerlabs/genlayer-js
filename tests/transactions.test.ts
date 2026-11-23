@@ -20,9 +20,11 @@ import {
   transactionLifecycleFromStoredStatus,
 } from "../src/types/transactions";
 import { receiptActions, transactionActions, isSuccessful } from "../src/transactions/actions";
-import { decodeTransaction, simplifyTransactionReceipt } from "../src/transactions/decoders";
+import { decodeLocalnetTransaction, decodeTransaction, simplifyTransactionReceipt } from "../src/transactions/decoders";
 import { localnet } from "../src/chains/localnet";
-import type { GenLayerRawTransaction, TransactionHash } from "../src/types/transactions";
+import type { GenLayerRawTransaction, GenLayerTransaction, TransactionHash } from "../src/types/transactions";
+import { encode } from "../src/abi/calldata";
+import { arrayToB64 } from "../src/utils/jsonifier";
 import {
   decodeFunctionResult,
   encodeFunctionResult,
@@ -34,6 +36,26 @@ import producer from "./fixtures/consensus-consumer-abi.json";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
+
+it("decodes the Studio leader validation receipt and leaves decoded values intact", () => {
+  const failure = arrayToB64(Uint8Array.of(1, 120));
+  const calldata = arrayToB64(encode(null));
+  const receipt = { result: failure, calldata, eq_outputs: { validator: failure } };
+  const transaction = {
+    consensus_data: { leader_receipt: [{ ...receipt }] },
+    studio_data: { leader_validation_receipt: { ...receipt } },
+  } as unknown as GenLayerTransaction;
+
+  const decoded = decodeLocalnetTransaction(transaction);
+  const validation = decoded.studio_data?.leader_validation_receipt;
+  expect(validation).toMatchObject({
+    result: { raw: failure, status: "rollback", payload: "x" },
+    calldata: { base64: calldata, readable: "null" },
+    eq_outputs: { validator: { raw: failure, status: "rollback", payload: "x" } },
+  });
+  expect(decoded.consensus_data?.leader_receipt?.[0]).toEqual(validation);
+  expect(decodeLocalnetTransaction(decoded).studio_data?.leader_validation_receipt).toEqual(validation);
+});
 
 describe("DECIDED_STATES constant", () => {
   it("should contain all expected decided states", () => {

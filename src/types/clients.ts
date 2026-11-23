@@ -160,6 +160,7 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     }) => Promise<GenLayerTransaction>;
     getContractSchema: (address: Address) => Promise<ContractSchema>;
     getContractSchemaForCode: (contractCode: string | Uint8Array) => Promise<ContractSchema>;
+    getContractPendingQueue: (address: Address) => Promise<bigint>;
     getContractCode: (address: Address) => Promise<string>;
     /** @deprecated This method is deprecated. The consensus contract is now resolved from the static chain definition. */
     initializeConsensusSmartContract: (forceReset?: boolean) => Promise<void>;
