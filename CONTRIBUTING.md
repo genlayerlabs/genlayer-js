@@ -38,9 +38,16 @@ the default/static GitHub branch.
 
 ## Releases
 
-Releases are deliberate, not automatic. `scripts/release.sh` bumps the version, updates `CHANGELOG.md`, commits, tags, and pushes; CI takes over from the tag push and publishes to npm. See `.claude/skills/release/SKILL.md` for the full flow.
+Releases are deliberate, not automatic. Every release commit is made on the `*-dev` branch of its line by `scripts/release.sh`, which bumps the version and updates `CHANGELOG.md`; CI takes over from the tag push and publishes to npm.
 
-If you're using Claude Code, ask it to "release a patch" (or "release v1.2.0") and the skill walks through the pre-flight checks before invoking the script.
+- **Release candidate** (one step): `scripts/release.sh 2.0.1-rc.1` on `v2-dev` commits, tags and pushes.
+- **Final** (two steps):
+  1. `scripts/release.sh 2.0.1` on `v2-dev` pushes the release commit without a tag. That commit is the head of the promotion PR `v2-dev` → `v2`, so `Run Tests` and `E2E Tests` run on it.
+  2. Once both are green on that commit, `scripts/release.sh --promote 2.0.1` fast-forwards `v2` to it with a plain push and tags it. Do not press the merge button on the promotion PR: the fast-forward closes it as merged, and a squash would put an untested commit on `v2` and break ancestry with `v2-dev`.
+
+The stable branch only accepts commits that already have a green `E2E Tests` check, which is why the version bump happens on dev before promotion and not on the stable branch after it. Add `--dry-run` to any of the commands to run the checks without changing anything. See `.claude/skills/release/SKILL.md` for the full flow.
+
+If you're using Claude Code, ask it to "release a patch" (or "release v2.0.1") and the skill walks through the pre-flight checks before invoking the script.
 
 ### Bug fixing and Feature development
 

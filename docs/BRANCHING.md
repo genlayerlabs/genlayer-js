@@ -41,8 +41,35 @@ When an integration train is ready, open a promotion PR from the integration
 branch to the matching stable branch, for example `v2-dev` to `v2`.
 
 That promotion PR is the release-readiness gate and must pass required
-cross-repo `E2E Tests`. The actual package release is cut from the stable branch
-using a version tag after the stable branch is ready.
+cross-repo `E2E Tests`. The stable branch rejects any commit without a green
+`E2E Tests` check, so the final version bump is made on the integration branch
+before promotion, never on the stable branch after it:
+
+1. `scripts/release.sh X.Y.Z` on `vX-dev` pushes the release commit
+   (`package.json`, `package-lock.json`, `CHANGELOG.md`) to the integration
+   branch, without a tag. It is now the head of the promotion PR.
+2. `Run Tests` and `E2E Tests` run on that commit.
+3. `scripts/release.sh --promote X.Y.Z` fast-forwards `vX` to that exact commit
+   with a plain push and pushes the annotated tag `vX.Y.Z` on it. The tag push
+   triggers the publish workflow.
+
+The promotion PR is never merged with the merge button. This repo only allows
+squash merges, and a squash commit is a new commit that `E2E Tests` did not run
+on; it also breaks ancestry between the two branches, so the next promotion PR
+conflicts on the version lines. After the fast-forward GitHub marks the PR as
+merged by itself.
+
+If a fix lands on the integration branch after the release commit, revert the
+release commit and run step 1 again, so the tested commit and the changelog
+include the fix.
+
+A release candidate may be cut earlier from the integration branch with
+`scripts/release.sh X.Y.Z-rc.N`; RC tags use `vX.Y.Z-rc.N`, sit on the
+integration branch, publish to the `rc` npm dist-tag, and never substitute for
+the promotion PR's final release gate.
+
+An older stable line that has no integration branch needs one to release:
+create `vX-dev` from `vX`, land the fix there, and follow the same steps.
 
 ## `main`
 
