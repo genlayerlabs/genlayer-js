@@ -51,11 +51,16 @@ Executes a read-only contract call without modifying state.
 | kwargs | `Map<string, CalldataEncodable> \| {[key: string]: CalldataEncodable}` | no |  |
 | rawReturn | `RawReturn` | no |  |
 | jsonSafeReturn | `boolean` | no |  |
-| schema | `ContractSchema` | no | Checks the decoded result against the method’s return schema. Pass the result of `getContractSchema(address)`. Raw hex responses bypass the schema check. |
+| schema | `ContractSchema \| false` | no | Uses the deployed schema by default. Supply a schema to reuse it across calls, or use `false` to skip lookup and schema-directed decoding. |
 | leaderOnly | `boolean` | no |  |
 | transactionHashVariant | `TransactionHashVariant` | no |  |
 
 **Returns:** `RawReturn extends true ? 0x${string} : CalldataEncodable`
+
+The return schema can interpret decimal strings as integers, hex strings as bytes or addresses,
+and 20-byte values as addresses, including inside structured results. A missing or incompatible
+schema leaves the wire-decoded result available. `rawReturn: true` returns the hex directly without
+a schema lookup. Set `jsonSafeReturn: false` to receive native calldata values.
 
 ---
 

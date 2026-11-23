@@ -1,3 +1,4 @@
+import { hexToBytes } from 'viem';
 import { CalldataAddress, type CalldataEncodable } from '@/types/calldata';
 import type { ContractParamsSchema, ContractSchema } from '@/types/contracts';
 
@@ -114,46 +115,92 @@ function validateValueAgainstType(
   return true;
 }
 
-/** Checks decoded calldata before JSON-safe conversion erases wire type distinctions. */
-export function matchesReturnSchema(
+/** Interpret compatible wire values using the method's return type. */
+export function decodeContractReturn(
   value: CalldataEncodable,
-  schema: ContractParamsSchema,
-): boolean {
+  schema: ContractParamsSchema | undefined,
+): CalldataEncodable {
+  const decoded = decodeReturnValue(value, schema, true);
+  return decoded === undefined ? value : decoded;
+}
+
+function decodeReturnValue(
+  value: CalldataEncodable,
+  schema: ContractParamsSchema | { $rep: ContractParamsSchema } | undefined,
+  coerce: boolean,
+): CalldataEncodable | undefined {
+  if (schema == null) return value;
+
   if (typeof schema === 'string') {
-    switch (schema) {
-      case 'null': return value === null;
-      case 'bool': return typeof value === 'boolean';
-      case 'int': return typeof value === 'bigint';
-      case 'string': return typeof value === 'string';
-      case 'address': return value instanceof CalldataAddress;
-      case 'bytes': return value instanceof Uint8Array;
-      case 'array': return Array.isArray(value);
-      case 'dict': return value instanceof Map;
-      default: return true;
+    if (schema === 'bytes' || schema === 'address') {
+      if (schema === 'bytes' && value instanceof Uint8Array) return value;
+      if (schema === 'address' && value instanceof CalldataAddress) return value;
+      if (!coerce) return undefined;
+
+      const bytes = value instanceof Uint8Array
+        ? value
+        : typeof value === 'string' && /^0x(?:[0-9a-fA-F]{2})*$/.test(value)
+          ? hexToBytes(value as `0x${string}`)
+          : undefined;
+      if (schema === 'bytes') return bytes;
+      return bytes?.length === 20 ? new CalldataAddress(bytes) : undefined;
     }
+    if (schema === 'int' && coerce && typeof value === 'string' && /^-?\d+$/.test(value)) {
+      return BigInt(value);
+    }
+    return validateValueAgainstType(value, schema) ? value : undefined;
   }
 
   if (Array.isArray(schema)) {
-    if (!Array.isArray(value)) return false;
+    if (!Array.isArray(value)) return undefined;
+    const repeats = schema.flatMap((item, index) =>
+      item && typeof item === 'object' && '$rep' in item ? [index] : [],
+    );
+    if (repeats.length > 1) return undefined;
 
-    for (const [index, item] of schema.entries()) {
-      if (typeof item === 'object' && !Array.isArray(item) && '$rep' in item) {
-        return index === schema.length - 1 &&
-          value.slice(index).every((element) => matchesReturnSchema(element, item.$rep));
+    const repeatIndex = repeats[0];
+    const repeatCount = value.length - schema.length + 1;
+    if (repeatIndex !== undefined && repeatCount < 0) return undefined;
+
+    const decoded = value.map((element, index) => {
+      if (repeatIndex === undefined || index < repeatIndex) {
+        return decodeReturnValue(element, schema[index], coerce);
       }
-      if (index >= value.length || !matchesReturnSchema(value[index], item)) return false;
-    }
-    return value.length === schema.length;
+      if (index < repeatIndex + repeatCount) {
+        const repeat = schema[repeatIndex] as { $rep: ContractParamsSchema };
+        return decodeReturnValue(element, repeat.$rep, coerce);
+      }
+      return decodeReturnValue(element, schema[index - repeatCount + 1], coerce);
+    });
+    return decoded.every((element) => element !== undefined) ? decoded : undefined;
   }
 
+  if (typeof schema !== 'object') return value;
   if ('$or' in schema && Array.isArray(schema.$or)) {
-    return (schema.$or as ContractParamsSchema[]).some((branch) => matchesReturnSchema(value, branch));
+    const branches = schema.$or as ContractParamsSchema[];
+    for (const branch of branches) {
+      const decoded = decodeReturnValue(value, branch, false);
+      if (decoded !== undefined) return decoded;
+    }
+    if (coerce) {
+      for (const branch of branches) {
+        const decoded = decodeReturnValue(value, branch, true);
+        if (decoded !== undefined) return decoded;
+      }
+    }
+    return undefined;
   }
-  if (!(value instanceof Map)) return false;
-  if ('$dict' in schema) {
-    return Array.from(value.values()).every((element) => matchesReturnSchema(element, schema.$dict));
+
+  if (!(value instanceof Map)) return undefined;
+  const fields = schema as Record<string, ContractParamsSchema>;
+  const decoded = new Map<string, CalldataEncodable>();
+  for (const [key, element] of value) {
+    const field = '$dict' in fields
+      ? fields.$dict
+      : Object.prototype.hasOwnProperty.call(fields, key) ? fields[key] : undefined;
+    const result = decodeReturnValue(element, field, coerce);
+    if (result === undefined) return undefined;
+    decoded.set(key, result);
   }
-  return Object.entries(schema).every(([key, field]) =>
-    value.has(key) && matchesReturnSchema(value.get(key)!, field),
-  );
+  return decoded;
 }

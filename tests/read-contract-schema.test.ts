@@ -6,27 +6,33 @@ import {CalldataAddress, type CalldataEncodable, type ContractParamsSchema, type
 
 const address = "0x0000000000000000000000000000000000000001";
 
-function setup(value: CalldataEncodable, ret: ContractParamsSchema) {
+function setup(value: CalldataEncodable, ret: ContractParamsSchema, isStudio = true) {
   const hex = toHex(encode(value));
-  const request = vi.fn().mockResolvedValue({data: hex});
-  const client = {request, chain: {isStudio: true}} as unknown as GenLayerClient<GenLayerChain>;
-  const {readContract} = contractActions(client, {} as PublicClient);
   const schema = {
     ctor: {params: [], kwparams: {}},
     methods: {read: {params: [], kwparams: {}, readonly: true, ret}},
   };
-  return {readContract, request, hex, args: {address, functionName: "read", schema} as const};
+  const request = vi.fn(async ({method}: {method: string}) => {
+    switch (method) {
+      case "gen_call": return {data: hex};
+      case "gen_getContractCode": return "Y29kZQ==";
+      case "gen_getContractSchema": return schema;
+      default: throw new Error(`Unexpected method ${method}`);
+    }
+  });
+  const client = {request, chain: {isStudio}} as unknown as GenLayerClient<GenLayerChain>;
+  const {readContract} = contractActions(client, {} as PublicClient);
+  return {readContract, request, hex, schema, args: {address, functionName: "read"} as const};
 }
 
 describe("readContract with a return schema", () => {
-  it("accepts nested structs, tuples, repeated values, dictionaries, and unions in both decoded modes", async () => {
-    const account = new CalldataAddress(Uint8Array.from({length: 20}, (_, i) => i));
-    const data = new Uint8Array([7]);
-    const result = new Map<string, CalldataEncodable>([
-      ["account", account],
-      ["counts", [1n, 9007199254740993n, null]],
-      ["payloads", new Map([["item", data]])],
-    ]);
+  it("uses the deployed schema automatically to convert nested results", async () => {
+    const accountBytes = Uint8Array.from({length: 20}, (_, i) => i);
+    const result = {
+      account: accountBytes,
+      counts: ["1", "9007199254740993", null],
+      payloads: {item: "0xAB"},
+    };
     const {readContract, args, request} = setup(result, {
       account: "address",
       counts: ["int", {$rep: {$or: ["int", "null"]}}],
@@ -34,32 +40,52 @@ describe("readContract with a return schema", () => {
     });
 
     await expect(readContract(args)).resolves.toEqual({
-      account: toHex(account.bytes),
+      account: toHex(accountBytes),
       counts: [1, "9007199254740993", null],
-      payloads: {item: "0x07"},
+      payloads: {item: "0xab"},
     });
-    await expect(readContract({...args, jsonSafeReturn: false})).resolves.toEqual(result);
-    expect(request.mock.calls.map(([call]) => call.method)).toEqual(["gen_call", "gen_call"]);
+    await expect(readContract({...args, jsonSafeReturn: false})).resolves.toEqual(new Map<string, CalldataEncodable>([
+      ["account", new CalldataAddress(accountBytes)],
+      ["counts", [1n, 9007199254740993n, null]],
+      ["payloads", new Map([["item", new Uint8Array([0xab])]])],
+    ]));
+    expect(request).toHaveBeenCalledWith({method: "gen_getContractSchema", params: [address]});
   });
 
-  it("rejects different wire types even when JSON-safe conversion looks the same", async () => {
-    const {readContract, args, hex} = setup({values: [new Uint8Array(20)]}, {values: ["address"]});
-    await expect(readContract(args)).rejects.toThrow('Return value of "read" does not match the contract schema');
+  it("looks up the schema by code on non-Studio nodes", async () => {
+    const {readContract, args, request} = setup("-42", "int", false);
+    await expect(readContract(args)).resolves.toBe(-42);
+    expect(request).toHaveBeenNthCalledWith(2, {method: "gen_getContractCode", params: [{address}]});
+    expect(request).toHaveBeenNthCalledWith(3, {method: "gen_getContractSchema", params: [{code: "Y29kZQ=="}]});
+  });
+
+  it("supports an explicit schema, wire decoding and raw hex without another RPC", async () => {
+    const {readContract, args, schema, hex, request} = setup("42", "int");
+    await expect(readContract({...args, schema})).resolves.toBe(42);
+    await expect(readContract({...args, schema: false})).resolves.toBe("42");
     await expect(readContract({...args, rawReturn: true})).resolves.toBe(hex);
-    await expect(readContract({...args, schema: undefined})).resolves.toEqual({
-      values: [`0x${"00".repeat(20)}`],
-    });
+    expect(request.mock.calls.map(([call]) => call.method)).toEqual(["gen_call", "gen_call", "gen_call"]);
   });
 
-  it("rejects missing schema methods, missing fields, and extra tuple items", async () => {
-    const wrongMethod = setup(null, "null");
-    await expect(wrongMethod.readContract({...wrongMethod.args, functionName: "constructor"}))
-      .rejects.toThrow('Contract schema is missing read method "constructor"');
+  it("preserves the wire result when schema lookup fails or a declaration is unavailable or incompatible", async () => {
+    const {readContract, args, request} = setup("oops", "int");
+    await expect(readContract(args)).resolves.toBe("oops");
+    await expect(readContract({...args, functionName: "constructor"})).resolves.toBe("oops");
+    request.mockImplementationOnce(async () => ({data: toHex(encode("42"))}));
+    request.mockRejectedValueOnce(new Error("Schema RPC unavailable"));
+    await expect(readContract(args)).resolves.toBe("42");
+  });
 
-    const missingField = setup({}, {value: "any"});
-    await expect(missingField.readContract(missingField.args)).rejects.toThrow("does not match");
+  it("preserves extra fields, tolerates missing fields and handles repeated tuple items before a suffix", async () => {
+    const {readContract, args} = setup({items: ["12", "34", true], extra: "keep"}, {
+      missing: "address",
+      items: [{$rep: "int"}, "bool"],
+    });
+    await expect(readContract(args)).resolves.toEqual({items: [12, 34, true], extra: "keep"});
+  });
 
-    const extraItem = setup([true, false], ["bool"]);
-    await expect(extraItem.readContract(extraItem.args)).rejects.toThrow("does not match");
+  it("prefers an existing wire type when multiple union branches apply", async () => {
+    const {readContract, args} = setup(["12", null], [{$or: ["int", "string"]}, {$or: ["bytes", "null"]}]);
+    await expect(readContract(args)).resolves.toEqual(["12", null]);
   });
 });

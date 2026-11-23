@@ -76,8 +76,8 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       kwargs?: Map<string, CalldataEncodable> | {[key: string]: CalldataEncodable};
       rawReturn?: RawReturn;
       jsonSafeReturn?: boolean;
-      /** Schema used to check the decoded result. Ignored when rawReturn is true. */
-      schema?: ContractSchema;
+      /** Supply a schema or set false to use wire decoding alone. Defaults to looking up the deployed schema. */
+      schema?: ContractSchema | false;
       transactionHashVariant?: TransactionHashVariant;
     }) => Promise<RawReturn extends true ? `0x${string}` : CalldataEncodable>;
     writeContract: (args: {

@@ -1,4 +1,4 @@
-import {matchesReturnSchema} from "./schema";
+import {decodeContractReturn} from "./schema";
 import * as calldata from "@/abi/calldata";
 import {serialize} from "@/abi/transactions";
 import {ADDRESS_MANAGER_ABI, NFT_MINTER_ABI} from "@/abi/nftMinter";
@@ -135,6 +135,27 @@ function transactionFeesToRpc(fees?: TransactionFeeOptions) {
 }
 
 export const contractActions = (client: GenLayerClient<GenLayerChain>, publicClient: PublicClient) => {
+  const getContractSchema = async (address: Address): Promise<ContractSchema> => {
+    if (client.chain.isStudio) {
+      const schema = (await client.request({
+        method: "gen_getContractSchema",
+        params: [address],
+      })) as string;
+      return schema as unknown as ContractSchema;
+    }
+    // Non-Studio nodes expose `gen_getContractSchema({code})` rather than a per-address lookup,
+    // so fetch the code first and ask for its schema.
+    const codeB64 = (await client.request({
+      method: "gen_getContractCode",
+      params: [{address}],
+    })) as string;
+    const schema = (await client.request({
+      method: "gen_getContractSchema",
+      params: [{code: codeB64}],
+    })) as unknown as ContractSchema;
+    return schema;
+  };
+
   const estimateFeeValue = async (
     distribution: FeesDistribution,
     policy?: FeePolicyQuote,
@@ -200,26 +221,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       return new TextDecoder().decode(codeBytes);
     },
     /** Gets the schema (methods and constructor) of a deployed contract. */
-    getContractSchema: async (address: Address): Promise<ContractSchema> => {
-      if (client.chain.isStudio) {
-        const schema = (await client.request({
-          method: "gen_getContractSchema",
-          params: [address],
-        })) as string;
-        return schema as unknown as ContractSchema;
-      }
-      // Non-Studio nodes expose `gen_getContractSchema({code})` rather than a per-address lookup,
-      // so fetch the code first and ask for its schema.
-      const codeB64 = (await client.request({
-        method: "gen_getContractCode",
-        params: [{address}],
-      })) as string;
-      const schema = (await client.request({
-        method: "gen_getContractSchema",
-        params: [{code: codeB64}],
-      })) as unknown as ContractSchema;
-      return schema;
-    },
+    getContractSchema,
     /** Generates a schema for contract code without deploying it. */
     getContractSchemaForCode: async (contractCode: string | Uint8Array): Promise<ContractSchema> => {
       if (client.chain.isStudio) {
@@ -247,7 +249,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       kwargs?: Map<string, CalldataEncodable> | {[key: string]: CalldataEncodable};
       rawReturn?: RawReturn;
       jsonSafeReturn?: boolean;
-      schema?: ContractSchema;
+      schema?: ContractSchema | false;
       leaderOnly?: boolean;
       transactionHashVariant?: TransactionHashVariant;
     }): Promise<RawReturn extends true ? `0x${string}` : CalldataEncodable> => {
@@ -285,23 +287,18 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         return prefixedResult;
       }
       const resultBinary = fromHex(prefixedResult, "bytes");
-      const decoded = calldata.decode(resultBinary) as any;
-      if (schema) {
-        const method = Object.prototype.hasOwnProperty.call(schema.methods, functionName)
-          ? schema.methods[functionName]
-          : undefined;
-        if (!method) {
-          throw new Error(`Contract schema is missing read method "${functionName}"`);
-        }
-        if (!matchesReturnSchema(decoded, method.ret ?? "null")) {
-          throw new Error(`Return value of "${functionName}" does not match the contract schema`);
-        }
-      }
+      const decoded = calldata.decode(resultBinary);
+      const contractSchema = schema ?? await getContractSchema(address).catch(() => undefined);
+      const methods = contractSchema ? contractSchema.methods : undefined;
+      const returnSchema = methods && Object.prototype.hasOwnProperty.call(methods, functionName)
+        ? methods[functionName]?.ret
+        : undefined;
+      const value = decodeContractReturn(decoded, returnSchema);
       if (!jsonSafeReturn) {
-        return decoded;
+        return value as any;
       }
       // If jsonSafeReturn is requested, convert to JSON-safe recursively
-      return toJsonSafeDeep(decoded) as any;
+      return toJsonSafeDeep(value) as any;
     },
     /** Simulates a state-modifying contract call without executing on-chain. */
     simulateWriteContract: async <

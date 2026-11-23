@@ -66,6 +66,18 @@ describe("Client Overrides", () => {
         };
       }
 
+      if (method === "gen_getContractSchema") {
+        return {
+          ok: true,
+          json: async () => ({
+            result: {
+              ctor: {params: [], kwparams: {}},
+              methods: {testFunction: {params: [], kwparams: {}, readonly: true, ret: "null"}},
+            },
+          }),
+        };
+      }
+
       console.warn(`[TESTS] mockFetch: Unhandled method - URL=${url}, Method=${method}, Body=`, body);
       return {
         ok: false,
