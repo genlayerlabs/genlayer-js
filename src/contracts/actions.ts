@@ -156,6 +156,26 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
     return schema;
   };
 
+  const readSchemas = new Map<string, Promise<ContractSchema | undefined>>();
+  const getReadSchema = (address: Address): Promise<ContractSchema | undefined> => {
+    const key = address.toLowerCase();
+    const cached = readSchemas.get(key);
+    if (cached) return cached;
+
+    const lookup = getContractSchema(address)
+      .catch(() => undefined)
+      .then((schema) => {
+        const methods = schema?.methods;
+        if (methods && typeof methods === "object" && !Array.isArray(methods)) {
+          return schema;
+        }
+        readSchemas.delete(key);
+        return undefined;
+      });
+    readSchemas.set(key, lookup);
+    return lookup;
+  };
+
   const estimateFeeValue = async (
     distribution: FeesDistribution,
     policy?: FeePolicyQuote,
@@ -288,7 +308,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       }
       const resultBinary = fromHex(prefixedResult, "bytes");
       const decoded = calldata.decode(resultBinary);
-      const contractSchema = schema ?? await getContractSchema(address).catch(() => undefined);
+      const contractSchema = schema ?? await getReadSchema(address);
       const methods = contractSchema ? contractSchema.methods : undefined;
       const returnSchema = methods && Object.prototype.hasOwnProperty.call(methods, functionName)
         ? methods[functionName]?.ret

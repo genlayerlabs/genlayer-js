@@ -4,7 +4,7 @@ import {encode} from "@/abi/calldata";
 import {contractActions} from "@/contracts/actions";
 import {CalldataAddress, type CalldataEncodable, type ContractParamsSchema, type GenLayerChain, type GenLayerClient} from "@/types";
 
-const address = "0x0000000000000000000000000000000000000001";
+const address = "0xa000000000000000000000000000000000000001";
 
 function setup(value: CalldataEncodable, ret: ContractParamsSchema, isStudio = true) {
   const hex = toHex(encode(value));
@@ -12,7 +12,7 @@ function setup(value: CalldataEncodable, ret: ContractParamsSchema, isStudio = t
     ctor: {params: [], kwparams: {}},
     methods: {read: {params: [], kwparams: {}, readonly: true, ret}},
   };
-  const request = vi.fn(async ({method}: {method: string}) => {
+  const request = vi.fn(async ({method}: {method: string}): Promise<unknown> => {
     switch (method) {
       case "gen_call": return {data: hex};
       case "gen_getContractCode": return "Y29kZQ==";
@@ -67,13 +67,42 @@ describe("readContract with a return schema", () => {
     expect(request.mock.calls.map(([call]) => call.method)).toEqual(["gen_call", "gen_call", "gen_call"]);
   });
 
-  it("preserves the wire result when schema lookup fails or a declaration is unavailable or incompatible", async () => {
-    const {readContract, args, request} = setup("oops", "int");
-    await expect(readContract(args)).resolves.toBe("oops");
-    await expect(readContract({...args, functionName: "constructor"})).resolves.toBe("oops");
-    request.mockImplementationOnce(async () => ({data: toHex(encode("42"))}));
-    request.mockRejectedValueOnce(new Error("Schema RPC unavailable"));
+  it("shares pending and completed lookups across reads of the same address", async () => {
+    const {readContract, args, request, hex, schema} = setup("42", "int");
+    let resolveSchema!: (result: typeof schema) => void;
+    const pendingSchema = new Promise<typeof schema>((resolve) => { resolveSchema = resolve; });
+    request.mockImplementation(async ({method}) => method === "gen_call" ? {data: hex} : pendingSchema);
+    const schemaCalls = () => request.mock.calls.filter(([call]) => call.method === "gen_getContractSchema");
+
+    const reads = Promise.all([
+      readContract(args),
+      readContract({...args, address: "0xA000000000000000000000000000000000000001"}),
+    ]);
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(3));
+    expect(schemaCalls()).toHaveLength(1);
+    resolveSchema(schema);
+    await expect(reads).resolves.toEqual([42, 42]);
+
+    await expect(readContract(args)).resolves.toBe(42);
+    expect(schemaCalls()).toHaveLength(1);
+    await expect(readContract({...args, address: "0xa000000000000000000000000000000000000002"})).resolves.toBe(42);
+    expect(schemaCalls()).toHaveLength(2);
+  });
+
+  it("retries after a rejected or unusable lookup", async () => {
+    const {readContract, args, request, hex} = setup("42", "int");
+    request.mockResolvedValueOnce({data: hex}).mockRejectedValueOnce(new Error("Schema RPC unavailable"));
     await expect(readContract(args)).resolves.toBe("42");
+    request.mockResolvedValueOnce({data: hex}).mockResolvedValueOnce("invalid schema");
+    await expect(readContract(args)).resolves.toBe("42");
+    await expect(readContract(args)).resolves.toBe(42);
+  });
+
+  it("keeps the entire wire result when a nested field is incompatible or the method is missing", async () => {
+    const wireResult = {count: "42", payload: "invalid hex"};
+    const {readContract, args} = setup(wireResult, {count: "int", payload: "bytes"});
+    await expect(readContract(args)).resolves.toEqual(wireResult);
+    await expect(readContract({...args, functionName: "constructor"})).resolves.toEqual(wireResult);
   });
 
   it("preserves extra fields, tolerates missing fields and handles repeated tuple items before a suffix", async () => {
