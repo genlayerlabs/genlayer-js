@@ -16,10 +16,14 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { FetchRetriesExhaustedError, fetchJson } from "./fetch-json-retry.mjs";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NETWORKS_REF = process.env.GENLAYER_NETWORKS_REF || "main";
 const NETWORKS_BASE = `https://raw.githubusercontent.com/genlayerlabs/genlayer-networks/${NETWORKS_REF}`;
+const ALLOW_CONDUIT_OUTAGE = ["pull_request", "push"].includes(
+  process.env.GITHUB_EVENT_NAME,
+);
 
 const CHAINS = [
   { name: "asimov", deploymentKey: "deployment_asimov_phase5" },
@@ -71,12 +75,6 @@ const CONTRACTS = [
     mode: "narrow",
   },
 ];
-
-async function fetchJson(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`GET ${url} → ${res.status}`);
-  return res.json();
-}
 
 // Canonical signature: selectors depend on (type, name, input types), not
 // parameter names or internalType. Events are keyed by topic hash, which
@@ -144,6 +142,7 @@ async function main() {
   console.log(`Checking against genlayer-networks ref: ${NETWORKS_REF}`);
   const chains = await loadChains();
   const failures = [];
+  const skippedAbis = [];
 
   for (const { name, deploymentKey, networkKey = "genlayerTestnet", deploymentsFile, abiUrl } of CHAINS) {
     const chain = chains[name];
@@ -162,6 +161,7 @@ async function main() {
       continue;
     }
 
+    let abiSourceUnavailable = false;
     for (const { jsKey, networksKey, abiPath, mode } of CONTRACTS) {
       const jsContract = chain[jsKey];
       if (!jsContract) {
@@ -182,11 +182,36 @@ async function main() {
         );
       }
 
-      const nwAbi = (
-        await fetchJson(
-          abiUrl ? abiUrl(group, networksKey) : `${NETWORKS_BASE}/${name}/${abiPath}`,
-        )
-      ).abi;
+      if (abiSourceUnavailable) continue;
+
+      const url = abiUrl
+        ? abiUrl(group, networksKey)
+        : `${NETWORKS_BASE}/${name}/${abiPath}`;
+      let artifact;
+      try {
+        artifact = await fetchJson(url);
+      } catch (err) {
+        if (
+          !(abiUrl && ALLOW_CONDUIT_OUTAGE && err instanceof FetchRetriesExhaustedError)
+        ) {
+          throw err;
+        }
+        const detail = err.message
+          .replace(/%/g, "%25")
+          .replace(/\r/g, "%0D")
+          .replace(/\n/g, "%0A");
+        console.warn(
+          `::warning title=Conduit ABI source unavailable::[${name}] Skipping ABI comparisons for ${jsKey} and later contracts. ${detail}`,
+        );
+        abiSourceUnavailable = true;
+        skippedAbis.push(name);
+        continue;
+      }
+
+      if (!Array.isArray(artifact?.abi)) {
+        throw new Error(`GET ${url} did not return an ABI array`);
+      }
+      const nwAbi = artifact.abi;
       const jsSet = canonicalSet(jsContract.abi);
       const nwSet = canonicalSet(nwAbi);
       const { missing, extra } = diffSets(jsSet, nwSet, mode);
@@ -211,9 +236,13 @@ async function main() {
     );
     process.exit(1);
   }
-  console.log(
-    "No drift. Chain files match genlayer-networks/" + NETWORKS_REF + ".",
-  );
+  if (skippedAbis.length) {
+    console.log(
+      `No drift in completed comparisons. ABI checks incomplete for: ${skippedAbis.join(", ")}.`,
+    );
+    return;
+  }
+  console.log("No drift. Chain files match genlayer-networks/" + NETWORKS_REF + ".");
 }
 
 main().catch((err) => {
