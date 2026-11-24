@@ -23,15 +23,15 @@ const NETWORKS_BASE = `https://raw.githubusercontent.com/genlayerlabs/genlayer-n
 
 const CHAINS = [
   { name: "asimov", deploymentKey: "deployment_asimov_phase5" },
-  // Bradbury Phase 2 is not in genlayer-networks yet. Its deployment file is a
-  // copy of genlayer-consensus deployments/bradbury-phase-2.json @ 7a46314 (a private
+  // Bradbury Phase 3 is not in genlayer-networks yet. Its deployment file is a
+  // copy of genlayer-consensus deployments/bradbury-phase-3.json @ v0.6.0 / 8805afb (a private
   // repo), and its ABIs come from the explorer-verified implementations.
-  // Point this entry back at genlayer-networks once Phase 2 is published there.
+  // Point this entry back at genlayer-networks once Phase 3 is published there.
   {
     name: "bradbury",
-    deploymentKey: "deployment_bradbury_phase_2",
+    deploymentKey: "deployment_bradbury_phase_3",
     networkKey: "genlayerOrbitTestnet",
-    deploymentsFile: "scripts/deployments/bradbury-phase-2.json",
+    deploymentsFile: "scripts/deployments/bradbury-phase-3.json",
     abiUrl: (group, networksKey) =>
       `https://contracts.conduit.xyz/v2/contract/4221/${group[`${networksKey}Implementation`]}?fields=abi`,
   },
@@ -118,8 +118,15 @@ function canonicalize(entry) {
 
 const canonicalSet = (abi) => new Set((abi || []).map(canonicalize));
 
+// Errors that revert from a contract ConsensusMain delegates to (Queues) and
+// bubble up through ConsensusMain calls. They are bundled in the ConsensusMain
+// ABI so viem can decode the revert, but are not part of its own ABI.
+const BUBBLED_ERRORS = new Set([
+  "error:TooFewValidatorsForAdmission(uint256,uint256)",
+]);
+
 function diffSets(jsSet, nwSet, mode) {
-  const missing = [...jsSet].filter((s) => !nwSet.has(s));
+  const missing = [...jsSet].filter((s) => !nwSet.has(s) && !BUBBLED_ERRORS.has(s));
   const extra = mode === "full" ? [...nwSet].filter((s) => !jsSet.has(s)) : [];
   return { missing, extra };
 }

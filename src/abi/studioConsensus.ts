@@ -46,7 +46,7 @@ export const studioConsensusMainAbi = [
     name: "addTransaction",
     stateMutability: "payable",
     inputs: [{name: "_params", type: "tuple", components: addTransactionParamsComponents}],
-    outputs: [],
+    outputs: [{name: "txId", type: "bytes32"}],
   },
   {
     type: "function",
