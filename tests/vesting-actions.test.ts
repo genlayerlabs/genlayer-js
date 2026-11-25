@@ -1,6 +1,8 @@
 import {describe, expect, it, vi} from "vitest";
-import {decodeFunctionData, parseEther, toHex, zeroAddress} from "viem";
-import {VESTING_ABI} from "../src/abi/vesting";
+import {decodeErrorResult, decodeFunctionData, encodeErrorResult, parseEther, toHex, zeroAddress} from "viem";
+import {VESTING_ABI, VESTING_FACTORY_ABI} from "../src/abi/vesting";
+
+const COMBINED_VESTING_ERRORS = [...VESTING_ABI, ...VESTING_FACTORY_ABI] as const;
 import {vestingActions} from "../src/vesting/actions";
 import {createOperatorRegistration} from "../src/vesting/operatorRegistration";
 
@@ -9,12 +11,12 @@ const BENEFICIARY_ADDRESS = ACCOUNT_ADDRESS;
 const VESTING_ADDRESS = "0x0000000000000000000000000000000000000022";
 const VALIDATOR_ADDRESS = "0x0000000000000000000000000000000000000033";
 const VALIDATOR_WALLET_ADDRESS = "0x0000000000000000000000000000000000000099";
-const NEW_OPERATOR_ADDRESS = "0x00000000000000000000000000000000000000bb";
 const CONSENSUS_MAIN_ADDRESS = "0x0000000000000000000000000000000000000044";
 const ADDRESS_MANAGER_ADDRESS = "0x0000000000000000000000000000000000000055";
 const FACTORY_ADDRESS = "0x0000000000000000000000000000000000000066";
 const VALIDATOR_WALLET_FACTORY_ADDRESS = "0x0000000000000000000000000000000000000077";
 const OPERATOR_KEY = "0x0000000000000000000000000000000000000000000000000000000000000002";
+const NEW_OPERATOR_KEY = "0x0000000000000000000000000000000000000000000000000000000000000003";
 const MOCK_TX_HASH = "0x1234000000000000000000000000000000000000000000000000000000001234";
 
 const makeReceipt = () => ({
@@ -202,15 +204,52 @@ describe("vestingActions", () => {
     });
 
     publicClient.call.mockClear();
+    const rotation = await createOperatorRegistration({
+      privateKey: NEW_OPERATOR_KEY,
+      registrar: VALIDATOR_WALLET_ADDRESS,
+      owner: VESTING_ADDRESS,
+      chainId: 1n,
+    });
     await actions.vestingValidatorInitiateOperatorTransfer({
       vesting: VESTING_ADDRESS,
       wallet: VALIDATOR_WALLET_ADDRESS,
-      newOperator: NEW_OPERATOR_ADDRESS,
+      registration: rotation,
     });
     expect(decodedWrite(publicClient)).toEqual({
       functionName: "vestingValidatorInitiateOperatorTransfer",
-      args: [VALIDATOR_WALLET_ADDRESS, NEW_OPERATOR_ADDRESS],
+      args: [VALIDATOR_WALLET_ADDRESS, rotation.operatorPubKey, rotation.possessionProof],
     });
+
+    publicClient.call.mockClear();
+    await actions.vestingValidatorEmergencySetOperator({
+      vesting: VESTING_ADDRESS,
+      wallet: VALIDATOR_WALLET_ADDRESS,
+      registration: rotation,
+    });
+    expect(decodedWrite(publicClient)).toEqual({
+      functionName: "vestingValidatorEmergencySetOperator",
+      args: [VALIDATOR_WALLET_ADDRESS, rotation.operatorPubKey, rotation.possessionProof],
+    });
+
+    // A join-bound proof (registrar = ValidatorWalletFactory) must not verify for rotation.
+    publicClient.call.mockClear();
+    const registration = await createOperatorRegistration({
+      privateKey: NEW_OPERATOR_KEY,
+      registrar: VALIDATOR_WALLET_FACTORY_ADDRESS,
+      owner: VESTING_ADDRESS,
+      chainId: 1n,
+    });
+    await expect(actions.vestingValidatorInitiateOperatorTransfer({
+      vesting: VESTING_ADDRESS,
+      wallet: VALIDATOR_WALLET_ADDRESS,
+      registration,
+    })).rejects.toThrow(/validator wallet as their registrar/);
+    await expect(actions.vestingValidatorEmergencySetOperator({
+      vesting: VESTING_ADDRESS,
+      wallet: VALIDATOR_WALLET_ADDRESS,
+      registration,
+    })).rejects.toThrow(/validator wallet as their registrar/);
+    expect(publicClient.call).not.toHaveBeenCalled();
 
     publicClient.call.mockClear();
     await actions.vestingValidatorCompleteOperatorTransfer({vesting: VESTING_ADDRESS, wallet: VALIDATOR_WALLET_ADDRESS});
@@ -488,5 +527,24 @@ describe("vestingActions provider lane (Address-only)", () => {
     await actions.vestingDelegatorClaim({vesting: VESTING_ADDRESS, validator: VALIDATOR_ADDRESS});
 
     expect(sentTxParams(request).gasPrice).toBeUndefined();
+  });
+
+  it("decodes v0.6.0 vesting reverts and exposes the revoker/return-beneficiary surface", () => {
+    for (const name of ["NotReturnBeneficiary", "ReturnBeneficiaryNotSet", "VestingFloorActive", "PubKeyNotOnCurve"]) {
+      const data = encodeErrorResult({abi: COMBINED_VESTING_ERRORS, errorName: name as any});
+      expect(decodeErrorResult({abi: COMBINED_VESTING_ERRORS, data}).errorName).toBe(name);
+    }
+    const vestingFns = VESTING_ABI.filter(e => e.type === "function").map(e => e.name);
+    expect(vestingFns).toEqual(expect.arrayContaining([
+      "transferRevoker", "acceptRevoker", "pendingRevoker", "renounceRevoker", "renounceCreator",
+      "vestingValidatorEmergencySetOperator",
+    ]));
+    for (const removed of ["setName", "setCategory", "setStartDate", "claimCreatorFunds"]) {
+      expect(vestingFns).not.toContain(removed);
+    }
+    expect(VESTING_FACTORY_ABI.filter(e => e.type === "function").map(e => e.name)).toEqual(expect.arrayContaining([
+      "setReturnBeneficiary", "returnUnvested", "returnBeneficiaryOf", "returnBeneficiaryFixed", "successorOf",
+    ]));
+    expect(VESTING_FACTORY_ABI.some(e => (e.name as string) === "BeneficiaryReindexed")).toBe(false);
   });
 });

@@ -98,6 +98,7 @@ Executes a state-modifying function on a contract through consensus. Returns the
 | consensusMaxRotations | `number` | no |  |
 | validUntil | `BigNumberish` | no |  |
 | fees | `TransactionFeeOptions` | no |  |
+| gas | `bigint` | no |  |
 
 **Returns:** `0x${string}`
 
@@ -117,6 +118,7 @@ Deploys a new intelligent contract to GenLayer. Returns the transaction hash.
 | consensusMaxRotations | `number` | no |  |
 | validUntil | `BigNumberish` | no |  |
 | fees | `TransactionFeeOptions` | no |  |
+| gas | `bigint` | no |  |
 
 ---
 
@@ -256,9 +258,21 @@ Checks if a transaction can be appealed.
 
 ---
 
+### getContractNft
+
+Returns the developer NFT of a deployed contract, or null when none was minted for it.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| contract | `Address` | yes |  |
+
+**Returns:** `ContractNft | null`
+
+---
+
 ### getDeveloperNft
 
-Returns a developer's NFT reward record, or null when no NFT is registered.
+Returns a developer's NFT on a pre-v0.6 NFTMinter (e.g. Asimov). Consensus v0.6 has no per-developer NFT.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

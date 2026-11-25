@@ -1,9 +1,12 @@
 import {describe, it, expect, vi} from "vitest";
 import {
   decodeAbiParameters,
+  encodeAbiParameters,
   decodeFunctionData,
   encodeFunctionData,
   keccak256,
+  MethodNotFoundRpcError,
+  toFunctionSelector,
   toHex,
 } from "viem";
 import {contractActions} from "../src/contracts/actions";
@@ -223,6 +226,31 @@ const selectorForFees = encodeFunctionData({
   }],
 }).slice(0, 10);
 
+const enabledFeeManagerPublicClient = (roundFees: bigint) => ({
+  readContract: vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
+    if (functionName === "GENPerTimeUnit") return 10n;
+    if (functionName === "storageUnitPrice") return 20n;
+    if (functionName === "quoteGasPrice") return 30n;
+    if (functionName === "receiptWrapperBytes") return 1_024n;
+    if (functionName === "useChainDerivedReceiptPrice") return false;
+    if (functionName === "calculateRoundFees") return roundFees;
+    throw new Error(`unexpected readContract ${functionName}`);
+  }),
+  getGasPrice: vi.fn().mockResolvedValue(1n),
+  call: vi.fn().mockResolvedValue({data: toHex(315_408n, {size: 32})}),
+});
+
+const studioFeeRequestMock = ({enabled}: {enabled: boolean}) => vi.fn().mockImplementation(
+  async ({method}: {method: string}) => {
+    if (method === "sim_getFeeConfig") {
+      const price = enabled ? "10" : "0";
+      return {enabled, policy: {genPerTimeUnit: price, storageUnitPrice: price, receiptGasPrice: price}};
+    }
+    if (method === "eth_gasPrice") return "0x1";
+    throw new Error(`Unexpected RPC method: ${method}`);
+  },
+);
+
 const setupWriteContractHarness = ({
   initialAbi,
   signTransactionMock,
@@ -287,12 +315,18 @@ const mockNitroReceiptGasCall = (estimatedGas: bigint) => vi.fn().mockImplementa
   },
 );
 
+const encodeNftRecord = (layout: "v0.6" | "legacy") => layout === "v0.6"
+  ? encodeAbiParameters([{type: "uint256"}, {type: "uint256"}], [123n, 5n])
+  : encodeAbiParameters([{type: "address"}, {type: "uint256"}, {type: "uint256"}], [SENDER_ADDRESS, 123n, 5n]);
+
 const setupDeveloperNftHarness = ({
   readContractMock,
   signTransactionMock,
+  nftLayout = "v0.6",
 }: {
   readContractMock?: ReturnType<typeof vi.fn>;
   signTransactionMock?: ReturnType<typeof vi.fn>;
+  nftLayout?: "v0.6" | "legacy";
 } = {}) => {
   const estimateTransactionGas = vi.fn().mockResolvedValue(21_000n);
   const signTransaction = signTransactionMock ?? vi.fn().mockRejectedValue(new Error("stop_after_encoding"));
@@ -308,16 +342,23 @@ const setupDeveloperNftHarness = ({
       expect(args).toEqual(["NFTMinter"]);
       return NFT_MINTER_ADDRESS;
     }
-    if (functionName === "developerToNFT") return 7n;
-    if (functionName === "nfts") return [SENDER_ADDRESS, 123n, 5n];
+    if (functionName === "ghostToNFT") return BigInt(RECIPIENT_ADDRESS);
+    if (functionName === "ownerOf") return SENDER_ADDRESS;
+    if (functionName === "developerToNFT") {
+      if (nftLayout === "v0.6") throw new Error("execution reverted");
+      return 7n;
+    }
     if (functionName === "getGhostsForNFT") return [RECIPIENT_ADDRESS];
+    if (functionName === "nfts") return [SENDER_ADDRESS, 123n, 5n];
     if (functionName === "getClaimableRewardsFromFees") return 123n;
     if (functionName === "getClaimableRewardsFromInflation") return 456n;
     throw new Error(`Unexpected readContract ${functionName}`);
   });
+  const call = vi.fn().mockResolvedValue({data: encodeNftRecord(nftLayout)});
 
   const publicClient = {
     readContract,
+    call,
     waitForTransactionReceipt: vi.fn().mockResolvedValue({status: "success"}),
   };
   const client = {
@@ -352,17 +393,17 @@ const setupDeveloperNftHarness = ({
 };
 
 describe("contractActions developer NFT actions", () => {
-  it("returns developer NFT data from the AddressManager-resolved NFTMinter", async () => {
-    const {actions, readContract} = setupDeveloperNftHarness();
+  it.each(["v0.6", "legacy"] as const)("returns a contract's NFT from a %s NFTMinter", async (nftLayout) => {
+    const {actions, readContract, publicClient} = setupDeveloperNftHarness({nftLayout});
 
-    const nft = await actions.getDeveloperNft({developer: SENDER_ADDRESS});
+    const nft = await actions.getContractNft({contract: RECIPIENT_ADDRESS});
 
     expect(nft).toEqual({
-      nftId: 7n,
-      developer: SENDER_ADDRESS,
+      nftId: BigInt(RECIPIENT_ADDRESS),
+      contract: RECIPIENT_ADDRESS,
+      owner: SENDER_ADDRESS,
       claimableRewards: 123n,
       lastClaimedEpoch: 5n,
-      ghosts: [RECIPIENT_ADDRESS],
     });
     expect(readContract).toHaveBeenCalledWith(expect.objectContaining({
       address: MAIN_CONTRACT_ADDRESS,
@@ -376,34 +417,51 @@ describe("contractActions developer NFT actions", () => {
     }));
     expect(readContract).toHaveBeenCalledWith(expect.objectContaining({
       address: NFT_MINTER_ADDRESS,
-      functionName: "developerToNFT",
-      args: [SENDER_ADDRESS],
+      functionName: "ghostToNFT",
+      args: [RECIPIENT_ADDRESS],
     }));
     expect(readContract).toHaveBeenCalledWith(expect.objectContaining({
       address: NFT_MINTER_ADDRESS,
-      functionName: "nfts",
-      args: [7n],
+      functionName: "ownerOf",
+      args: [BigInt(RECIPIENT_ADDRESS)],
     }));
-    expect(readContract).toHaveBeenCalledWith(expect.objectContaining({
-      address: NFT_MINTER_ADDRESS,
-      functionName: "getGhostsForNFT",
-      args: [7n],
-    }));
+    expect((publicClient as any).call).toHaveBeenCalledWith({
+      to: NFT_MINTER_ADDRESS,
+      data: encodeFunctionData({abi: NFT_MINTER_ABI, functionName: "nfts", args: [BigInt(RECIPIENT_ADDRESS)]}),
+    });
   });
 
-  it("returns null when a developer has no NFT", async () => {
+  it("returns null when no NFT was minted for a contract", async () => {
     const readContract = vi.fn().mockImplementation(async ({functionName}: {functionName: string}) => {
       if (functionName === "getAddressManager") return ADDRESS_MANAGER_ADDRESS;
       if (functionName === "getAddressNonZero") return NFT_MINTER_ADDRESS;
-      if (functionName === "developerToNFT") return 0n;
+      if (functionName === "ghostToNFT") return 0n;
       throw new Error(`Unexpected readContract ${functionName}`);
     });
     const {actions} = setupDeveloperNftHarness({readContractMock: readContract});
 
-    await expect(actions.getDeveloperNft({developer: SENDER_ADDRESS})).resolves.toBeNull();
+    await expect(actions.getContractNft({contract: RECIPIENT_ADDRESS})).resolves.toBeNull();
     expect(readContract).not.toHaveBeenCalledWith(expect.objectContaining({
       functionName: "nfts",
     }));
+  });
+
+  it("returns a developer's NFT from a pre-v0.6 NFTMinter", async () => {
+    const {actions} = setupDeveloperNftHarness({nftLayout: "legacy"});
+
+    await expect(actions.getDeveloperNft({developer: SENDER_ADDRESS})).resolves.toEqual({
+      nftId: 7n,
+      developer: SENDER_ADDRESS,
+      claimableRewards: 123n,
+      lastClaimedEpoch: 5n,
+      ghosts: [RECIPIENT_ADDRESS],
+    });
+  });
+
+  it("points per-developer lookups to getContractNft on a v0.6 NFTMinter", async () => {
+    const {actions} = setupDeveloperNftHarness({nftLayout: "v0.6"});
+
+    await expect(actions.getDeveloperNft({developer: SENDER_ADDRESS})).rejects.toThrow(/getContractNft/);
   });
 
   it("reads claimable rewards from fees and inflation on NFTMinter", async () => {
@@ -427,6 +485,17 @@ describe("contractActions developer NFT actions", () => {
       functionName: "getClaimableRewardsFromInflation",
       args: [7n, 3n],
     }));
+  });
+
+  it("refuses to broadcast an NFT claim whose estimation reverts inside a wallet error", async () => {
+    const {actions, estimateTransactionGas, signTransaction} = setupDeveloperNftHarness();
+    estimateTransactionGas.mockRejectedValueOnce(Object.assign(new Error("Internal JSON-RPC error."), {
+      code: -32603,
+      data: {code: 3, message: "execution reverted", data: "0x8d53e553"},
+    }));
+
+    await expect(actions.claimNftRewards({nftId: 7n})).rejects.toThrow(/Claim NFT rewards would revert: InsufficientFees/);
+    expect(signTransaction).not.toHaveBeenCalled();
   });
 
   it("encodes claimNftRewards to the AddressManager-resolved NFTMinter", async () => {
@@ -808,6 +877,90 @@ describe("contractActions addTransaction ABI compatibility", () => {
     const params = decoded.args[0] as any;
     expect(params.messageAllocations[0].messageType).toBe(MessageType.External);
     expect(params.messageAllocations[0].onAcceptance).toBe(false);
+  });
+
+  it.each([
+    ["deploy", (actions: any) => actions.deployContract({code: "contract"})],
+    ["write", (actions: any) => actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping"})],
+  ])("refuses a %s without fees when the network fee policy is enabled", async (_kind, send) => {
+    const {actions, estimateTransactionGas, signTransaction} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      publicClient: enabledFeeManagerPublicClient(77n),
+      feeManagerAddress: "0x00000000000000000000000000000000000000fe",
+    });
+
+    await expect(send(actions)).rejects.toThrow(/fees are required.*estimateTransactionFees/);
+    expect(estimateTransactionGas).not.toHaveBeenCalled();
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
+
+  it("refuses an empty fees object when the Studio fee policy is enabled", async () => {
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock: studioFeeRequestMock({enabled: true}),
+    });
+
+    await expect(actions.deployContract({code: "contract", fees: {}})).rejects.toThrow(/fees are required/);
+    expect(estimateTransactionGas).not.toHaveBeenCalled();
+  });
+
+  it("sends without fees when the fee policy is disabled", async () => {
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock: studioFeeRequestMock({enabled: false}),
+    });
+
+    await expect(actions.deployContract({code: "contract"})).rejects.toThrow("stop_after_encoding");
+    expect(estimateTransactionGas.mock.calls[0][0].value).toBe(0n);
+  });
+
+  it.each([
+    ["has no sim_getFeeConfig", async () => {
+      throw new MethodNotFoundRpcError(new Error("sim_getFeeConfig"), {method: "sim_getFeeConfig"});
+    }],
+    ["reports a disabled policy without a policy object", async () => ({enabled: false})],
+  ])("sends without fees when Studio %s", async (_case, feeConfig) => {
+    const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "sim_getFeeConfig") return feeConfig();
+      if (method === "eth_gasPrice") return "0x1";
+      throw new Error(`Unexpected RPC method: ${method}`);
+    });
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock,
+    });
+
+    await expect(actions.deployContract({code: "contract"})).rejects.toThrow("stop_after_encoding");
+    expect(estimateTransactionGas.mock.calls[0][0].value).toBe(0n);
+  });
+
+  it("submits an explicit zero feeValue on a fee-enabled chain", async () => {
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      publicClient: enabledFeeManagerPublicClient(77n),
+      feeManagerAddress: "0x00000000000000000000000000000000000000fe",
+    });
+
+    await expect(actions.deployContract({code: "contract", fees: {feeValue: 0n}})).rejects.toThrow("stop_after_encoding");
+    expect(estimateTransactionGas.mock.calls[0][0].value).toBe(0n);
+  });
+
+  it("keeps Studio's default gas limit when its estimation reverts", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const {actions, estimateTransactionGas, signTransaction} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      isStudio: true,
+      requestMock: studioFeeRequestMock({enabled: false}),
+    });
+    estimateTransactionGas.mockRejectedValueOnce(new Error("execution reverted: 0x8d53e553"));
+
+    await expect(actions.deployContract({code: "contract"})).rejects.toThrow("stop_after_encoding");
+    expect(signTransaction.mock.calls[0][0].gas).toBe(200_000n);
+
+    consoleError.mockRestore();
   });
 
   it("calculates v0.6 fee deposit from FeeManager when feeValue is omitted", async () => {
@@ -1245,6 +1398,21 @@ describe("contractActions addTransaction ABI compatibility", () => {
 
     expect(fees.distribution.totalMessageFees).toBe(80n);
     expect(fees.feeValue).toBe(157n);
+  });
+
+  it("reports a disabled Studio policy that exposes no policy object", async () => {
+    const requestMock = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "sim_getFeeConfig") return {enabled: false};
+      throw new Error(`Unexpected RPC method: ${method}`);
+    });
+    const {actions} = setupWriteContractHarness({initialAbi: ADD_TRANSACTION_ABI_WITH_FEES, isStudio: true, requestMock});
+
+    await expect(actions.getCurrentFeePolicy()).resolves.toMatchObject({
+      enabled: false,
+      genPerTimeUnit: 0n,
+      storageUnitPrice: 0n,
+      receiptGasPrice: 0n,
+    });
   });
 
   it("estimates Studio fee value from sim_getFeeConfig when no FeeManager contract exists", async () => {
@@ -2085,8 +2253,7 @@ describe("contractActions addTransaction ABI compatibility", () => {
     });
   });
 
-  it("decodes BudgetTooLow selector from gas estimation failures", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("refuses to send when gas estimation reverts and names the BudgetTooLow selector", async () => {
     const signTransaction = vi.fn().mockResolvedValue("0xsigned");
     const {actions, estimateTransactionGas, client} = setupWriteContractHarness({
       initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
@@ -2098,7 +2265,39 @@ describe("contractActions addTransaction ABI compatibility", () => {
 
     await expect(
       actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping", value: 0n}),
-    ).rejects.toThrow(/BudgetTooLow/);
+    ).rejects.toThrow(/would revert.*BudgetTooLow/);
+    expect(signTransaction).not.toHaveBeenCalled();
+    expect((client as any).sendRawTransaction).not.toHaveBeenCalled();
+  });
+
+  it("names TooFewValidatorsForAdmission from an RPC revert cause", async () => {
+    const signTransaction = vi.fn().mockResolvedValue("0xsigned");
+    const {actions, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      signTransactionMock: signTransaction,
+    });
+    const revertData = `${toFunctionSelector("TooFewValidatorsForAdmission(uint256,uint256)")}${"00".repeat(63)}05`;
+    estimateTransactionGas.mockRejectedValueOnce(Object.assign(new Error("An unknown RPC error occurred."), {
+      cause: {code: 3, message: "execution reverted", data: revertData},
+    }));
+
+    await expect(
+      actions.deployContract({code: "contract", fees: {feeValue: 0n}}),
+    ).rejects.toThrow(/TooFewValidatorsForAdmission/);
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
+
+  it("keeps the default gas limit when estimation fails without a revert", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const {actions, estimateTransactionGas, signTransaction} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+    });
+    estimateTransactionGas.mockRejectedValueOnce(new Error("fetch failed"));
+
+    await expect(
+      actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping", value: 0n}),
+    ).rejects.toThrow("stop_after_encoding");
+    expect(signTransaction.mock.calls[0][0].gas).toBe(200_000n);
 
     consoleError.mockRestore();
   });
@@ -2137,6 +2336,51 @@ describe("contractActions addTransaction ABI compatibility", () => {
     await expect(
       actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping", value: 0n}),
     ).rejects.toThrow("Transaction not processed by consensus");
+  });
+
+  it("sends a write with explicit gas as is, without estimating", async () => {
+    const {actions, estimateTransactionGas, signTransaction} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+    });
+    estimateTransactionGas.mockRejectedValue(new Error("execution reverted: 0x305e533c"));
+
+    await expect(
+      actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping", value: 0n, gas: 750_000n}),
+    ).rejects.toThrow("stop_after_encoding");
+    expect(estimateTransactionGas).not.toHaveBeenCalled();
+    expect(signTransaction.mock.calls[0][0].gas).toBe(750_000n);
+  });
+
+  it("sends a deploy with explicit gas through an external wallet without estimating", async () => {
+    const request = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "eth_gasPrice") return "0x1";
+      if (method === "eth_sendTransaction") throw new Error("stop_after_send");
+      throw new Error(`Unexpected RPC method: ${method}`);
+    });
+    const {actions, client, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      requestMock: request,
+    });
+    (client as any).account = {address: SENDER_ADDRESS, type: "json-rpc"};
+
+    await expect(
+      actions.deployContract({code: "contract", fees: {feeValue: 0n}, gas: 0x1234n}),
+    ).rejects.toThrow("stop_after_send");
+    expect(estimateTransactionGas).not.toHaveBeenCalled();
+    const sent = request.mock.calls.find(([arg]) => arg.method === "eth_sendTransaction")![0];
+    expect(sent.params[0].gas).toBe("0x1234");
+  });
+
+  it.each([0n, -1n, 500_000])("rejects explicit gas %s that is not a positive bigint", async gas => {
+    const {actions, signTransaction} = setupWriteContractHarness({initialAbi: ADD_TRANSACTION_ABI_WITH_FEES});
+
+    await expect(
+      actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping", value: 0n, gas: gas as bigint}),
+    ).rejects.toThrow(`gas must be a positive bigint, got ${typeof gas} ${gas}`);
+    await expect(
+      actions.deployContract({code: "contract", fees: {feeValue: 0n}, gas: gas as bigint}),
+    ).rejects.toThrow("gas must be a positive bigint");
+    expect(signTransaction).not.toHaveBeenCalled();
   });
 });
 
@@ -2856,6 +3100,26 @@ describe("contractActions finalizeTransaction", () => {
     await expect(
       actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID}),
     ).rejects.toThrow(/Finalize reverted/);
+  });
+
+  it("estimates consensus calls from the signer and refuses to broadcast a revert", async () => {
+    const {actions, signTransaction, estimateTransactionGas} = setupFinalizeHarness();
+    estimateTransactionGas.mockRejectedValueOnce(new Error("execution reverted: 0x8d53e553"));
+
+    await expect(actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID})).rejects.toThrow(/would revert.*InsufficientFees/);
+    expect(estimateTransactionGas.mock.calls[0][0].from).toBe(SENDER_ADDRESS);
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
+
+  it("keeps the default consensus-call gas limit when estimation fails without a revert", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const {actions, signTransaction, estimateTransactionGas} = setupFinalizeHarness();
+    estimateTransactionGas.mockRejectedValueOnce(new Error("fetch failed"));
+
+    await actions.finalizeTransaction({txId: MOCK_GENLAYER_TX_ID});
+    expect(signTransaction.mock.calls[0][0].gas).toBe(200_000n);
+
+    consoleError.mockRestore();
   });
 
   it("does not broadcast when the lifecycle action is not Finalize", async () => {
