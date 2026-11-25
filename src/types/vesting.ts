@@ -94,11 +94,20 @@ export interface VestingValidatorClaimOptions {
   wallet: Address;
 }
 
+/**
+ * Rotates the operator of a vesting-owned validator wallet. `registration` must be
+ * built with the validator wallet as its registrar and the vesting contract as its
+ * owner (see getVestingOperatorTransferContext) — the wallet verifies the possession
+ * proof itself, unlike vestingValidatorJoin where the ValidatorWalletFactory does.
+ */
 export interface VestingValidatorInitiateOperatorTransferOptions {
   vesting: Address;
   wallet: Address;
-  newOperator: Address;
+  registration: OperatorRegistrationProof;
 }
+
+/** Same proof binding as VestingValidatorInitiateOperatorTransferOptions. */
+export type VestingValidatorEmergencySetOperatorOptions = VestingValidatorInitiateOperatorTransferOptions;
 
 export interface VestingValidatorWalletOptions {
   vesting: Address;
@@ -197,6 +206,7 @@ export interface VestingActions {
   vestingValidatorInitiateOperatorTransfer: (options: VestingValidatorInitiateOperatorTransferOptions) => Promise<VestingTransactionResult>;
   vestingValidatorCompleteOperatorTransfer: (options: VestingValidatorWalletOptions) => Promise<VestingTransactionResult>;
   vestingValidatorCancelOperatorTransfer: (options: VestingValidatorWalletOptions) => Promise<VestingTransactionResult>;
+  vestingValidatorEmergencySetOperator: (options: VestingValidatorEmergencySetOperatorOptions) => Promise<VestingTransactionResult>;
   vestingValidatorSetIdentity: (options: VestingValidatorSetIdentityOptions) => Promise<VestingTransactionResult>;
   vestingWithdraw: (options: VestingWithdrawOptions) => Promise<VestingWithdrawResult>;
 
@@ -221,6 +231,7 @@ export interface VestingActions {
   vestingFactory: (vesting: Address) => Promise<Address>;
   vestingAddressManager: (vesting: Address) => Promise<Address>;
   getVestingValidatorRegistrationContext: (vesting: Address) => Promise<OperatorRegistrationContext>;
+  getVestingOperatorTransferContext: (vesting: Address, wallet: Address) => Promise<OperatorRegistrationContext>;
   vestingTotalAmount: (vesting: Address) => Promise<bigint>;
   vestingStartDate: (vesting: Address) => Promise<bigint>;
   vestingCliffDuration: (vesting: Address) => Promise<bigint>;

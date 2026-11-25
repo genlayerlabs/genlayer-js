@@ -23,7 +23,7 @@ import {
 import {GenLayerChain} from "./chains";
 import {Address, Account} from "./accounts";
 import {CalldataEncodable} from "./calldata";
-import {ContractSchema, DeveloperNft} from "./contracts";
+import {ContractNft, ContractSchema, DeveloperNft} from "./contracts";
 import {Network} from "./network";
 import {SnapSource} from "@/types/snapSource";
 import {MetaMaskClientResult} from "@/types/metamaskClientResult";
@@ -89,6 +89,8 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       consensusMaxRotations?: number;
       validUntil?: BigNumberish;
       fees?: TransactionFeeOptions;
+      /** EVM gas limit; skips gas estimation and its revert check */
+      gas?: bigint;
     }) => Promise<any>;
     simulateWriteContract: <
       RawReturn extends boolean | undefined = undefined,
@@ -117,6 +119,8 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       consensusMaxRotations?: number;
       validUntil?: BigNumberish;
       fees?: TransactionFeeOptions;
+      /** EVM gas limit; skips gas estimation and its revert check */
+      gas?: bigint;
     }) => Promise<`0x${string}`>;
     getTransaction: (args: {hash: TransactionHash}) => Promise<GenLayerTransaction>;
     advanced: {
@@ -167,6 +171,8 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
     getRoundData: (args: {txId: `0x${string}`; round: bigint}) => Promise<ConsensusRoundData>;
     getLastRoundData: (args: {txId: `0x${string}`}) => Promise<ConsensusLastRoundData>;
     canAppeal: (args: {txId: `0x${string}`}) => Promise<boolean>;
+    getContractNft: (args: {contract: Address}) => Promise<ContractNft | null>;
+    /** Pre-v0.6 NFTMinter only (e.g. Asimov); throws on consensus v0.6, which mints one NFT per contract. */
     getDeveloperNft: (args: {developer: Address}) => Promise<DeveloperNft | null>;
     getClaimableRewardsFromFees: (args: {nftId: BigNumberish}) => Promise<bigint>;
     getClaimableRewardsFromInflation: (args: {
