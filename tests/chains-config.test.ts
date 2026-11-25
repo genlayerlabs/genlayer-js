@@ -32,18 +32,18 @@ describe("Studio chain presets", () => {
 });
 
 describe("Bradbury chain preset", () => {
-  it("targets the Bradbury Phase 2 deployment", () => {
+  it("targets the Bradbury Phase 3 deployment", () => {
     expect(testnetBradbury).toMatchObject({
       id: 4221,
       isStudio: false,
       rpcUrls: {default: {http: ["https://rpc.testnet-chain.genlayer.com"]}},
       blockExplorers: {default: {url: "https://scan.testnet-chain.genlayer.com"}},
     });
-    expect(testnetBradbury.consensusMainContract?.address).toBe("0x2E2766cbc3E5e61Ce93bBcdCBb3eAcB82082A019");
-    expect(testnetBradbury.consensusDataContract?.address).toBe("0xc5FA6f82BEe53598825d6edf7E3e24613082c75B");
-    expect(testnetBradbury.stakingContract?.address).toBe("0xD8fBa96C0dBB0257028dBc0107060b958e5c7113");
-    expect(testnetBradbury.feeManagerContract?.address).toBe("0x7678587A847712f2A96082AC07883A88D0fc7245");
-    expect(testnetBradbury.roundsStorageContract?.address).toBe("0x4038d4F72C7aAbA5a442cC0dA946012B9E3f4B8a");
-    expect(testnetBradbury.appealsContract?.address).toBe("0xdc953c3bCf8837987853ca05a78D52fFC3E18651");
+    expect(testnetBradbury.consensusMainContract?.address).toBe("0x0f4F0e05475723790E4a2ed0598370783C300926");
+    expect(testnetBradbury.consensusDataContract?.address).toBe("0x2247b85b7ca7fb1Fea990b4aFAB4328D9c597f28");
+    expect(testnetBradbury.stakingContract?.address).toBe("0xcE16862EAf10B97A0619BeBb662991fb4a52e346");
+    expect(testnetBradbury.feeManagerContract?.address).toBe("0x8E8B6194020dB1CbEf9C6c9dcFeE8FfF1e5E33c3");
+    expect(testnetBradbury.roundsStorageContract?.address).toBe("0xa6bdB728B82c23786D6e3CAfc0B97235490A64Fb");
+    expect(testnetBradbury.appealsContract?.address).toBe("0x10F2d70ABB8F588f96bEB1a02c99163EB75A2CF1");
   });
 });

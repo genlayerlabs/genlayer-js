@@ -23,6 +23,7 @@ import {GenLayerChain} from "@/types";
 import {Abi, PublicClient, Address, keccak256, concat, stringToBytes, toBytes, zeroAddress, parseAbiItem} from "viem";
 import {decodeLocalnetTransaction, decodeTransaction, simplifyTransactionReceipt} from "./decoders";
 import {isMethodNotFoundError, readStudioLifecycleFallback} from "./lifecycleFallback";
+import {hasAbiFunction, resolveProtocolAddress} from "@/contracts/protocolAddresses";
 import {
   ADDRESS_MANAGER_TRAIN_ABI,
   CONSENSUS_DATA_BIG_ROUNDS_TRAIN_ABI,
@@ -623,11 +624,14 @@ export const transactionActions = (client: GenLayerClient<GenLayerChain>, public
     const consensusAddress = client.chain.consensusMainContract?.address as Address;
     const consensusAbi = client.chain.consensusMainContract?.abi as Abi;
 
-    const queuesAddress = await publicClient.readContract({
-      address: consensusAddress,
-      abi: consensusAbi,
-      functionName: "queues",
-    }) as Address;
+    // Studio's ConsensusMain exposes queues(); consensus v0.6 registers Queues in the AddressManager.
+    const queuesAddress = hasAbiFunction(consensusAbi, "queues")
+      ? await publicClient.readContract({
+        address: consensusAddress,
+        abi: consensusAbi,
+        functionName: "queues",
+      }) as Address
+      : await resolveProtocolAddress({client, publicClient, key: "Queues"});
 
     const QUEUES_ABI = [
       {

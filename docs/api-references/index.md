@@ -127,6 +127,13 @@ const txHash = await client.writeContract({
 });
 ```
 
+On a chain whose fee policy is enabled, `deployContract` and `writeContract`
+reject a call without `fees` before sending anything. On network chains, when
+gas estimation shows the envelope would revert, the SDK throws instead of
+broadcasting a failing transaction, and names known fee and admission errors.
+Pass `gas` to set the EVM gas limit yourself; that skips estimation and the
+revert check, and sends the transaction as is.
+
 When `rotations` is omitted from an estimate, the SDK funds every round through
 the chain's `defaultConsensusMaxRotations`. Pass `rotations` explicitly—including
 `[0n]`—when the transaction should use a lower rotation budget.
@@ -496,3 +503,7 @@ We welcome contributions to GenLayerJS SDK! Whether it's new features, improved 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+### v0.6 consumer migration
+
+See [the v2 migration guide](docs/consumer-migration-v06.md) for the staking rewards rename, producer ABI changes, execution generation, and package selection.

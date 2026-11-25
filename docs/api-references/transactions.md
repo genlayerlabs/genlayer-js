@@ -83,11 +83,14 @@ Use advanced.getTransactionLifecycle for protocol projection/action details.
 
 ### getTriggeredTransactionIds
 
-Returns transaction IDs of child transactions created from emitted messages.
+Returns canonical child IDs committed for this parent, including deferred delivery.
+This is historical creation evidence, not child completion or current-generation status.
+Pass the deployment block as fromBlock to avoid scanning earlier chain history.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | hash | `TransactionHash` | yes |  |
+| fromBlock | `bigint` | no |  |
 
 **Returns:** `TransactionHash[]`
 
