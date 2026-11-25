@@ -1,10 +1,13 @@
 import * as calldata from "@/abi/calldata";
 import {serialize} from "@/abi/transactions";
-import {ADDRESS_MANAGER_ABI, NFT_MINTER_ABI} from "@/abi/nftMinter";
+import {NFT_MINTER_ABI, NFT_MINTER_PRE_V06_ABI} from "@/abi/nftMinter";
+import {resolveProtocolAddress} from "@/contracts/protocolAddresses";
+import {isMethodNotFoundError} from "@/transactions/lifecycleFallback";
 
 import {
   Account,
   ContractSchema,
+  ContractNft,
   DeveloperNft,
   GenLayerChain,
   GenLayerClient,
@@ -30,7 +33,7 @@ import {
   ConsensusRoundData,
   ConsensusLastRoundData,
 } from "@/types";
-import {fromHex, toHex, zeroAddress, encodeFunctionData, decodeFunctionResult, PublicClient, parseEventLogs, type Abi} from "viem";
+import {fromHex, toHex, zeroAddress, encodeFunctionData, decodeAbiParameters, decodeFunctionResult, PublicClient, parseEventLogs, type Hex} from "viem";
 import {toJsonSafeDeep, b64ToArray, arrayToB64} from "@/utils/jsonifier";
 import {
   CALL_KEY_WILDCARD,
@@ -717,49 +720,75 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         blockNumber: context.blockNumber,
       }) as Promise<boolean>;
     },
-    /** Returns a developer's NFT reward record, or null when no NFT is registered. */
-    getDeveloperNft: async (args: {developer: Address}): Promise<DeveloperNft | null> => {
+    /** Returns the developer NFT of a deployed contract, or null when none was minted for it. */
+    getContractNft: async (args: {contract: Address}): Promise<ContractNft | null> => {
       const nftMinterAddress = await _resolveNftMinterAddress({client, publicClient});
       const nftId = await publicClient.readContract({
         address: nftMinterAddress,
         abi: NFT_MINTER_ABI,
-        functionName: "developerToNFT",
-        args: [args.developer],
+        functionName: "ghostToNFT",
+        args: [args.contract],
       }) as bigint;
 
       if (nftId === 0n) {
         return null;
       }
 
-      const [nftData, ghosts] = await Promise.all([
+      const [record, owner] = await Promise.all([
+        publicClient.call({
+          to: nftMinterAddress,
+          data: encodeFunctionData({abi: NFT_MINTER_ABI, functionName: "nfts", args: [nftId]}),
+        }),
         publicClient.readContract({
           address: nftMinterAddress,
           abi: NFT_MINTER_ABI,
+          functionName: "ownerOf",
+          args: [nftId],
+        }),
+      ]) as [{data?: Hex}, Address];
+      const [claimableRewards, lastClaimedEpoch] = _decodeNftRecord(record.data);
+
+      return {nftId, contract: args.contract, owner, claimableRewards, lastClaimedEpoch};
+    },
+    /** Returns a developer's NFT on a pre-v0.6 NFTMinter (e.g. Asimov). Consensus v0.6 has no per-developer NFT. */
+    getDeveloperNft: async (args: {developer: Address}): Promise<DeveloperNft | null> => {
+      const nftMinterAddress = await _resolveNftMinterAddress({client, publicClient});
+      let nftId: bigint;
+      try {
+        nftId = await publicClient.readContract({
+          address: nftMinterAddress,
+          abi: NFT_MINTER_PRE_V06_ABI,
+          functionName: "developerToNFT",
+          args: [args.developer],
+        }) as bigint;
+      } catch (error) {
+        if (!_isExecutionRevert(error)) throw error;
+        throw new Error(
+          "This NFTMinter mints one NFT per deployed contract (consensus v0.6): use getContractNft({contract}).",
+          {cause: error},
+        );
+      }
+
+      if (nftId === 0n) {
+        return null;
+      }
+
+      const [[developer, claimableRewards, lastClaimedEpoch], ghosts] = await Promise.all([
+        publicClient.readContract({
+          address: nftMinterAddress,
+          abi: NFT_MINTER_PRE_V06_ABI,
           functionName: "nfts",
           args: [nftId],
         }),
         publicClient.readContract({
           address: nftMinterAddress,
-          abi: NFT_MINTER_ABI,
+          abi: NFT_MINTER_PRE_V06_ABI,
           functionName: "getGhostsForNFT",
           args: [nftId],
         }),
-      ]) as [
-        readonly [Address, bigint, bigint] & {
-          developer?: Address;
-          claimableRewards?: bigint;
-          lastClaimedEpoch?: bigint;
-        },
-        Address[],
-      ];
+      ]) as [readonly [Address, bigint, bigint], Address[]];
 
-      return {
-        nftId,
-        developer: nftData.developer ?? nftData[0],
-        claimableRewards: nftData.claimableRewards ?? nftData[1],
-        lastClaimedEpoch: nftData.lastClaimedEpoch ?? nftData[2],
-        ghosts,
-      };
+      return {nftId, developer, claimableRewards, lastClaimedEpoch, ghosts};
     },
     /** Returns claimable developer-NFT rewards accrued from transaction fees. */
     getClaimableRewardsFromFees: async (args: {nftId: BigNumberish}): Promise<bigint> => {
@@ -1293,75 +1322,28 @@ const toUInt = (value: BigNumberish | undefined, fieldName: string, fallback: bi
   return normalized;
 };
 
-const hasAbiFunction = (abi: readonly unknown[] | undefined, functionName: string): boolean => {
-  if (!Array.isArray(abi)) {
-    return false;
-  }
-  return abi.some(item => {
-    if (!item || typeof item !== "object") {
-      return false;
-    }
-    const candidate = item as {type?: string; name?: string};
-    return candidate.type === "function" && candidate.name === functionName;
-  });
-};
-
-const _resolveAddressManagerAddress = async ({
+const _resolveNftMinterAddress = ({
   client,
   publicClient,
 }: {
   client: GenLayerClient<GenLayerChain>;
   publicClient: PublicClient;
-}): Promise<`0x${string}`> => {
-  const consensusMainContract = client.chain.consensusMainContract;
-  if (!consensusMainContract?.address) {
-    throw new Error("NFTMinter address resolution not supported on this chain (missing consensusMainContract).");
+}): Promise<Address> => resolveProtocolAddress({client, publicClient, key: "NFTMinter"});
+
+/** Reads `nfts(id)` as (claimableRewards, lastClaimedEpoch); pre-v0.6 minters prefix it with the developer. */
+const _decodeNftRecord = (data: Hex | undefined): readonly [bigint, bigint] => {
+  const words = data ? (data.length - 2) / 64 : 0;
+  if (words === 3) {
+    const [, claimableRewards, lastClaimedEpoch] = decodeAbiParameters(
+      [{type: "address"}, {type: "uint256"}, {type: "uint256"}],
+      data as Hex,
+    );
+    return [claimableRewards, lastClaimedEpoch];
   }
-
-  const functionName = hasAbiFunction(consensusMainContract.abi, "getAddressManager")
-    ? "getAddressManager"
-    : hasAbiFunction(consensusMainContract.abi, "addressManager")
-      ? "addressManager"
-      : undefined;
-
-  if (!functionName) {
-    throw new Error("NFTMinter address resolution not supported on this chain (missing AddressManager getter).");
+  if (words === 2) {
+    return decodeAbiParameters([{type: "uint256"}, {type: "uint256"}], data as Hex);
   }
-
-  const addressManagerAddress = await publicClient.readContract({
-    address: consensusMainContract.address as `0x${string}`,
-    abi: consensusMainContract.abi as Abi,
-    functionName,
-    args: [],
-  }) as Address;
-
-  if (addressManagerAddress.toLowerCase() === zeroAddress) {
-    throw new Error("NFTMinter address resolution failed: AddressManager is zero.");
-  }
-
-  return addressManagerAddress as `0x${string}`;
-};
-
-const _resolveNftMinterAddress = async ({
-  client,
-  publicClient,
-}: {
-  client: GenLayerClient<GenLayerChain>;
-  publicClient: PublicClient;
-}): Promise<`0x${string}`> => {
-  const addressManagerAddress = await _resolveAddressManagerAddress({client, publicClient});
-  const nftMinterAddress = await publicClient.readContract({
-    address: addressManagerAddress,
-    abi: ADDRESS_MANAGER_ABI,
-    functionName: "getAddressNonZero",
-    args: ["NFTMinter"],
-  }) as Address;
-
-  if (nftMinterAddress.toLowerCase() === zeroAddress) {
-    throw new Error("NFTMinter address resolution failed: AddressManager returned zero.");
-  }
-
-  return nftMinterAddress as `0x${string}`;
+  throw new Error(`Unexpected NFTMinter.nfts return size: ${words} words.`);
 };
 
 const getDefaultValidUntil = () => BigInt(Math.floor(Date.now() / 1000) + 3600);
@@ -1422,6 +1404,72 @@ const withTransactionGasHeadroom = (value: bigint): bigint => {
   return (value * TRANSACTION_GAS_HEADROOM_BPS + 9_999n) / 10_000n;
 };
 
+const KNOWN_REVERT_SELECTOR_NAMES: Record<string, string> = {
+  "0x8d53e553": "InsufficientFees",
+  "0xb4132db3": "MaxPriceExceeded",
+  "0x57df8523": "ExecutionBudgetExceeded",
+  "0x305e533c": "BudgetTooLow",
+  "0xa70732ee": "RollupBudgetBelowFloor",
+  "0x632be5a1": "FeeValueMustBeNonZero",
+  "0x024e1a36": "TooFewValidatorsForAdmission",
+};
+
+/** The error, its causes, and object-valued `data` (where injected wallets nest the RPC error). */
+const _rpcErrorChain = (error: unknown): Record<string, unknown>[] => {
+  const chain: Record<string, unknown>[] = [];
+  const pending = [error];
+  while (pending.length > 0 && chain.length < 16) {
+    const current = pending.shift();
+    if (!current || typeof current !== "object" || chain.includes(current as Record<string, unknown>)) continue;
+    const record = current as Record<string, unknown>;
+    chain.push(record);
+    pending.push(record.cause, record.data);
+  }
+  return chain;
+};
+
+const _describeRpcError = (error: unknown): string => {
+  // viem's message repeats shortMessage plus multi-line details and version lines.
+  const parts = _rpcErrorChain(error).flatMap(record =>
+    [typeof record.shortMessage === "string" ? "shortMessage" : "message", "details", "data"]
+      .map(key => record[key])
+      .filter((value): value is string => typeof value === "string" && value.trim() !== "")
+      .map(value => value.replace(/\s+/g, " ").trim()),
+  );
+  const text = Array.from(new Set(parts)).join("; ");
+  const selectorName = Object.entries(KNOWN_REVERT_SELECTOR_NAMES)
+    .find(([selector]) => new RegExp(`(?<![0-9a-fA-Fx])${selector}`).test(text))?.[1];
+  return selectorName && !text.includes(selectorName)
+    ? `${selectorName} (${text})`
+    : text;
+};
+
+const _isExecutionRevert = (error: unknown): boolean => _rpcErrorChain(error).some(record =>
+  Number(record.code) === 3 ||
+  (typeof record.message === "string" && /execution reverted/i.test(record.message)),
+);
+
+/**
+ * Estimates gas for an EVM envelope. On networks a revert is fatal: sending anyway
+ * would mine a failing transaction. Studio validates the envelope itself, so it and
+ * other estimation failures fall back to a fixed limit.
+ */
+const _estimateGasOrDefault = async (
+  client: GenLayerClient<GenLayerChain>,
+  params: {from: Address; to: Address; data: `0x${string}`; value?: bigint},
+  operationName: string,
+): Promise<{gas: bigint; fallback: false} | {gas: bigint; fallback: true; estimationError: string}> => {
+  try {
+    return {gas: await client.estimateTransactionGas(params), fallback: false};
+  } catch (err) {
+    if (!client.chain.isStudio && _isExecutionRevert(err)) {
+      throw new Error(`${operationName} would revert: ${_describeRpcError(err)}`, {cause: err});
+    }
+    console.error("Gas estimation failed, using default 200_000:", err);
+    return {gas: 200_000n, fallback: true, estimationError: _describeRpcError(err) || String(err)};
+  }
+};
+
 const bigintFromUnknown = (value: unknown, fieldName: string, fallback = 0n): bigint => {
   if (value == null) return fallback;
   if (typeof value === "bigint") return value;
@@ -1466,7 +1514,8 @@ const extractStudioFeePolicy = (config: unknown): FeePolicyQuote => {
 
   const policyRecord = policy && typeof policy === "object" && !Array.isArray(policy)
     ? policy as Record<string, unknown>
-    : undefined;
+    // A disabled policy may omit its prices; they are all zero then.
+    : enabled === false ? {} : undefined;
   if (!policyRecord) {
     throw new Error(`sim_getFeeConfig did not expose a policy object.`);
   }
@@ -2048,6 +2097,20 @@ const calculateLocalRoundFees = (
     (distribution.executionBudgetPerRound * leaderRounds);
 };
 
+/** Whether the chain charges fees. Studio builds without sim_getFeeConfig do not. */
+const _isFeePolicyEnabled = async (
+  client: GenLayerClient<GenLayerChain>,
+  publicClient: PublicClient,
+): Promise<boolean> => {
+  if (!client.chain.isStudio && !client.chain.feeManagerContract?.address) return false;
+  try {
+    return (await readCurrentFeePolicy(client, publicClient)).enabled;
+  } catch (error) {
+    if (client.chain.isStudio && isMethodNotFoundError(error)) return false;
+    throw error;
+  }
+};
+
 const _resolveTransactionFees = async ({
   client,
   publicClient,
@@ -2059,6 +2122,17 @@ const _resolveTransactionFees = async ({
   fees?: TransactionFeeOptions;
   numOfInitialValidators: number;
 }): Promise<NormalizedTransactionFees> => {
+  const callerSetFees = fees?.distribution !== undefined ||
+    fees?.messageAllocations !== undefined ||
+    fees?.feeValue !== undefined;
+  if (!callerSetFees && await _isFeePolicyEnabled(client, publicClient)) {
+    // A zero-fee submission would be mined and revert, costing gas.
+    throw new Error(
+      "fees are required on this chain: build them with estimateTransactionFees() " +
+        "(or estimateTransactionFeesForWrite() for a write) and pass {distribution, feeValue}.",
+    );
+  }
+
   const transactionFees = normalizeTransactionFees(fees);
   if (transactionFees.feeValue !== undefined || !requiresFeeDepositCalculation(transactionFees.distribution)) {
     return {
@@ -2496,18 +2570,11 @@ const _sendEvmContractCall = async ({
   const validatedAccount = validateAccount(senderAccount);
   const nonce = await client.getCurrentNonce({address: validatedAccount.address});
 
-  let estimatedGas: bigint;
-  try {
-    estimatedGas = await client.estimateTransactionGas({
-      from: validatedAccount.address,
-      to,
-      data: encodedData,
-      value,
-    });
-  } catch (err) {
-    console.error("Gas estimation failed, using default 200_000:", err);
-    estimatedGas = 200_000n;
-  }
+  const {gas: estimatedGas} = await _estimateGasOrDefault(
+    client,
+    {from: validatedAccount.address, to, data: encodedData, value},
+    operationName,
+  );
 
   const gasPriceHex = (await client.request({method: "eth_gasPrice"})) as string;
 
@@ -2577,17 +2644,11 @@ const _sendConsensusCall = async ({
   const validatedAccount = validateAccount(senderAccount);
   const nonce = await client.getCurrentNonce({address: validatedAccount.address});
 
-  let estimatedGas: bigint;
-  try {
-    estimatedGas = await client.estimateTransactionGas({
-      to: client.chain.consensusMainContract.address,
-      data: encodedData,
-      value,
-    });
-  } catch (err) {
-    console.error("Gas estimation failed, using default 200_000:", err);
-    estimatedGas = 200_000n;
-  }
+  const {gas: estimatedGas} = await _estimateGasOrDefault(
+    client,
+    {from: validatedAccount.address, to: client.chain.consensusMainContract.address, data: encodedData, value},
+    operationName,
+  );
 
   const gasPriceHex = (await client.request({method: "eth_gasPrice"})) as string;
 
@@ -2677,61 +2738,19 @@ const _sendTransaction = async ({
   const validatedSenderAccount = validateAccount(senderAccount);
   const nonce = await client.getCurrentNonce({address: validatedSenderAccount.address});
 
-  const knownRevertSelectorNames: Record<string, string> = {
-    "0x8d53e553": "InsufficientFees",
-    "0xb4132db3": "MaxPriceExceeded",
-    "0x57df8523": "ExecutionBudgetExceeded",
-    "0x305e533c": "BudgetTooLow",
-    "0xa70732ee": "RollupBudgetBelowFloor",
-    "0x632be5a1": "FeeValueMustBeNonZero",
-  };
-
-  const stringifyRpcError = (error: unknown): string => {
-    const parts: string[] = [];
-    if (error instanceof Error) {
-      parts.push(error.message);
-    }
-    const record = error && typeof error === "object" ? error as Record<string, unknown> : {};
-    for (const key of ["details", "shortMessage", "data"]) {
-      const value = record[key];
-      if (typeof value === "string" && value.trim() !== "") {
-        parts.push(value);
-      }
-    }
-    const cause = record.cause;
-    if (cause && typeof cause === "object") {
-      const causeRecord = cause as Record<string, unknown>;
-      for (const key of ["message", "data"]) {
-        const value = causeRecord[key];
-        if (typeof value === "string" && value.trim() !== "") {
-          parts.push(value);
-        }
-      }
-    }
-    const text = Array.from(new Set(parts)).join(" ");
-    const selectorName = Object.entries(knownRevertSelectorNames)
-      .find(([selector]) => text.includes(selector))?.[1];
-    return selectorName && !text.includes(selectorName)
-      ? `${text} (${selectorName})`
-      : text;
-  };
-
   const sendWithEncodedData = async (transactionVariant: EncodedTransactionVariant) => {
-    let estimatedGas: bigint;
-    let gasEstimationError: string | undefined;
-    try {
-      estimatedGas = await client.estimateTransactionGas({
+    const estimate = await _estimateGasOrDefault(
+      client,
+      {
         from: validatedSenderAccount.address,
         to: client.chain.consensusMainContract?.address as Address,
         data: transactionVariant.encodedData,
         value: transactionVariant.value,
-      });
-      estimatedGas = withTransactionGasHeadroom(estimatedGas);
-    } catch (err) {
-      gasEstimationError = stringifyRpcError(err);
-      console.error("Gas estimation failed, using default 200_000:", err);
-      estimatedGas = 200_000n;
-    }
+      },
+      "Transaction",
+    );
+    const estimatedGas = estimate.fallback ? estimate.gas : withTransactionGasHeadroom(estimate.gas);
+    const gasEstimationError = estimate.fallback ? estimate.estimationError : undefined;
 
     // For local accounts, build transaction request directly to avoid viem's
     // prepareTransactionRequest which calls eth_fillTransaction (unsupported by GenLayer RPC)

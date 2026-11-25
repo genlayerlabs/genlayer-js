@@ -33,6 +33,16 @@ export type ContractSchema = {
   methods: Record<string, ContractMethod>;
 };
 
+/** A contract's developer NFT. Consensus v0.6 mints one per deployed contract, with the contract address as token id. */
+export interface ContractNft {
+  nftId: bigint;
+  contract: Address;
+  owner: Address;
+  claimableRewards: bigint;
+  lastClaimedEpoch: bigint;
+}
+
+/** A developer NFT on a pre-v0.6 NFTMinter, which kept one NFT per developer. */
 export interface DeveloperNft {
   nftId: bigint;
   developer: Address;

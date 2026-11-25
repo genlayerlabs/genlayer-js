@@ -256,9 +256,21 @@ Checks if a transaction can be appealed.
 
 ---
 
+### getContractNft
+
+Returns the developer NFT of a deployed contract, or null when none was minted for it.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| contract | `Address` | yes |  |
+
+**Returns:** `ContractNft | null`
+
+---
+
 ### getDeveloperNft
 
-Returns a developer's NFT reward record, or null when no NFT is registered.
+Returns a developer's NFT on a pre-v0.6 NFTMinter (e.g. Asimov). Consensus v0.6 has no per-developer NFT.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
