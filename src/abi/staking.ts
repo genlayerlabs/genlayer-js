@@ -1317,6 +1317,7 @@ export const SLASH_ABI = [
       {name: "txId", type: "bytes32", indexed: false},
       {name: "epoch", type: "uint256", indexed: false},
       {name: "percentage", type: "uint256", indexed: false},
+      {name: "txStatus", type: "uint8", indexed: false},
     ],
   },
   {
