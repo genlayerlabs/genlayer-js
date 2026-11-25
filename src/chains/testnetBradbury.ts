@@ -6,11 +6,11 @@ const TESTNET_JSON_RPC_URL = "https://rpc.testnet-chain.genlayer.com";
 // WebSocket not available on testnet GenLayer RPC nodes
 
 const STAKING_CONTRACT = {
-  address: "0xD8fBa96C0dBB0257028dBc0107060b958e5c7113" as Address,
+  address: "0xcE16862EAf10B97A0619BeBb662991fb4a52e346" as Address,
   abi: STAKING_ABI,
 };
 const FEE_MANAGER_CONTRACT = {
-  address: "0x7678587A847712f2A96082AC07883A88D0fc7245" as Address,
+  address: "0x8E8B6194020dB1CbEf9C6c9dcFeE8FfF1e5E33c3" as Address,
   abi: [
     {
       type: "function" as const,
@@ -28,7 +28,7 @@ const FEE_MANAGER_CONTRACT = {
   ],
 };
 const ROUNDS_STORAGE_CONTRACT = {
-  address: "0x4038d4F72C7aAbA5a442cC0dA946012B9E3f4B8a" as Address,
+  address: "0xa6bdB728B82c23786D6e3CAfc0B97235490A64Fb" as Address,
   abi: [
     {
       type: "function" as const,
@@ -100,7 +100,7 @@ const ROUNDS_STORAGE_CONTRACT = {
   ],
 };
 const APPEALS_CONTRACT = {
-  address: "0xdc953c3bCf8837987853ca05a78D52fFC3E18651" as Address,
+  address: "0x10F2d70ABB8F588f96bEB1a02c99163EB75A2CF1" as Address,
   abi: [
     {
       type: "function" as const,
@@ -118,7 +118,7 @@ const APPEALS_CONTRACT = {
 };
 const EXPLORER_URL = "https://scan.testnet-chain.genlayer.com";
 const CONSENSUS_MAIN_CONTRACT = {
-  address: "0x2E2766cbc3E5e61Ce93bBcdCBb3eAcB82082A019" as Address,
+  address: "0x0f4F0e05475723790E4a2ed0598370783C300926" as Address,
   abi: [
   {
     "inputs": [],
@@ -236,6 +236,22 @@ const CONSENSUS_MAIN_CONTRACT = {
   {
     "inputs": [],
     "name": "RollupBudgetBelowFloor",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "count",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "minimum",
+        "type": "uint256"
+      }
+    ],
+    "name": "TooFewValidatorsForAdmission",
     "type": "error"
   },
   {
@@ -749,6 +765,19 @@ const CONSENSUS_MAIN_CONTRACT = {
     "inputs": [
       {
         "indexed": true,
+        "internalType": "address",
+        "name": "recipient",
+        "type": "address"
+      }
+    ],
+    "name": "SuccessorPumpDeferred",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
         "internalType": "bytes32",
         "name": "txId",
         "type": "bytes32"
@@ -806,6 +835,31 @@ const CONSENSUS_MAIN_CONTRACT = {
       }
     ],
     "name": "TransactionFinalized",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "txId",
+        "type": "bytes32"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "oldLeader",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newLeader",
+        "type": "address"
+      }
+    ],
+    "name": "TransactionLeaderReplaced",
     "type": "event"
   },
   {
@@ -1454,6 +1508,39 @@ const CONSENSUS_MAIN_CONTRACT = {
       }
     ],
     "name": "continueRecomputation",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "txId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "uint256",
+        "name": "decisionId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "recipient",
+        "type": "address"
+      },
+      {
+        "internalType": "bool",
+        "name": "processMessages",
+        "type": "bool"
+      },
+      {
+        "internalType": "bool",
+        "name": "sendOnAcceptance",
+        "type": "bool"
+      }
+    ],
+    "name": "deferRecoveredFinalization",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -2305,7 +2392,7 @@ const CONSENSUS_MAIN_CONTRACT = {
     ],
     "name": "proposeReceiptWithMessages",
     "outputs": [],
-    "stateMutability": "nonpayable",
+    "stateMutability": "pure",
     "type": "function"
   },
   {
@@ -2325,11 +2412,50 @@ const CONSENSUS_MAIN_CONTRACT = {
     "inputs": [
       {
         "internalType": "address",
-        "name": "ghost",
+        "name": "recipient",
         "type": "address"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "currentTxId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bool",
+        "name": "withFees",
+        "type": "bool"
       }
     ],
-    "name": "registerGhostContract",
+    "name": "pumpHeadBatchItem",
+    "outputs": [
+      {
+        "internalType": "bool",
+        "name": "cancelledOnly",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "recipient",
+        "type": "address"
+      },
+      {
+        "internalType": "bytes32",
+        "name": "currentTxId",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bool",
+        "name": "withFees",
+        "type": "bool"
+      }
+    ],
+    "name": "pumpSuccessors",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -2691,6 +2817,19 @@ const CONSENSUS_MAIN_CONTRACT = {
     "type": "function"
   },
   {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "txId",
+        "type": "bytes32"
+      }
+    ],
+    "name": "voidFrozenAppeal",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "stateMutability": "payable",
     "type": "receive"
   }
@@ -2699,7 +2838,7 @@ const CONSENSUS_MAIN_CONTRACT = {
 };
 
 const CONSENSUS_DATA_CONTRACT = {
-  address: "0xc5FA6f82BEe53598825d6edf7E3e24613082c75B" as Address,
+  address: "0x2247b85b7ca7fb1Fea990b4aFAB4328D9c597f28" as Address,
   abi: [
   {
     "inputs": [],

@@ -1113,3 +1113,47 @@ describe("simplifyTransactionReceipt", () => {
     expect(genvm.exit_code).toBe(1);
   });
 });
+
+describe("getTransactionQueuePosition", () => {
+  const txId = `0x${"11".repeat(32)}` as TransactionHash;
+  const consensusAddress = "0x00000000000000000000000000000000000000c0";
+  const addressManagerAddress = "0x00000000000000000000000000000000000000a0";
+  const queuesAddress = "0x00000000000000000000000000000000000000b0";
+  const abiWith = (name: string) => [
+    {type: "function", name, stateMutability: "view", inputs: [], outputs: [{name: "", type: "address"}]},
+  ];
+  const setup = (consensusAbi: unknown[]) => {
+    const readContract = vi.fn().mockImplementation(async ({functionName, args}: {functionName: string; args?: unknown[]}) => {
+      if (functionName === "getAddressManager" || functionName === "addressManager") return addressManagerAddress;
+      if (functionName === "getAddressNonZero") {
+        expect(args).toEqual(["Queues"]);
+        return queuesAddress;
+      }
+      if (functionName === "queues") return queuesAddress;
+      if (functionName === "getTransactionQueuePosition") return 4n;
+      throw new Error(`Unexpected readContract ${functionName}`);
+    });
+    const client = {chain: {consensusMainContract: {address: consensusAddress, abi: consensusAbi}}};
+    return {actions: transactionActions(client as any, {readContract} as any), readContract};
+  };
+
+  it("resolves Queues through the AddressManager on consensus v0.6", async () => {
+    const {actions, readContract} = setup(abiWith("getAddressManager"));
+
+    await expect(actions.getTransactionQueuePosition({hash: txId})).resolves.toBe(4);
+    expect(readContract).toHaveBeenCalledWith(expect.objectContaining({
+      address: queuesAddress,
+      functionName: "getTransactionQueuePosition",
+      args: [txId],
+    }));
+    expect(readContract).not.toHaveBeenCalledWith(expect.objectContaining({functionName: "queues"}));
+  });
+
+  it("keeps the ConsensusMain queues() getter on Studio", async () => {
+    const {actions, readContract} = setup(abiWith("queues"));
+
+    await expect(actions.getTransactionQueuePosition({hash: txId})).resolves.toBe(4);
+    expect(readContract).toHaveBeenCalledWith(expect.objectContaining({address: consensusAddress, functionName: "queues"}));
+    expect(readContract).not.toHaveBeenCalledWith(expect.objectContaining({functionName: "getAddressNonZero"}));
+  });
+});

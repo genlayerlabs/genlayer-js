@@ -31,6 +31,7 @@ import {
   VestingTransactionResult,
   VestingValidatorClaimOptions,
   VestingValidatorDepositOptions,
+  VestingValidatorEmergencySetOperatorOptions,
   VestingValidatorExitOptions,
   VestingValidatorInitiateOperatorTransferOptions,
   VestingValidatorJoinOptions,
@@ -298,6 +299,40 @@ export const vestingActions = (
     };
   };
 
+  // Rotation proofs are verified by the validator wallet itself
+  // (PubKeyUtils.validateWithPossession(pubKey, address(this), owner(), proof)),
+  // so the registrar is the wallet and the owner is the vesting contract.
+  const getVestingOperatorTransferContext = async (vesting: Address, wallet: Address) => {
+    const chainId = await publicClient.getChainId();
+    return {
+      registrar: wallet,
+      owner: vesting,
+      chainId: BigInt(chainId),
+    };
+  };
+
+  const encodeVestingOperatorRotation = async (
+    functionName: "vestingValidatorInitiateOperatorTransfer" | "vestingValidatorEmergencySetOperator",
+    options: VestingValidatorInitiateOperatorTransferOptions,
+  ) => {
+    const context = await getVestingOperatorTransferContext(options.vesting, options.wallet);
+    if (!await verifyOperatorRegistration(options.registration, context)) {
+      throw new Error(
+        "Operator registration proof does not match the wallet, vesting, chain, or public key. " +
+          "Rotation proofs must use the validator wallet as their registrar and the vesting as owner.",
+      );
+    }
+    return encodeFunctionData({
+      abi: VESTING_ABI,
+      functionName,
+      args: [
+        options.wallet as ViemAddress,
+        options.registration.operatorPubKey,
+        options.registration.possessionProof,
+      ],
+    });
+  };
+
   const getVestingContract = (vesting: Address): VestingContract => {
     return getContract({
       address: vesting as ViemAddress,
@@ -415,11 +450,7 @@ export const vestingActions = (
 
     /** Begins a two-step operator transfer for a vesting-owned validator wallet. */
     vestingValidatorInitiateOperatorTransfer: async (options: VestingValidatorInitiateOperatorTransferOptions): Promise<VestingTransactionResult> => {
-      const data = encodeFunctionData({
-        abi: VESTING_ABI,
-        functionName: "vestingValidatorInitiateOperatorTransfer",
-        args: [options.wallet as ViemAddress, options.newOperator as ViemAddress],
-      });
+      const data = await encodeVestingOperatorRotation("vestingValidatorInitiateOperatorTransfer", options);
       return executeWrite({to: options.vesting as ViemAddress, data});
     },
 
@@ -440,6 +471,12 @@ export const vestingActions = (
         functionName: "vestingValidatorCancelOperatorTransfer",
         args: [options.wallet as ViemAddress],
       });
+      return executeWrite({to: options.vesting as ViemAddress, data});
+    },
+
+    /** Immediately replaces the operator of a vesting-owned validator wallet, skipping the transfer delay. */
+    vestingValidatorEmergencySetOperator: async (options: VestingValidatorEmergencySetOperatorOptions): Promise<VestingTransactionResult> => {
+      const data = await encodeVestingOperatorRotation("vestingValidatorEmergencySetOperator", options);
       return executeWrite({to: options.vesting as ViemAddress, data});
     },
 
@@ -646,6 +683,7 @@ export const vestingActions = (
     vestingFactory: (vesting: Address): Promise<Address> => readVesting<Address>(vesting, "factory"),
     vestingAddressManager: (vesting: Address): Promise<Address> => readVesting<Address>(vesting, "addressManager"),
     getVestingValidatorRegistrationContext,
+    getVestingOperatorTransferContext,
     vestingTotalAmount: (vesting: Address): Promise<bigint> => readVesting<bigint>(vesting, "totalAmount"),
     vestingStartDate: (vesting: Address): Promise<bigint> => readVesting<bigint>(vesting, "startDate"),
     vestingCliffDuration: (vesting: Address): Promise<bigint> => readVesting<bigint>(vesting, "cliffDuration"),
