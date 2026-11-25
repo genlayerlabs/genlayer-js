@@ -1,5 +1,42 @@
 
 
+## [2.1.0](https://github.com/genlayerlabs/genlayer-js/compare/v2.0.0...v2.1.0) (2026-11-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **contracts:** VestingValidatorInitiateOperatorTransferOptions replaces
+`newOperator: Address` with `registration: OperatorRegistrationProof`, which
+must be built with createOperatorRegistration using the validator wallet as
+registrar and the vesting contract as owner.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+* fix(chains): move Bradbury to Phase 3 and resync ABIs to consensus v0.6.0
+
+- testnetBradbury: Phase 3 addresses from genlayer-consensus
+  deployments/bradbury-phase-3.json (v0.6.0, 8805afb) for ConsensusMain,
+  ConsensusData, Staking, FeeManager, RoundsStorage and Appeals.
+- ConsensusMain ABI regenerated from v0.6.0 ConsensusMainWithFees: drops
+  registerGhostContract, proposeReceiptWithMessages is now pure, adds
+  TransactionLeaderReplaced, SuccessorPumpDeferred, deferRecoveredFinalization,
+  pumpHeadBatchItem, pumpSuccessors, voidFrozenAppeal. Bundles the Queues
+  TooFewValidatorsForAdmission error so admission reverts decode.
+- SLASH_ABI: SlashedFromIdleness gains uint8 txStatus.
+- studioConsensus: addTransaction returns bytes32 txId.
+- consumer ABI fixture re-pinned to v0.6.0 (entries unchanged).
+- check:chains reads the pinned Phase 3 deployment file.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+* fix(contracts): require explicit fees and support v0.6 NFTs and queues 🐛
+
+* feat(contracts): send writes and deploys with explicit gas unestimated ✨
+
+### Bug Fixes
+
+* **contracts:** Bradbury Phase 3 tooling cut — explicit fees, v0.6 NFTs and queues ([#265](https://github.com/genlayerlabs/genlayer-js/issues/265)) ([9171177](https://github.com/genlayerlabs/genlayer-js/commit/9171177cc84c118283c3d4a0a32ad62493fef551)), closes [#208](https://github.com/genlayerlabs/genlayer-js/issues/208)
+
 ## [2.0.0](https://github.com/genlayerlabs/genlayer-js/compare/v2.0.0-rc.3...v2.0.0) (2026-11-23)
 
 ## [2.0.0-rc.3](https://github.com/genlayerlabs/genlayer-js/compare/v2.0.0-rc.2...v2.0.0-rc.3) (2026-11-10)
