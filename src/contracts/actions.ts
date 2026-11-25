@@ -365,6 +365,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       consensusMaxRotations?: number;
       validUntil?: BigNumberish;
       fees?: TransactionFeeOptions;
+      gas?: bigint;
     }): Promise<`0x${string}`> => {
       const {
         account,
@@ -377,7 +378,9 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         consensusMaxRotations = client.chain.defaultConsensusMaxRotations,
         validUntil,
         fees,
+        gas,
       } = args;
+      _assertExplicitGas(gas);
 
       const data = [calldata.encode(calldata.makeCalldataObject(functionName, callArgs, kwargs)), leaderOnly];
       const serializedData = serialize(data);
@@ -403,6 +406,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         publicClient,
         transactionVariants,
         senderAccount,
+        gas,
       });
     },
     /** Deploys a new intelligent contract to GenLayer. Returns the transaction hash. */
@@ -415,6 +419,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
       consensusMaxRotations?: number;
       validUntil?: BigNumberish;
       fees?: TransactionFeeOptions;
+      gas?: bigint;
     }) => {
       const {
         account,
@@ -425,7 +430,9 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         consensusMaxRotations = client.chain.defaultConsensusMaxRotations,
         validUntil,
         fees,
+        gas,
       } = args;
+      _assertExplicitGas(gas);
 
       const data = [
         code,
@@ -455,6 +462,7 @@ export const contractActions = (client: GenLayerClient<GenLayerChain>, publicCli
         publicClient,
         transactionVariants,
         senderAccount,
+        gas,
       });
     },
     /** Returns the active fee price policy used to build user-side caps. */
@@ -1467,6 +1475,12 @@ const _estimateGasOrDefault = async (
     }
     console.error("Gas estimation failed, using default 200_000:", err);
     return {gas: 200_000n, fallback: true, estimationError: _describeRpcError(err) || String(err)};
+  }
+};
+
+const _assertExplicitGas = (gas: bigint | undefined) => {
+  if (gas !== undefined && (typeof gas !== "bigint" || gas <= 0n)) {
+    throw new Error(`gas must be a positive bigint, got ${typeof gas} ${String(gas)}`);
   }
 };
 
@@ -2722,11 +2736,13 @@ const _sendTransaction = async ({
   publicClient,
   transactionVariants,
   senderAccount,
+  gas,
 }: {
   client: GenLayerClient<GenLayerChain>;
   publicClient: PublicClient;
   transactionVariants: EncodedTransactionVariant[];
   senderAccount?: Account;
+  gas?: bigint;
 }) => {
   if (!client.chain.consensusMainContract?.address) {
     throw new Error(`Consensus main contract address not found in chain config for "${client.chain.name}".`);
@@ -2739,18 +2755,25 @@ const _sendTransaction = async ({
   const nonce = await client.getCurrentNonce({address: validatedSenderAccount.address});
 
   const sendWithEncodedData = async (transactionVariant: EncodedTransactionVariant) => {
-    const estimate = await _estimateGasOrDefault(
-      client,
-      {
-        from: validatedSenderAccount.address,
-        to: client.chain.consensusMainContract?.address as Address,
-        data: transactionVariant.encodedData,
-        value: transactionVariant.value,
-      },
-      "Transaction",
-    );
-    const estimatedGas = estimate.fallback ? estimate.gas : withTransactionGasHeadroom(estimate.gas);
-    const gasEstimationError = estimate.fallback ? estimate.estimationError : undefined;
+    let estimatedGas: bigint;
+    let gasEstimationError: string | undefined;
+    if (gas !== undefined) {
+      // Explicit gas skips estimation and its revert check, as in viem and ethers.
+      estimatedGas = gas;
+    } else {
+      const estimate = await _estimateGasOrDefault(
+        client,
+        {
+          from: validatedSenderAccount.address,
+          to: client.chain.consensusMainContract?.address as Address,
+          data: transactionVariant.encodedData,
+          value: transactionVariant.value,
+        },
+        "Transaction",
+      );
+      estimatedGas = estimate.fallback ? estimate.gas : withTransactionGasHeadroom(estimate.gas);
+      gasEstimationError = estimate.fallback ? estimate.estimationError : undefined;
+    }
 
     // For local accounts, build transaction request directly to avoid viem's
     // prepareTransactionRequest which calls eth_fillTransaction (unsupported by GenLayer RPC)

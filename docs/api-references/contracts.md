@@ -98,6 +98,7 @@ Executes a state-modifying function on a contract through consensus. Returns the
 | consensusMaxRotations | `number` | no |  |
 | validUntil | `BigNumberish` | no |  |
 | fees | `TransactionFeeOptions` | no |  |
+| gas | `bigint` | no |  |
 
 **Returns:** `0x${string}`
 
@@ -117,6 +118,7 @@ Deploys a new intelligent contract to GenLayer. Returns the transaction hash.
 | consensusMaxRotations | `number` | no |  |
 | validUntil | `BigNumberish` | no |  |
 | fees | `TransactionFeeOptions` | no |  |
+| gas | `bigint` | no |  |
 
 ---
 

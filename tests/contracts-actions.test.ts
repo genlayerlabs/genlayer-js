@@ -2337,6 +2337,51 @@ describe("contractActions addTransaction ABI compatibility", () => {
       actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping", value: 0n}),
     ).rejects.toThrow("Transaction not processed by consensus");
   });
+
+  it("sends a write with explicit gas as is, without estimating", async () => {
+    const {actions, estimateTransactionGas, signTransaction} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+    });
+    estimateTransactionGas.mockRejectedValue(new Error("execution reverted: 0x305e533c"));
+
+    await expect(
+      actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping", value: 0n, gas: 750_000n}),
+    ).rejects.toThrow("stop_after_encoding");
+    expect(estimateTransactionGas).not.toHaveBeenCalled();
+    expect(signTransaction.mock.calls[0][0].gas).toBe(750_000n);
+  });
+
+  it("sends a deploy with explicit gas through an external wallet without estimating", async () => {
+    const request = vi.fn().mockImplementation(async ({method}: {method: string}) => {
+      if (method === "eth_gasPrice") return "0x1";
+      if (method === "eth_sendTransaction") throw new Error("stop_after_send");
+      throw new Error(`Unexpected RPC method: ${method}`);
+    });
+    const {actions, client, estimateTransactionGas} = setupWriteContractHarness({
+      initialAbi: ADD_TRANSACTION_ABI_WITH_FEES,
+      requestMock: request,
+    });
+    (client as any).account = {address: SENDER_ADDRESS, type: "json-rpc"};
+
+    await expect(
+      actions.deployContract({code: "contract", fees: {feeValue: 0n}, gas: 0x1234n}),
+    ).rejects.toThrow("stop_after_send");
+    expect(estimateTransactionGas).not.toHaveBeenCalled();
+    const sent = request.mock.calls.find(([arg]) => arg.method === "eth_sendTransaction")![0];
+    expect(sent.params[0].gas).toBe("0x1234");
+  });
+
+  it.each([0n, -1n, 500_000])("rejects explicit gas %s that is not a positive bigint", async gas => {
+    const {actions, signTransaction} = setupWriteContractHarness({initialAbi: ADD_TRANSACTION_ABI_WITH_FEES});
+
+    await expect(
+      actions.writeContract({address: RECIPIENT_ADDRESS, functionName: "ping", value: 0n, gas: gas as bigint}),
+    ).rejects.toThrow(`gas must be a positive bigint, got ${typeof gas} ${gas}`);
+    await expect(
+      actions.deployContract({code: "contract", fees: {feeValue: 0n}, gas: gas as bigint}),
+    ).rejects.toThrow("gas must be a positive bigint");
+    expect(signTransaction).not.toHaveBeenCalled();
+  });
 });
 
 const FINALIZE_TX_ABI = [

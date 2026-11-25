@@ -135,6 +135,8 @@ On a chain whose fee policy is enabled, `deployContract` and `writeContract`
 reject a call without `fees` before sending anything. On network chains, when
 gas estimation shows the envelope would revert, the SDK throws instead of
 broadcasting a failing transaction, and names known fee and admission errors.
+Pass `gas` to set the EVM gas limit yourself; that skips estimation and the
+revert check, and sends the transaction as is.
 
 When `rotations` is omitted from an estimate, the SDK funds every round through
 the chain's `defaultConsensusMaxRotations`. Pass `rotations` explicitly—including

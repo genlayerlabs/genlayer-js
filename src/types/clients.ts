@@ -89,6 +89,8 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       consensusMaxRotations?: number;
       validUntil?: BigNumberish;
       fees?: TransactionFeeOptions;
+      /** EVM gas limit; skips gas estimation and its revert check */
+      gas?: bigint;
     }) => Promise<any>;
     simulateWriteContract: <
       RawReturn extends boolean | undefined = undefined,
@@ -117,6 +119,8 @@ export type GenLayerClient<TGenLayerChain extends GenLayerChain> = Omit<
       consensusMaxRotations?: number;
       validUntil?: BigNumberish;
       fees?: TransactionFeeOptions;
+      /** EVM gas limit; skips gas estimation and its revert check */
+      gas?: bigint;
     }) => Promise<`0x${string}`>;
     getTransaction: (args: {hash: TransactionHash}) => Promise<GenLayerTransaction>;
     advanced: {
