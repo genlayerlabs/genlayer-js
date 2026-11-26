@@ -1,5 +1,12 @@
 
 
+## [2.2.0](https://github.com/genlayerlabs/genlayer-js/compare/v2.1.0...v2.2.0) (2026-11-26)
+
+
+### Features
+
+* **chains:** add testnetClarke preset ✨ ([#267](https://github.com/genlayerlabs/genlayer-js/issues/267)) ([f187b50](https://github.com/genlayerlabs/genlayer-js/commit/f187b509b9b79944a17a216d0f00ba573fb088ba))
+
 ## [2.1.0](https://github.com/genlayerlabs/genlayer-js/compare/v2.0.0...v2.1.0) (2026-11-25)
 
 
