@@ -33,3 +33,80 @@ describe("calldata method-call encoding", () => {
     expect(decoded.has("kwargs")).toBe(true);
   });
 });
+
+describe("calldata decoder canonicality", () => {
+  it("rejects a truncated ULEB128 instead of reading past the input", () => {
+    expect(() => calldata.decode(new Uint8Array([0x80]))).toThrow(
+      "unexpected end of calldata",
+    );
+  });
+
+  it("rejects overlong ULEB128 encodings", () => {
+    expect(() => calldata.decode(new Uint8Array([0x80, 0x00]))).toThrow(
+      "most significant ULEB128 octet cannot be zero",
+    );
+  });
+
+  it.each([
+    ["address", new Uint8Array([0x18])],
+    ["bytes", new Uint8Array([0x0b])],
+    ["string", new Uint8Array([0x0c])],
+    ["array element", new Uint8Array([0x0d])],
+    ["map entry", new Uint8Array([0x0e])],
+  ])("rejects truncated %s payloads immediately", (_name, encoded) => {
+    expect(() => calldata.decode(encoded)).toThrow("unexpected end of calldata");
+  });
+
+  it("rejects invalid UTF-8 strings", () => {
+    expect(() => calldata.decode(new Uint8Array([0x0c, 0xff]))).toThrow(
+      "invalid UTF-8 in calldata",
+    );
+  });
+
+  it("rejects invalid UTF-8 map keys", () => {
+    expect(() =>
+      calldata.decode(new Uint8Array([0x0e, 0x01, 0xff, 0x00])),
+    ).toThrow("invalid UTF-8 in calldata");
+  });
+
+  it("rejects unordered map keys", () => {
+    const encoded = new Uint8Array([
+      0x16,
+      0x01,
+      0x62,
+      0x00,
+      0x01,
+      0x61,
+      0x00,
+    ]);
+
+    expect(() => calldata.decode(encoded)).toThrow(
+      "unordered calldata keys: 'b' >= 'a'",
+    );
+  });
+
+  it("rejects duplicate map keys", () => {
+    const encoded = new Uint8Array([
+      0x16,
+      0x01,
+      0x61,
+      0x00,
+      0x01,
+      0x61,
+      0x00,
+    ]);
+
+    expect(() => calldata.decode(encoded)).toThrow(
+      "unordered calldata keys: 'a' >= 'a'",
+    );
+  });
+
+  it("still round-trips canonical nested calldata", () => {
+    const input = new Map<string, CalldataEncodable>([
+      ["alpha", [1n, "hello", new Uint8Array([0x00, 0xff])]],
+      ["emoji", "😀"],
+    ]);
+
+    expect(calldata.decode(calldata.encode(input))).toEqual(input);
+  });
+});
