@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Drift check: compare src/chains/testnet{Asimov,Bradbury}.ts against the
+// Drift check: compare src/chains/testnet{Asimov,Bradbury,Clarke}.ts against the
 // current contract artifacts on github.com/genlayerlabs/genlayer-networks
 // (default branch). Fires when genlayer-js has diverged from upstream — e.g.
 // when a new contract has been deployed or an ABI has changed on-chain and
@@ -32,6 +32,16 @@ const CHAINS = [
     deploymentKey: "deployment_bradbury_phase_3",
     networkKey: "genlayerOrbitTestnet",
     deploymentsFile: "scripts/deployments/bradbury-phase-3.json",
+    abiUrl: (group, networksKey) =>
+      `https://contracts.conduit.xyz/v2/contract/4221/${group[`${networksKey}Implementation`]}?fields=abi`,
+  },
+  // Clarke is not in genlayer-networks yet either: its deployment file is a copy
+  // of genlayer-consensus deployments/clarke.json @ 8e0550cdf
+  {
+    name: "clarke",
+    deploymentKey: "deployment_clarke",
+    networkKey: "genlayerOrbitTestnet",
+    deploymentsFile: "scripts/deployments/clarke.json",
     abiUrl: (group, networksKey) =>
       `https://contracts.conduit.xyz/v2/contract/4221/${group[`${networksKey}Implementation`]}?fields=abi`,
   },
@@ -144,7 +154,7 @@ async function loadChains() {
     );
   }
   const mod = await import(distPath);
-  return { asimov: mod.testnetAsimov, bradbury: mod.testnetBradbury };
+  return { asimov: mod.testnetAsimov, bradbury: mod.testnetBradbury, clarke: mod.testnetClarke };
 }
 
 async function main() {
