@@ -7,7 +7,12 @@ function reportError(msg: string, data: CalldataEncodable): never {
 
 function toStringImplMap(data: Iterable<[string, CalldataEncodable]>, to: string[]) {
     to.push("{");
+    let first = true;
     for (const [k, v] of data) {
+      if (!first) {
+        to.push(",");
+      }
+      first = false;
       to.push(JSON.stringify(k));
       to.push(":");
       toStringImpl(v, to);
@@ -48,13 +53,17 @@ function toStringImplMap(data: Iterable<[string, CalldataEncodable]>, to: string
         if (data instanceof Uint8Array) {
           to.push("b#");
           for (const b of data) {
-            to.push(b.toString(16));
+            to.push(b.toString(16).padStart(2, "0"));
           }
         } else if (data instanceof Array) {
           to.push("[");
+          let first = true;
           for (const c of data) {
+            if (!first) {
+              to.push(",");
+            }
+            first = false;
             toStringImpl(c, to);
-            to.push(",");
           }
           to.push("]");
         } else if (data instanceof Map) {
@@ -62,7 +71,7 @@ function toStringImplMap(data: Iterable<[string, CalldataEncodable]>, to: string
         } else if (data instanceof CalldataAddress) {
           to.push("addr#");
           for (const c of data.bytes) {
-            to.push(c.toString(16));
+            to.push(c.toString(16).padStart(2, "0"));
           }
         } else if (Object.getPrototypeOf(data) === Object.prototype) {
           toStringImplMap(Object.entries(data), to);
