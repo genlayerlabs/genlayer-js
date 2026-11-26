@@ -6,6 +6,7 @@
 import {describe, it, expect, beforeAll} from "vitest";
 import {testnetAsimov} from "@/chains/testnetAsimov";
 import {testnetBradbury} from "@/chains/testnetBradbury";
+import {testnetClarke} from "@/chains/testnetClarke";
 import {createClient} from "@/client/client";
 import {Address} from "@/types/accounts";
 import {TransactionHash} from "@/types/transactions";
@@ -16,6 +17,7 @@ const TIMEOUT = 30_000;
 const testnets: {name: string; chain: GenLayerChain}[] = [
   {name: "Asimov", chain: testnetAsimov},
   {name: "Bradbury", chain: testnetBradbury},
+  {name: "Clarke", chain: testnetClarke},
 ];
 
 for (const {name, chain} of testnets) {

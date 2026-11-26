@@ -3,6 +3,7 @@ import {studionet} from "@/chains/studionet";
 import {studioDevnet} from "@/chains/studioDevnet";
 import {testnetAsimov} from "@/chains/testnetAsimov";
 import {testnetBradbury} from "@/chains/testnetBradbury";
+import {testnetClarke} from "@/chains/testnetClarke";
 import {GenLayerClient, GenLayerChain} from "@/types";
 import {Network} from "@/types/network";
 import {SnapSource} from "@/types/snapSource";
@@ -14,6 +15,7 @@ const networks = {
   studioDevnet,
   testnetAsimov,
   testnetBradbury,
+  testnetClarke,
 };
 
 export const connect = async (
