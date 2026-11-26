@@ -1,5 +1,5 @@
 import {describe, expect, it} from "vitest";
-import {studioDevnet, studionet, testnetBradbury} from "../src/chains";
+import {studioDevnet, studionet, testnetBradbury, testnetClarke} from "../src/chains";
 
 describe("Studio chain presets", () => {
   it("exports the dedicated Studio preview deployment", () => {
@@ -45,5 +45,35 @@ describe("Bradbury chain preset", () => {
     expect(testnetBradbury.feeManagerContract?.address).toBe("0x8E8B6194020dB1CbEf9C6c9dcFeE8FfF1e5E33c3");
     expect(testnetBradbury.roundsStorageContract?.address).toBe("0xa6bdB728B82c23786D6e3CAfc0B97235490A64Fb");
     expect(testnetBradbury.appealsContract?.address).toBe("0x10F2d70ABB8F588f96bEB1a02c99163EB75A2CF1");
+  });
+});
+
+describe("Clarke chain preset", () => {
+  it("targets the Clarke deployment on the Bradbury chain", () => {
+    expect(testnetClarke).toMatchObject({
+      id: 4221,
+      isStudio: false,
+      rpcUrls: {default: {http: ["https://rpc.testnet-chain.genlayer.com"]}},
+      blockExplorers: {default: {url: "https://scan.testnet-chain.genlayer.com"}},
+    });
+    expect(testnetClarke.consensusMainContract?.address).toBe("0xa44222E0beDaB12329557499ae6E555b1c9D02ee");
+    expect(testnetClarke.consensusDataContract?.address).toBe("0x16Ef1E1EF400A7fE0e572445974b95DA17370de9");
+    expect(testnetClarke.stakingContract?.address).toBe("0x711d111510Af2Bb35c3929b709677a1E9f8ffce2");
+    expect(testnetClarke.feeManagerContract?.address).toBe("0xd072dce2439d46C1F972810C6593D744c919b48a");
+    expect(testnetClarke.roundsStorageContract?.address).toBe("0xefD3b249591a0fBe1cdf6d3b4e36e7D8Dee7d4C4");
+    expect(testnetClarke.appealsContract?.address).toBe("0xd6a836eb592Dd0b216f65bDc954Ca5bCff5DDaa2");
+  });
+
+  it("shares the Bradbury Phase 3 ABIs", () => {
+    for (const key of [
+      "consensusMainContract",
+      "consensusDataContract",
+      "stakingContract",
+      "feeManagerContract",
+      "roundsStorageContract",
+      "appealsContract",
+    ] as const) {
+      expect(testnetClarke[key]?.abi).toBe(testnetBradbury[key]?.abi);
+    }
   });
 });

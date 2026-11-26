@@ -4,4 +4,5 @@ export type Network =
   | "studioDevnet"
   | "testnetAsimov"
   | "testnetBradbury"
+  | "testnetClarke"
   | "mainnet";

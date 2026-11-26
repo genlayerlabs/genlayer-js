@@ -5,11 +5,11 @@ import {STAKING_ABI} from "@/abi/staking";
 const TESTNET_JSON_RPC_URL = "https://rpc.testnet-chain.genlayer.com";
 // WebSocket not available on testnet GenLayer RPC nodes
 
-const STAKING_CONTRACT = {
+export const STAKING_CONTRACT = {
   address: "0xcE16862EAf10B97A0619BeBb662991fb4a52e346" as Address,
   abi: STAKING_ABI,
 };
-const FEE_MANAGER_CONTRACT = {
+export const FEE_MANAGER_CONTRACT = {
   address: "0x8E8B6194020dB1CbEf9C6c9dcFeE8FfF1e5E33c3" as Address,
   abi: [
     {
@@ -27,7 +27,7 @@ const FEE_MANAGER_CONTRACT = {
     },
   ],
 };
-const ROUNDS_STORAGE_CONTRACT = {
+export const ROUNDS_STORAGE_CONTRACT = {
   address: "0xa6bdB728B82c23786D6e3CAfc0B97235490A64Fb" as Address,
   abi: [
     {
@@ -99,7 +99,7 @@ const ROUNDS_STORAGE_CONTRACT = {
     },
   ],
 };
-const APPEALS_CONTRACT = {
+export const APPEALS_CONTRACT = {
   address: "0x10F2d70ABB8F588f96bEB1a02c99163EB75A2CF1" as Address,
   abi: [
     {
@@ -117,7 +117,7 @@ const APPEALS_CONTRACT = {
   ],
 };
 const EXPLORER_URL = "https://scan.testnet-chain.genlayer.com";
-const CONSENSUS_MAIN_CONTRACT = {
+export const CONSENSUS_MAIN_CONTRACT = {
   address: "0x0f4F0e05475723790E4a2ed0598370783C300926" as Address,
   abi: [
   {
@@ -2837,7 +2837,7 @@ const CONSENSUS_MAIN_CONTRACT = {
   bytecode: "",
 };
 
-const CONSENSUS_DATA_CONTRACT = {
+export const CONSENSUS_DATA_CONTRACT = {
   address: "0x2247b85b7ca7fb1Fea990b4aFAB4328D9c597f28" as Address,
   abi: [
   {

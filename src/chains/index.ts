@@ -4,3 +4,4 @@ export {studionet} from "./studionet";
 export {studioDevnet} from "./studioDevnet";
 export {testnetAsimov} from "./testnetAsimov";
 export {testnetBradbury} from "./testnetBradbury";
+export {testnetClarke} from "./testnetClarke";
