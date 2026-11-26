@@ -26,6 +26,8 @@ export interface ContractMethod extends ContractMethodBase {
   ret: ContractParamsSchema;
   readonly: boolean;
   payable?: boolean;
+  min_gas_leader?: number;
+  min_gas_validator?: number;
 }
 
 export type ContractSchema = {
